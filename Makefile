@@ -26,10 +26,13 @@ LDFLAGS := -ldflags "\
 	-X '$(BUILD_INFO_PKG).BuildDate=$(BUILD_DATE)' \
 	-X '$(BUILD_INFO_PKG).BuildGoVersion=$(BUILD_GO_VERSION)' \
 	-X '$(BUILD_INFO_PKG).BuildPlatform=$(BUILD_PLATFORM)' \
-	-s -w"
+	-s -w -extldflags '-static'"
 
-# Go build flags
-GO_BUILD_FLAGS := -trimpath $(LDFLAGS)
+# Go build flags for static builds
+GO_BUILD_FLAGS := -trimpath -a $(LDFLAGS)
+
+# Environment variables for static builds
+BUILD_ENV := CGO_ENABLED=0
 
 # Default target
 .PHONY: all
@@ -40,40 +43,48 @@ all: clean build
 build: $(BUILD_DIR)/$(APP_NAME)
 
 $(BUILD_DIR)/$(APP_NAME): clean-build
-	@echo "Building $(APP_NAME) for $(BUILD_PLATFORM)..."
+	@echo "Building $(APP_NAME) for $(BUILD_PLATFORM) (static)..."
 	@mkdir -p $(BUILD_DIR)
-	go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME) .
+	$(BUILD_ENV) go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME) .
 	@echo "Built $(APP_NAME) successfully!"
 
 # Build for multiple platforms
 .PHONY: build-all
 build-all: clean-build
-	@echo "Building for multiple platforms..."
+	@echo "Building for multiple platforms (static)..."
 	@mkdir -p $(BUILD_DIR)
 	
 	@echo "Building for Linux/amd64..."
-	GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-amd64 .
+	$(BUILD_ENV) GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-amd64 .
 	
 	@echo "Building for Linux/arm64..."
-	GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-arm64 .
+	$(BUILD_ENV) GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-arm64 .
 	
 	@echo "Building for macOS/amd64..."
-	GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-amd64 .
+	$(BUILD_ENV) GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-amd64 .
 	
 	@echo "Building for macOS/arm64..."
-	GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-arm64 .
+	$(BUILD_ENV) GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-arm64 .
 	
 	@echo "Building for Windows/amd64..."
-	GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-windows-amd64.exe .
+	$(BUILD_ENV) GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-windows-amd64.exe .
 	
 	@echo "All builds completed!"
 
 # Install the application to GOPATH/bin
 .PHONY: install
 install:
-	@echo "Installing $(APP_NAME)..."
-	go install $(GO_BUILD_FLAGS) .
+	@echo "Installing $(APP_NAME) (static)..."
+	$(BUILD_ENV) go install $(GO_BUILD_FLAGS) .
 	@echo "$(APP_NAME) installed successfully!"
+
+# Quick build (same as build but shorter command)
+.PHONY: quick
+quick: build
+
+# Build and verify static linking
+.PHONY: build-verify
+build-verify: build verify-static
 
 # Run the application
 .PHONY: run
@@ -190,8 +201,11 @@ release: clean fmt vet lint test-coverage build-all
 help:
 	@echo "Available targets:"
 	@echo "  all          - Clean and build (default)"
-	@echo "  build        - Build the application"
-	@echo "  build-all    - Build for multiple platforms"
+	@echo "  build        - Build the application (static binary)"
+	@echo "  build-all    - Build for multiple platforms (static binaries)"
+	@echo "  build-verify - Build and verify static linking"
+	@echo "  verify-static- Verify that built binary is statically linked"
+	@echo "  quick        - Quick build (alias for build)"
 	@echo "  install      - Install to GOPATH/bin"
 	@echo "  run          - Run the application (use ARGS=... for arguments)"
 	@echo "  test         - Run tests"
@@ -209,3 +223,5 @@ help:
 	@echo "  dev          - Development workflow (fmt, vet, lint, test, build)"
 	@echo "  release      - Release workflow (fmt, vet, lint, test-coverage, build-all)"
 	@echo "  help         - Show this help"
+	@echo ""
+	@echo "All builds create statically linked binaries for maximum portability."

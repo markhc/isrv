@@ -59,15 +59,22 @@ var rootCmd = &cobra.Command{
 		configuration.Load(configPath, debugFlag)
 		logging.Initialize()
 
-		supervisor := suture.NewSimple("iSrv")
-		service := &iSrvService{}
-		supervisor.Add(service)
+		// If debug mode is enabled, run the webserver directly without the supervisor
+		if configuration.Get().DebugMode {
+			logging.LogDebug("Debug mode is enabled")
 
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
-		defer stop()
+			webserver.Start()
+		} else {
+			supervisor := suture.NewSimple("iSrv")
+			service := &iSrvService{}
+			supervisor.Add(service)
 
-		logging.LogInfo("Starting iSrv service supervisor")
-		supervisor.Serve(ctx)
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+			defer stop()
+
+			logging.LogInfo("Starting iSrv service supervisor")
+			supervisor.Serve(ctx)
+		}
 	},
 }
 
