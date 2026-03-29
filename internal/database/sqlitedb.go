@@ -88,3 +88,23 @@ func (db *SQLiteDB) OnFileDelete(fileID string) error {
 	_, err := db.sqldb.Exec("DELETE FROM files WHERE id = ?", fileID)
 	return err
 }
+
+func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
+	rows, err := db.sqldb.Query("SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var expiredFiles []string
+	for rows.Next() {
+		var fileID string
+		err := rows.Scan(&fileID)
+		if err != nil {
+			return nil, err
+		}
+		expiredFiles = append(expiredFiles, fileID)
+	}
+
+	return expiredFiles, nil
+}

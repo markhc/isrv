@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/webserver"
 	"github.com/spf13/cobra"
+	"github.com/thejerf/suture/v4"
 )
 
 var (
@@ -17,6 +20,21 @@ var (
 	makeConfig  bool
 	configPath  string
 )
+
+type iSrvService struct{}
+
+func (s *iSrvService) Serve(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			logging.LogInfo("Shutting down iSrv service")
+			return nil
+		default:
+			webserver.Start()
+			return nil
+		}
+	}
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "isrv",
@@ -41,7 +59,15 @@ var rootCmd = &cobra.Command{
 		configuration.Load(configPath, debugFlag)
 		logging.Initialize()
 
-		webserver.Start()
+		supervisor := suture.NewSimple("iSrv")
+		service := &iSrvService{}
+		supervisor.Add(service)
+
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
+		defer stop()
+
+		logging.LogInfo("Starting iSrv service supervisor")
+		supervisor.Serve(ctx)
 	},
 }
 

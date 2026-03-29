@@ -60,7 +60,11 @@ logs:
   path: ./isrv.log
   log_ips: true
   log_uploads: true
-  
+
+# cleanup configuration
+cleanup:
+  enabled: true
+  interval: 1m
 
 # enable debug mode for more verbose logging and additional information in responses
 debug: false

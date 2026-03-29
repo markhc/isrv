@@ -13,6 +13,8 @@ type Database interface {
 	OnFileUpload(fileID string, fileName string, fileSize int64, expirationTime time.Time, ipAddress string) error
 	OnFileDownload(fileID string) error
 	OnFileDelete(fileID string) error
+
+	GetExpiredFiles() ([]string, error)
 }
 
 //go:embed migrations

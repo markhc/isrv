@@ -1,16 +1,21 @@
 package webserver
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"text/template"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/markhc/isrv/internal/cleanup"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/headers"
@@ -66,6 +71,16 @@ func Start() {
 		logging.LogFatal("Failed to migrate database", logging.Error(err))
 	}
 
+	// Parse cleanup interval from config
+	cleanupInterval, err := time.ParseDuration(config.Cleanup.Interval)
+	if err != nil {
+		logging.LogFatal("Invalid cleanup interval", logging.String("interval", config.Cleanup.Interval), logging.Error(err))
+	}
+
+	// Initialize and start cleanup service
+	cleanupService := cleanup.NewService(dbInstance, storageClient, config.Cleanup.Enabled, cleanupInterval)
+	cleanupService.Start()
+
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(handler404)
 
@@ -81,17 +96,43 @@ func Start() {
 		Methods("POST")
 
 	logging.LogInfo("Starting webserver", logging.String("host", config.ServerHost), logging.Int("port", config.ServerPort))
-	srv := http.Server{
+	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		Handler:      router,
 	}
 
-	err = srv.ListenAndServe()
-	if err != nil {
-		panic(err)
+	// Channel to listen for interrupt signals
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start server in a goroutine
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logging.LogFatal("Failed to start server", logging.Error(err))
+		}
+	}()
+
+	logging.LogInfo("Server started successfully")
+
+	// Wait for interrupt signal
+	<-quit
+	logging.LogInfo("Shutting down server...")
+
+	// Create a deadline for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Stop cleanup service
+	cleanupService.Stop()
+
+	// Attempt graceful shutdown of HTTP server
+	if err := srv.Shutdown(ctx); err != nil {
+		logging.LogError("Server forced to shutdown", logging.Error(err))
 	}
+
+	logging.LogInfo("Server shutdown complete")
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

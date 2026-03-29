@@ -37,6 +37,11 @@ type LoggingConfiguration struct {
 	Path       string        `yaml:"path"`
 }
 
+type CleanupConfiguration struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval"`
+}
+
 type Configuration struct {
 	ServerName     string                `yaml:"server_name"`
 	ServerURL      string                `yaml:"server_url"`
@@ -49,6 +54,7 @@ type Configuration struct {
 	Storage        StorageConfiguration  `yaml:"storage"`
 	Database       DatabaseConfiguration `yaml:"database"`
 	Logging        LoggingConfiguration  `yaml:"logs"`
+	Cleanup        CleanupConfiguration  `yaml:"cleanup"`
 	DebugMode      bool                  `yaml:"debug"`
 }
 
