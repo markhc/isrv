@@ -1,0 +1,15 @@
+services:
+  isrv:
+    build: .
+    container_name: isrv
+    restart: unless-stopped
+    user: "${UID}:${GID}"
+    ports:
+      - "8080:8080"
+    environment:
+      - UID=${UID}
+      - GID=${GID}
+      - TZ=UTC
+      - LOG_LEVEL=info
+    volumes:
+      - ./config.yaml:/config/config.yaml

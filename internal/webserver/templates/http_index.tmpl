@@ -1,0 +1,100 @@
+{{ define "index" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Config.ServerName }}</title>
+</head>
+<body>
+    <pre>
+<b>{{ .Config.ServerName }}</b>
+
+A simple and anonymous file sharing service.
+
+Source code and more information available at <a href="https://github.com/markhc/isrv">https://github.com/markhc/isrv</a>
+
+max_file_size = {{ .Config.MaxFileSizeMB }} MiB
+min_age = {{ .Config.MinAgeDays }} days
+max_age = {{ .Config.MaxAgeDays }} days
+retention = min_age + (min_age - max_age) * pow((file_size / max_size - 1), 3)
+
+Files are automatically deleted after their expiration time.
+If no expiration is specified, it's calculated based on file size.
+Larger files expire sooner to save server space.
+
+<strong>Uploading files</strong>
+
+cURL Examples:
+    # Simple upload
+    curl -F file=@example.txt {{ .Config.ServerURL }}
+
+    # Upload with custom expiration (hours)
+    curl -F file=@document.pdf -F expires=24 {{ .Config.ServerURL }}
+
+    # Upload with UNIX timestamp expiration
+    curl -F file=@image.jpg -F expires=1767225600 {{ .Config.ServerURL }}
+
+<details id="faq"><summary><strong>FAQ</strong></summary>
+Q: What file formats are supported?
+A: All file types are accepted, no restrictions on format.
+
+Q: Can I see a list of my uploaded files?
+A: No, this is an anonymous service. Keep track of your URLs.
+
+Q: How long do files stay available?
+A: The default expiration time is between {{ .Config.MinAgeDays }} and {{ .Config.MaxAgeDays }} days, depending on file size.
+   A custom expiration time can be set during upload that can be lower than the default, though it cannot exceed {{ .Config.MaxAgeDays }} days.
+
+Q: Is content scanned or monitored?
+A: Files are not scanned, but abuse reports are investigated.
+
+Q: Are files encrypted on the server?
+A: Files are stored securely, but not encrypted. You can use client-side encryption if desired before uploading.
+
+Q: What information is logged?
+A: Minimal logs are kept for abuse investigation, such as IP addresses, but no personally identifiable information is stored.
+</details>
+
+<details id="abuse-policy"><summary><strong>Abuse Policy</strong></summary>
+This service is provided for legitimate file sharing purposes.
+The following are prohibited:
+
+- Illegal content (as defined by applicable law)
+- Malware, viruses, or other malicious software  
+- Content that violates others' rights
+- Spam or commercial solicitation
+- Anything intended to harm or exploit others
+
+Violations will result in immediate file removal and may be
+reported to appropriate authorities.
+
+For abuse reports, contact the server administrator.
+</details>
+
+<details id="privacy"><summary><strong>Privacy</strong></summary>
+- File uploads are anonymous
+- No user accounts or tracking
+- Server logs contain minimal information
+- Files are stored securely on the server
+- Use HTTPS when available for encrypted transfers
+</details>
+
+<details id="terms-of-service"><summary><strong>Terms of Service</strong></summary>
+
+By using this service you agree that:
+- You will not upload prohibited content
+- Files may be removed without notice
+- No warranty or guarantee of availability
+- Service may be terminated at any time
+- You are responsible for your content
+
+Uploads found to be in violation of these rules will be removed,
+and the originating IP may be blocked.
+
+This service is provided as-is without warranty.
+</details>
+    </pre>
+</body>
+</html>
+{{ end }}

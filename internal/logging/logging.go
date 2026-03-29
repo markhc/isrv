@@ -1,0 +1,119 @@
+package logging
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/markhc/isrv/internal/configuration"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+var logger *zap.Logger
+
+func Initialize() {
+	config := configuration.Get()
+
+	// Error and above go to stderr, so we need splitting
+	highPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+		return lvl >= zapcore.ErrorLevel
+	})
+	lowPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+		return lvl < zapcore.ErrorLevel && lvl >= config.Logging.Level
+	})
+
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "ts"
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderConfig.EncodeLevel = customLevelEncoder
+	encoderConfig.ConsoleSeparator = " | "
+	encoderConfig.LevelKey = "level"
+
+	encoder := zapcore.NewConsoleEncoder(encoderConfig)
+
+	// Append to file it if exists, create it if it doesn't
+	file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+	if err != nil {
+		fmt.Println("Failed to create log file:", err)
+		panic(err)
+	}
+
+	fileSyncer := zapcore.AddSync(file)
+
+	consoleDebugging := zapcore.Lock(os.Stdout)
+	consoleErrors := zapcore.Lock(os.Stderr)
+
+	// Join the outputs
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, fileSyncer, zapcore.DebugLevel),
+		zapcore.NewCore(encoder, consoleErrors, highPriority),
+		zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+	)
+
+	logger = zap.New(core)
+}
+
+func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
+}
+
+// Returns the instance of the global logger.
+func GetLogger() *zap.Logger {
+	return logger
+}
+
+// Logs a debugging message.
+func LogDebug(message string, fields ...zap.Field) {
+	logger.Debug(message, fields...)
+}
+
+// Logs an informational message.
+func LogInfo(message string, fields ...zap.Field) {
+	logger.Info(message, fields...)
+}
+
+// Logs a warning message.
+func LogWarn(message string, fields ...zap.Field) {
+	logger.Warn(message, fields...)
+}
+
+// Logs an error message.
+func LogError(message string, fields ...zap.Field) {
+	logger.Error(message, fields...)
+}
+
+// Logs a fatal message and then panics to stop execution.
+func LogFatal(message string, fields ...zap.Field) {
+	logger.Fatal(message, fields...)
+	logger.Sync()
+	panic(1)
+}
+
+func String(key, value string) zap.Field {
+	return zap.String(key, value)
+}
+
+func Int(key string, value int) zap.Field {
+	return zap.Int(key, value)
+}
+
+func Int64(key string, value int64) zap.Field {
+	return zap.Int64(key, value)
+}
+
+func Float32(key string, value float32) zap.Field {
+	return zap.Float32(key, value)
+}
+
+func Float64(key string, value float64) zap.Field {
+	return zap.Float64(key, value)
+}
+
+func Error(err error) zap.Field {
+	return zap.Error(err)
+}
+
+func Any(key string, value interface{}) zap.Field {
+	return zap.Any(key, value)
+}
