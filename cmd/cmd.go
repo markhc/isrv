@@ -73,7 +73,10 @@ var rootCmd = &cobra.Command{
 			defer stop()
 
 			logging.LogInfo("Starting iSrv service supervisor")
-			supervisor.Serve(ctx)
+			err := supervisor.Serve(ctx)
+			if err != nil {
+				logging.LogError("iSrv service supervisor encountered an error", logging.Error(err))
+			}
 		}
 	},
 }

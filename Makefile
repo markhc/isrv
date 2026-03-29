@@ -66,10 +66,13 @@ build-all: clean-build
 	@echo "Building for macOS/arm64..."
 	$(BUILD_ENV) GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-arm64 .
 	
-	@echo "Building for Windows/amd64..."
-	$(BUILD_ENV) GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-windows-amd64.exe .
-	
 	@echo "All builds completed!"
+
+# Build for a target platform and architecture (use TARGET=linux-amd64, etc.)
+.PHONY: build-target
+build-target:
+	@echo "Building for target $(TARGET)..."
+	$(BUILD_ENV) GOOS=$(word 1,$(subst -, ,$(TARGET))) GOARCH=$(word 2,$(subst -, ,$(TARGET))) go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-$(TARGET) .
 
 # Install the application to GOPATH/bin
 .PHONY: install

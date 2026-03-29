@@ -87,7 +87,7 @@ func LogError(message string, fields ...zap.Field) {
 // Logs a fatal message and then panics to stop execution.
 func LogFatal(message string, fields ...zap.Field) {
 	logger.Fatal(message, fields...)
-	logger.Sync()
+	_ = logger.Sync()
 	panic(1)
 }
 
