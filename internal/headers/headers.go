@@ -16,9 +16,18 @@ func SetContentDisposition(w http.ResponseWriter, fileName string, inlineContent
 	w.Header().Set("Content-Disposition", dispositionType+"; filename=\""+fileName+"\"")
 }
 
-func SetHeaders(w http.ResponseWriter, fileName string, inlineContent bool, cachingEnabled bool) {
+func SetContentType(w http.ResponseWriter, contentType string) {
+	w.Header().Set("Content-Type", contentType)
+}
+
+func SetHeaders(w http.ResponseWriter, fileName string, fileMetadata map[string]string, inlineContent bool, cachingEnabled bool) {
 	if cachingEnabled {
 		AddCacheHeader(w)
 	}
+
+	if contentType, ok := fileMetadata["content_type"]; ok {
+		SetContentType(w, contentType)
+	}
+
 	SetContentDisposition(w, fileName, inlineContent)
 }

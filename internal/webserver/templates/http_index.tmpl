@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{ if .Config.FaviconURL }}
+    <link rel="icon" href="/static/favicon.{{ .Config.FaviconFormat }}" type="image/{{ .Config.FaviconFormat }}">
+    {{ end }}
     <title>{{ .Config.ServerName }}</title>
 </head>
 <body>

@@ -19,6 +19,21 @@ type LocalStorage struct {
 }
 
 func NewLocalStorage(config models.StorageConfiguration) *LocalStorage {
+	if dir, err := os.Stat(config.BasePath); os.IsNotExist(err) {
+		logging.LogInfo("Base path does not exist, creating directory", logging.String("path", config.BasePath))
+		err := os.MkdirAll(config.BasePath, 0755)
+		if err != nil {
+			logging.LogError("Failed to create base directory", logging.Error(err))
+			panic(err)
+		}
+	} else if err != nil {
+		logging.LogError("Failed to access base path", logging.Error(err))
+		panic(err)
+	} else if !dir.IsDir() {
+		logging.LogError("Base path exists but is not a directory", logging.String("path", config.BasePath))
+		panic("Base path exists but is not a directory")
+	}
+
 	return &LocalStorage{BasePath: config.BasePath}
 }
 
@@ -79,7 +94,7 @@ func (ls *LocalStorage) DeleteFile(fileID string) error {
 	return nil
 }
 
-func (ls *LocalStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, inlineContent bool, cachingEnabled bool) {
-	headers.SetHeaders(w, fileName, inlineContent, cachingEnabled)
+func (ls *LocalStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
+	headers.SetHeaders(w, fileName, metadata, inlineContent, cachingEnabled)
 	http.ServeFile(w, r, path.Join(ls.BasePath, fileID))
 }

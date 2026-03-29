@@ -11,5 +11,5 @@ type Storage interface {
 	SaveFileUpload(fileID string, file multipart.File) (string, error)
 	RetrieveFile(fileID string) ([]byte, error)
 	DeleteFile(fileID string) error
-	ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, inlineContent bool, cachingEnabled bool)
+	ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool)
 }

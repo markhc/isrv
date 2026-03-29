@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -21,7 +22,7 @@ func Pow3(x float64) float64 {
 	return x * x * x
 }
 
-func ParseExpiresForm(expiresStr string) (int64, error) {
+func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	// Parses the "expires" form field which can be in the format of
 	// either an integer number of hours or milliseconds since UNIX epoch.
 
@@ -30,15 +31,17 @@ func ParseExpiresForm(expiresStr string) (int64, error) {
 
 	expires, err = strconv.ParseInt(expiresStr, 10, 64)
 	if err != nil {
-		return 0, err
+		return time.Time{}, err
 	}
 
 	// If the value is less than 1,000,000, assume it's in hours
 	if expires < 1000000 {
 		expires = expires * 3600 * 1000 // convert hours to milliseconds
+		expiresTime := time.Now().Add(time.Duration(expires) * time.Millisecond)
+		return expiresTime, nil
 	}
 
-	return expires, nil
+	return time.UnixMilli(expires), nil
 }
 
 func GetIPAddress(r *http.Request) string {

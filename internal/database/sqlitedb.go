@@ -1,6 +1,8 @@
 package database
 
 import (
+	"encoding/json"
+	"mime/multipart"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -74,8 +76,22 @@ func (db *SQLiteDB) Migrate() error {
 	return nil
 }
 
-func (db *SQLiteDB) OnFileUpload(fileID string, fileName string, fileSize int64, expirationTime time.Time, ipAddress string) error {
-	_, err := db.sqldb.Exec("INSERT INTO files (id, file_name, file_size, expiration_time, ip_address) VALUES (?, ?, ?, ?, ?)", fileID, fileName, fileSize, expirationTime, ipAddress)
+func (db *SQLiteDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader, expirationTime time.Time, ipAddress string) error {
+	metadata := make(map[string]string)
+	if fileHeader.Header.Get("Content-Type") != "" {
+		metadata["content_type"] = fileHeader.Header.Get("Content-Type")
+	}
+
+	jsonMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		jsonMetadata = []byte("{}")
+	}
+
+	_, err = db.sqldb.Exec(`
+		INSERT INTO files (id, file_name, file_size, expiration_time, ip_address, metadata) 
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, fileID, fileHeader.Filename, fileHeader.Size, expirationTime, ipAddress, string(jsonMetadata))
+
 	return err
 }
 
@@ -87,6 +103,22 @@ func (db *SQLiteDB) OnFileDownload(fileID string) error {
 func (db *SQLiteDB) OnFileDelete(fileID string) error {
 	_, err := db.sqldb.Exec("DELETE FROM files WHERE id = ?", fileID)
 	return err
+}
+
+func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
+	var metadataStr string
+	err := db.sqldb.Get(&metadataStr, "SELECT metadata FROM files WHERE id = ?", fileID)
+	if err != nil {
+		return nil, err
+	}
+
+	var metadata map[string]string
+	err = json.Unmarshal([]byte(metadataStr), &metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	return metadata, nil
 }
 
 func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {

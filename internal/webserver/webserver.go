@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime/multipart"
 	"net/http"
@@ -81,13 +82,29 @@ func Start() {
 	cleanupService := cleanup.NewService(dbInstance, storageClient, config.Cleanup.Enabled, cleanupInterval)
 	cleanupService.Start()
 
+	faviconData := []byte{}
+	if config.FaviconURL != "" {
+		faviconData, err = fetchFavicon(config.FaviconURL, config.FaviconFormat)
+		if err != nil {
+			logging.LogError("Failed to fetch favicon", logging.String("url", config.FaviconURL), logging.Error(err))
+		}
+	}
+
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(handler404)
 
-	router.Handle("/", http.HandlerFunc(indexHandler)).
-		Methods("GET")
-	router.Handle("/static/{file}", staticFilesHandler(staticFilesDir)).
-		Methods("GET")
+	if !config.DisableIndexPage {
+		router.Handle("/", http.HandlerFunc(indexHandler)).
+			Methods("GET")
+	}
+	if !config.DisableUploadPage {
+		router.Handle("/static/{file}", staticFilesHandler(staticFilesDir)).
+			Methods("GET")
+	}
+	if config.FaviconURL != "" && faviconData != nil {
+		router.Handle("/favicon."+config.FaviconFormat, faviconHandler(config, faviconData)).
+			Methods("GET")
+	}
 	router.Handle("/d/{fileID}", loggingMiddleware(downloadHandler(config))).
 		Methods("GET")
 	router.Handle("/d/{fileID}/{fileName}", loggingMiddleware(downloadHandler(config))).
@@ -153,6 +170,60 @@ func initializeTemplates(templatesFS embed.FS) {
 	}
 }
 
+func fetchFavicon(url string, format string) ([]byte, error) {
+	// We enforce a max size of 4KiB for the favicon to prevent problems
+	// This is mostly due to the fact that the favicon is fetched and stored in memory
+	const maxFaviconSize = 4 * 1024 // 4 KiB
+
+	// Check if the URL is a local file path
+	localPath := ""
+	if strings.HasPrefix(url, "file://") || (!strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://")) {
+		localPath = strings.TrimPrefix(url, "file://")
+
+		fileInfo, err := os.Stat(localPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to access favicon file: %w", err)
+		}
+
+		if fileInfo.Size() > maxFaviconSize {
+			return nil, fmt.Errorf("favicon file size exceeds the maximum allowed limit of 4KiB")
+		}
+
+		data, err := os.ReadFile(localPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read favicon from local file: %w", err)
+		}
+
+		logging.LogInfo("Favicon loaded from local file successfully", logging.String("path", localPath))
+		return data, nil
+	} else if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		// Fetch the favicon from the URL
+		resp, err := http.Get(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch favicon from URL: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to fetch favicon: received status code %d", resp.StatusCode)
+		}
+
+		if resp.ContentLength > maxFaviconSize {
+			return nil, fmt.Errorf("favicon size exceeds the maximum allowed limit of 4KiB")
+		}
+
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read favicon data: %w", err)
+		}
+
+		logging.LogInfo("Favicon fetched and saved successfully", logging.String("url", url))
+		return data, nil
+	}
+
+	return nil, fmt.Errorf("unsupported favicon URL: %s", url)
+}
+
 func setJsonResponse(w http.ResponseWriter, statusCode int, data string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -192,6 +263,14 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func faviconHandler(config *models.Configuration, faviconData []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		headers.AddCacheHeader(w)
+		headers.SetContentType(w, "image/"+config.FaviconFormat)
+		w.Write(faviconData)
+	}
+}
+
 func staticFilesHandler(staticFilesDir fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logging.LogDebug("staticFilesHandler", logging.String("path", r.URL.Path))
@@ -225,7 +304,9 @@ func downloadHandler(_ *models.Configuration) http.HandlerFunc {
 		// Update file metrics
 		dbInstance.OnFileDownload(fileID)
 
-		storageClient.ServeFile(w, r, fileID, fileName, true, true)
+		metadata, _ := dbInstance.GetFileMetadata(fileID) // Fetch metadata to set appropriate headers
+
+		storageClient.ServeFile(w, r, fileID, fileName, metadata, true, true)
 	}
 }
 
@@ -251,7 +332,8 @@ func uploadHandler(config *models.Configuration) http.HandlerFunc {
 
 		ipAddress := utils.GetIPAddress(r)
 		expiration := calculateExpirationTime(r, header.Size, config)
-		logging.LogInfo("File upload requested", logging.String("filename", header.Filename), logging.Int64("size", header.Size), logging.String("expiration", expiration.String()), logging.String("ip_address", ipAddress))
+
+		logging.LogInfo("File upload requested", logging.String("filename", header.Filename), logging.Int64("size", header.Size), logging.TimeRFC3339("expiration", expiration), logging.String("ip_address", ipAddress))
 
 		fileURL, err := processUpload(config, file, header, expiration, ipAddress)
 		if err != nil {
@@ -276,22 +358,23 @@ func calculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 	maxAge := int64(config.MaxAgeDays * 24 * 3600 * 1000) // in milliseconds
 
 	defaultExpires := minAge + int64(float64(minAge-maxAge)*utils.Pow3(float64(fileSize)/float64(maxSizeBytes)-1))
+	defaultExpiresTime := time.Now().Add(time.Duration(defaultExpires) * time.Millisecond)
 
 	if expiresStr := r.FormValue("expires"); expiresStr != "" {
-		if expiresInt, err := utils.ParseExpiresForm(expiresStr); err == nil {
-			if expiresInt < defaultExpires {
-				defaultExpires = expiresInt
+		if expiresTime, err := utils.ParseExpiresForm(expiresStr); err == nil {
+			if expiresTime.Before(defaultExpiresTime) {
+				return expiresTime
 			}
 		}
 	}
 
-	return time.Now().Add(time.Duration(defaultExpires) * time.Millisecond)
+	return defaultExpiresTime
 }
 
-func processUpload(config *models.Configuration, file multipart.File, handler *multipart.FileHeader, expiration time.Time, ipAddress string) (string, error) {
-	logging.LogInfo("Processing uploaded file: " + handler.Filename)
+func processUpload(config *models.Configuration, file multipart.File, header *multipart.FileHeader, expiration time.Time, ipAddress string) (string, error) {
+	logging.LogInfo("Processing uploaded file: " + header.Filename)
 
-	fileID := handler.Filename
+	fileID := header.Filename
 	fileID = utils.GenerateRandomString(config.RandomIDLength)
 
 	path, err := storageClient.SaveFileUpload(fileID, file)
@@ -302,7 +385,7 @@ func processUpload(config *models.Configuration, file multipart.File, handler *m
 
 	logging.LogInfo("File uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
-	dbInstance.OnFileUpload(fileID, handler.Filename, handler.Size, expiration, ipAddress)
+	dbInstance.OnFileUpload(fileID, header, expiration, ipAddress)
 
-	return config.ServerURL + "/d/" + fileID + "/" + handler.Filename, nil
+	return config.ServerURL + "/d/" + fileID + "/" + header.Filename, nil
 }

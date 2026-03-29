@@ -43,19 +43,23 @@ type CleanupConfiguration struct {
 }
 
 type Configuration struct {
-	ServerName     string                `yaml:"server_name"`
-	ServerURL      string                `yaml:"server_url"`
-	ServerHost     string                `yaml:"server_host"`
-	ServerPort     int                   `yaml:"server_port"`
-	MaxFileSizeMB  int                   `yaml:"max_file_size_mb"`
-	MinAgeDays     int                   `yaml:"min_age_days"`
-	MaxAgeDays     int                   `yaml:"max_age_days"`
-	RandomIDLength int                   `yaml:"random_id_length"`
-	Storage        StorageConfiguration  `yaml:"storage"`
-	Database       DatabaseConfiguration `yaml:"database"`
-	Logging        LoggingConfiguration  `yaml:"logs"`
-	Cleanup        CleanupConfiguration  `yaml:"cleanup"`
-	DebugMode      bool                  `yaml:"debug"`
+	ServerName        string                `yaml:"server_name"`
+	ServerURL         string                `yaml:"server_url"`
+	ServerHost        string                `yaml:"server_host"`
+	ServerPort        int                   `yaml:"server_port"`
+	MaxFileSizeMB     int                   `yaml:"max_file_size_mb"`
+	MinAgeDays        int                   `yaml:"min_age_days"`
+	MaxAgeDays        int                   `yaml:"max_age_days"`
+	RandomIDLength    int                   `yaml:"random_id_length"`
+	DisableIndexPage  bool                  `yaml:"disable_index_page"`
+	DisableUploadPage bool                  `yaml:"disable_upload_page"`
+	FaviconURL        string                `yaml:"favicon_url"`
+	FaviconFormat     string                `yaml:"favicon_format"`
+	Storage           StorageConfiguration  `yaml:"storage"`
+	Database          DatabaseConfiguration `yaml:"database"`
+	Logging           LoggingConfiguration  `yaml:"logs"`
+	Cleanup           CleanupConfiguration  `yaml:"cleanup"`
+	DebugMode         bool                  `yaml:"debug"`
 }
 
 // ToYaml returns an indented Yaml representation

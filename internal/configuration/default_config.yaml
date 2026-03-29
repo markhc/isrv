@@ -21,12 +21,23 @@ max_age_days: 365
 # length of randomly generated file ids
 random_id_length: 20
 
+# Disables the index page that shows project information and help, among other things.
+disable_index_page: false
+# Disables the upload page that allows users to upload files through a web form.
+disable_upload_page: true
+
+# URL and format for the favicon. If empty, no favicon will be served.
+# Can be a local file path or remote URL.
+# The URL will be fetched and cached on startup. 
+favicon_url: ""
+favicon_format: "png"
+
 # storage configuration
 storage:
   # supported types: local, s3
   type: local
   # for local storage, this is the directory where files will be saved. For S3, this is the base path within the bucket (can be empty)
-  base_path: ./data/
+  base_path: ./upload_data/
   # for S3 storage, these are the required credentials and settings. For local storage, these can be left empty
   access_key: ""
   secret_key: ""

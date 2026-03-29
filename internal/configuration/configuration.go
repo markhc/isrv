@@ -132,13 +132,17 @@ func getDefaultConfig() models.Configuration {
 	}
 
 	return models.Configuration{
-		ServerURL:      "http://localhost:8080",
-		ServerHost:     "0.0.0.0",
-		ServerPort:     8080,
-		MaxFileSizeMB:  512,
-		MinAgeDays:     30,
-		MaxAgeDays:     365,
-		RandomIDLength: 20,
+		ServerURL:         "http://localhost:8080",
+		ServerHost:        "0.0.0.0",
+		ServerPort:        8080,
+		MaxFileSizeMB:     512,
+		MinAgeDays:        30,
+		MaxAgeDays:        365,
+		RandomIDLength:    20,
+		DisableIndexPage:  false,
+		DisableUploadPage: true,
+		FaviconURL:        "",
+		FaviconFormat:     "png",
 		Storage: models.StorageConfiguration{
 			Type:     "local",
 			BasePath: "./data/",

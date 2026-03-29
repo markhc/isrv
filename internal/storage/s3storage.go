@@ -47,7 +47,7 @@ func (s3 *S3Storage) DeleteFile(fileID string) error {
 	return errors.New("Not implemented yet")
 }
 
-func (s3 *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, inlineContent bool, cachingEnabled bool) {
+func (s3 *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
 	// Not implemented yet
 	http.Error(w, "Not implemented yet", http.StatusNotImplemented)
 }

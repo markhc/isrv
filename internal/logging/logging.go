@@ -3,6 +3,7 @@ package logging
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/markhc/isrv/internal/configuration"
 	"go.uber.org/zap"
@@ -112,6 +113,14 @@ func Float64(key string, value float64) zap.Field {
 
 func Error(err error) zap.Field {
 	return zap.Error(err)
+}
+
+func Time(key string, value time.Time, format string) zap.Field {
+	return zap.String(key, value.Format(format))
+}
+
+func TimeRFC3339(key string, value time.Time) zap.Field {
+	return zap.String(key, value.Format(time.RFC3339))
 }
 
 func Any(key string, value interface{}) zap.Field {
