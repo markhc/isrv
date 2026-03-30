@@ -46,7 +46,7 @@ docker run -p 8080:8080 markhc/isrv:latest
 
 ### From source
 
-Requires Go 1.25.5 or later:
+Requires Go 1.24 or later:
 
 ```bash
 git clone https://github.com/markhc/isrv.git

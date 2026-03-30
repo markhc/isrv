@@ -1,6 +1,6 @@
 module github.com/markhc/isrv
 
-go 1.25.5
+go 1.24.0
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/spf13/cobra v1.10.2
+	github.com/thejerf/suture/v4 v4.0.6
 	go.uber.org/zap v1.27.1
 	modernc.org/sqlite v1.44.3
 )
@@ -22,7 +23,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/thejerf/suture/v4 v4.0.6 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/sys v0.38.0 // indirect
