@@ -21,6 +21,8 @@ COPY . .
 RUN case "$(uname -m)" in \
     x86_64)  export GOARCH=amd64 ;; \
     aarch64) export GOARCH=arm64 ;; \
+    armv7l)  export GOARCH=arm   ;; \
+    armv6l)  export GOARCH=arm   ;; \
     *)       echo "Unsupported architecture: $(uname -m)" && exit 1 ;; \
     esac && \
      echo "Detected architecture: $(uname -m), setting GOARCH=${GOARCH}" && \
