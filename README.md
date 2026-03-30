@@ -41,7 +41,7 @@ sudo mv isrv-linux-amd64 /usr/local/bin/isrv
 ### Docker
 
 ```bash
-docker run -p 8080:8080 ghcr.io/markhc/isrv:latest
+docker run -p 8080:8080 markhc/isrv:latest
 ```
 
 ### From source
