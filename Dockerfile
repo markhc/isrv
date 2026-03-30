@@ -3,6 +3,13 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
+ARG BUILD_VERSION=v0.0.0-docker
+ARG BUILD_COMMIT=none
+ARG BUILD_PLATFORM=linux/amd64
+
+ENV BUILD_VERSION=${BUILD_VERSION}
+ENV BUILD_COMMIT=${BUILD_COMMIT}
+ENV BUILD_PLATFORM=${BUILD_PLATFORM}
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
 COPY go.mod go.sum ./
@@ -10,8 +17,25 @@ RUN go mod download
 
 COPY . .
 
+# Detect docker platform and set GOARCH accordingly
+RUN case "$(uname -m)" in \
+    x86_64)  export GOARCH=amd64 ;; \
+    aarch64) export GOARCH=arm64 ;; \
+    *)       echo "Unsupported architecture: $(uname -m)" && exit 1 ;; \
+    esac && \
+     echo "Detected architecture: $(uname -m), setting GOARCH=${GOARCH}" && \
+     go env -w GOARCH=${GOARCH}
+
 # Build without debug information to reduce binary size
-RUN go build -ldflags="-s -w" -o isrv .
+RUN export BUILD_DATE=$(date -u '+%Y-%m-%d_%H:%M:%S') && \
+    export BUILD_GO_VERSION=$(go version | awk '{print $3}') && \
+    export BUILD_PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')/$(uname -m) && \
+    go build -ldflags="-s -w \
+    -X 'github.com/markhc/isrv/internal/configuration.BuildVersion=${BUILD_VERSION}' \
+    -X 'github.com/markhc/isrv/internal/configuration.BuildCommit=${BUILD_COMMIT}' \
+    -X 'github.com/markhc/isrv/internal/configuration.BuildDate=${BUILD_DATE}' \
+    -X 'github.com/markhc/isrv/internal/configuration.BuildGoVersion=${BUILD_GO_VERSION}' \
+    -X 'github.com/markhc/isrv/internal/configuration.BuildPlatform=${BUILD_PLATFORM}'" -o isrv .
 
 # Final stage
 FROM alpine:latest
@@ -27,10 +51,10 @@ RUN addgroup -g $GROUP_ID -S isrv && \
     adduser -u $USER_ID -S -G isrv -H -s /sbin/nologin isrv
 
 COPY --from=builder /app/isrv /app/isrv
-COPY --from=builder /app/config.yaml.example /config/config.yaml
 
-RUN chown -R isrv:isrv /app /config
+RUN mkdir -p /config && chown -R isrv:isrv /config
 
 USER isrv
 
-CMD ["/app/isrv", "--config", "/config/config.yaml"]
+# Disable supervisor in the docker build as auto-restart can be handled by the container environment
+CMD ["/app/isrv", "--disable-supervisor"]

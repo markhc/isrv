@@ -4,6 +4,8 @@ Simple anonymous and temporary file sharing service.
 
 Visit https://isrv.nl to see it in action.
 
+[![Go Build](https://github.com/markhc/isrv/actions/workflows/build.yaml/badge.svg)](https://github.com/markhc/isrv/actions/workflows/build.yaml)
+
 ## Description
 
 isrv is a lightweight file sharing service that provides anonymous temporary storage with customizable expiration times. Users can upload files and share them via generated links without requiring registration or personal information.
@@ -18,6 +20,7 @@ isrv is a lightweight file sharing service that provides anonymous temporary sto
 
 This project is a work in progress, here's a list of things I am working on in no particular order:
 
+- Implement remote storage options (S3, GCS)
 - Allow users to manage their uploads (return a token on upload that can be used to delete/manage the file)
 - Compress files at rest to save storage when convenient (text and other highly compressible formats)
 - Optional file encryption at rest

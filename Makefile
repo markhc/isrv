@@ -13,7 +13,7 @@ MODULE_NAME := github.com/markhc/isrv
 BUILD_INFO_PKG := $(MODULE_NAME)/internal/configuration
 
 # Build variables
-BUILD_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+BUILD_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 BUILD_DATE ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 BUILD_GO_VERSION ?= $(shell go version | awk '{print $$3}')

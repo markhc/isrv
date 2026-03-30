@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	versionFlag bool
-	debugFlag   bool
-	makeConfig  bool
-	configPath  string
+	versionFlag       bool
+	debugFlag         bool
+	makeConfig        bool
+	disableSupervisor bool
+	configPath        string
 )
 
 type iSrvService struct{}
@@ -59,9 +60,13 @@ var rootCmd = &cobra.Command{
 		configuration.Load(configPath, debugFlag)
 		logging.Initialize()
 
-		// If debug mode is enabled, run the webserver directly without the supervisor
-		if configuration.Get().DebugMode {
-			logging.LogDebug("Debug mode is enabled")
+		// If debug mode is enabled or the supervisor is disabled, run the webserver directly
+		if configuration.Get().DebugMode || disableSupervisor {
+			if configuration.Get().DebugMode {
+				logging.LogDebug("Debug mode is enabled")
+			} else {
+				logging.LogInfo("Supervisor is disabled")
+			}
 
 			webserver.Start()
 		} else {
@@ -87,6 +92,7 @@ func Execute() {
 	rootCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to configuration file")
 
 	rootCmd.Flags().BoolVar(&makeConfig, "makeconf", false, "Generate a default configuration file and exit")
+	rootCmd.Flags().BoolVar(&disableSupervisor, "disable-supervisor", false, "Disable the supervisor and run the webserver directly")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

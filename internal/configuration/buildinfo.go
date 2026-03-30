@@ -1,6 +1,6 @@
 package configuration
 
-var BuildVersion = "0.0.0-dev"
+var BuildVersion = "v0.0.0-dev"
 var BuildCommit = "none"
 var BuildDate = "unknown"
 var BuildGoVersion = "unknown"
