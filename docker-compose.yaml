@@ -1,6 +1,7 @@
 services:
   isrv:
     build: .
+    image: markhc/isrv:latest
     container_name: isrv
     restart: unless-stopped
     user: "${UID:-1000}:${GID:-1000}"
@@ -13,8 +14,8 @@ services:
       - ISRV_LOGGING_LEVEL=info                   # Set the log level (e.g., debug, info, warn, error)
       - ISRV_LOGGING_FILE_ENABLED=false           # Disable logging to a file
       - ISRV_LOGGING_FILE_PATH=/logs/isrv.log     # Set the log file path (if file logging is enabled)
-      - ISRV_LOGGING_IPS_ENABLED=false            # Disable logging of client IP addresses
-      - ISRV_LOGGING_UPLOADS_ENABLED=false        # Disable logging of upload events
+      - ISRV_LOGGING_IPS_ENABLED=true             # Disable logging of client IP addresses
+      - ISRV_LOGGING_UPLOADS_ENABLED=true         # Disable logging of upload events
       - ISRV_CLEANUP_ENABLED=true                 # Enable automatic cleanup of old uploads
       - ISRV_CLEANUP_INTERVAL=1m                  # Set the cleanup interval (e.g., 1m for 1 minute)
       - ISRV_STORAGE_PATH=/data/upload_data       # Set the data directory for uploads
@@ -22,6 +23,6 @@ services:
       # Mount the configuration file
       - ./config.yaml:/config/config.yaml
       # Mount the data directory for uploads
-      - ./data:/data/upload_data
+      - ./data:/data:rw
     command: ["./isrv", "--disable-supervisor"]
 

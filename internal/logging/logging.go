@@ -3,6 +3,7 @@ package logging
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/markhc/isrv/internal/configuration"
@@ -38,6 +39,13 @@ func Initialize() {
 	consoleErrors := zapcore.Lock(os.Stderr)
 
 	if config.Logging.LogToFile {
+		if dir := filepath.Dir(config.Logging.Path); dir != "." {
+			if err := os.Mkdir(dir, 0755); err != nil && !os.IsExist(err) {
+				fmt.Println("Failed to create log directory:", err)
+				panic(err)
+			}
+		}
+
 		// Append to file it if exists, create it if it doesn't
 		file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 

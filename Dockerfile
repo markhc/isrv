@@ -15,7 +15,9 @@ ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
+COPY main.go ./
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
 
 # Detect docker platform and set GOARCH accordingly
 RUN case "$(uname -m)" in \

@@ -43,8 +43,14 @@ sudo mv isrv-linux-amd64 /usr/local/bin/isrv
 
 ### Docker
 
+- Create a `docker-compose.yaml` file (you can use the project's [docker-compose.yaml](docker-compose.yaml) as base)
+- Create the data folder where the database and files will be kept.
+- Start the container
+
+Example:
 ```bash
-docker run -p 8080:8080 markhc/isrv:latest
+mkdir -p ./data
+docker compose up -d
 ```
 
 ### From source

@@ -2,7 +2,11 @@ package database
 
 import (
 	"encoding/json"
+	"errors"
 	"mime/multipart"
+	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -38,6 +42,12 @@ func NewSQLiteDB(config models.Configuration) *SQLiteDB {
 
 // Connect opens the SQLite database connection.
 func (db *SQLiteDB) Connect() error {
+	if dir := sqliteDir(db.filePath, db.pathIsDSN); dir != "" {
+		if _, err := os.Stat(dir); err != nil && errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+
 	var err error
 	if db.pathIsDSN {
 		db.sqldb, err = sqlx.Connect("sqlite", db.filePath)
@@ -50,6 +60,23 @@ func (db *SQLiteDB) Connect() error {
 	}
 
 	return nil
+}
+
+// sqliteDir extracts the parent directory from a file path or SQLite DSN.
+// Returns an empty string if no meaningful directory can be determined.
+func sqliteDir(path string, isDSN bool) string {
+	if isDSN {
+		u, err := url.Parse(path)
+		if err != nil || u.Path == "" {
+			return ""
+		}
+		path = u.Path
+	}
+	dir := filepath.Dir(path)
+	if dir == "." {
+		return ""
+	}
+	return dir
 }
 
 // Close releases the underlying database connection.

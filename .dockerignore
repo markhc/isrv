@@ -1,0 +1,55 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+**/coverage.out
+**/coverage.html
+**/coverage.txt
+
+# Vendor directory (if you use Go modules)
+vendor/
+
+# Dependency directories
+Godeps/
+
+# Build output
+bin/
+build/
+dist/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Logs
+*.log
+
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+docker-compose.yaml
+docker/
+
+# Configuration files
+**/config.yaml
+**/isrv.db
+**/isrv.log
+data/
+logs/
+upload_data/
