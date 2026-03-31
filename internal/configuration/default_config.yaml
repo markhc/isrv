@@ -34,7 +34,7 @@ favicon_format: "png"
 
 # storage configuration
 storage:
-  # supported types: local, s3, gcs
+  # supported types: local, s3
   type: local
   # for local storage, this is the directory where files will be saved. For S3, this is the base path within the bucket (can be empty)
   base_path: ./upload_data/
