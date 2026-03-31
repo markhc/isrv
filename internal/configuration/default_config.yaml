@@ -65,9 +65,10 @@ database:
   password: ""
   db_name: ""
 
-# log configuration
-logs:
+# logging configuration
+logging:
   level: info
+  log_to_file: false
   path: ./isrv.log
   log_ips: true
   log_uploads: true

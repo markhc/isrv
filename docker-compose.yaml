@@ -3,18 +3,21 @@ services:
     build: .
     container_name: isrv
     restart: unless-stopped
-    user: "${UID}:${GID}"
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "8080:8080"
     environment:
-      - UID=${UID}
-      - GID=${GID}
       - TZ=UTC
       # Custom environment variables for the application
       # These can be used to override configuration settings or provide additional parameters.
-      - LOG_LEVEL=info                  # Set the log level (e.g., debug, info, warn, error)
-      - DATA_DIR=/data/upload_data      # Set the data directory for uploads
-      - CONFIG_PATH=/config/config.yaml # Set the path to the configuration file
+      - ISRV_LOGGING_LEVEL=info                   # Set the log level (e.g., debug, info, warn, error)
+      - ISRV_LOGGING_FILE_ENABLED=false           # Disable logging to a file
+      - ISRV_LOGGING_FILE_PATH=/logs/isrv.log     # Set the log file path (if file logging is enabled)
+      - ISRV_LOGGING_IPS_ENABLED=false            # Disable logging of client IP addresses
+      - ISRV_LOGGING_UPLOADS_ENABLED=false        # Disable logging of upload events
+      - ISRV_CLEANUP_ENABLED=true                 # Enable automatic cleanup of old uploads
+      - ISRV_CLEANUP_INTERVAL=1m                  # Set the cleanup interval (e.g., 1m for 1 minute)
+      - ISRV_STORAGE_PATH=/data/upload_data       # Set the data directory for uploads
     volumes:
       # Mount the configuration file
       - ./config.yaml:/config/config.yaml

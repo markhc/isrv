@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/markhc/isrv/internal/models"
@@ -67,8 +68,23 @@ func applyEnvOverrides() {
 	if v, ok := os.LookupEnv("ISRV_STORAGE_PATH"); ok {
 		config.Storage.BasePath = v
 	}
+	if v, ok := os.LookupEnv("ISRV_LOGGING_FILE_ENABLED"); ok {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			config.Logging.LogToFile = enabled
+		}
+	}
 	if v, ok := os.LookupEnv("ISRV_LOGGING_PATH"); ok {
 		config.Logging.Path = v
+	}
+	if v, ok := os.LookupEnv("ISRV_LOGGING_IPS_ENABLED"); ok {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			config.Logging.LogIps = enabled
+		}
+	}
+	if v, ok := os.LookupEnv("ISRV_LOGGING_UPLOADS_ENABLED"); ok {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			config.Logging.LogUploads = enabled
+		}
 	}
 	if v, ok := os.LookupEnv("ISRV_RANDOM_ID_LENGTH"); ok {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -79,6 +95,14 @@ func applyEnvOverrides() {
 		if n, err := strconv.Atoi(v); err == nil {
 			config.MaxFileSizeMB = n
 		}
+	}
+	if v, ok := os.LookupEnv("ISRV_CLEANUP_ENABLED"); ok {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			config.Cleanup.Enabled = enabled
+		}
+	}
+	if v, ok := os.LookupEnv("ISRV_CLEANUP_INTERVAL"); ok {
+		config.Cleanup.Interval = v
 	}
 }
 
@@ -149,6 +173,24 @@ func verifyConfiguration() {
 			if config.Storage.Region != "" {
 				config.Storage.Endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", config.Storage.Region)
 			}
+		}
+	}
+
+	if config.ServerPort < 1 || config.ServerPort > 65535 {
+		panic("Invalid configuration: server_port must be between 1 and 65535")
+	}
+
+	if config.RandomIDLength < 4 {
+		panic("Invalid configuration: random_id_length must be at least 4")
+	}
+
+	if config.MaxFileSizeMB < 1 {
+		panic("Invalid configuration: max_file_size_mb must be at least 1")
+	}
+
+	if config.Cleanup.Enabled {
+		if _, err := time.ParseDuration(config.Cleanup.Interval); err != nil {
+			panic("Invalid configuration: cleanup.interval must be a valid duration string (e.g., '1h', '30m')")
 		}
 	}
 }

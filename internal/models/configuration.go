@@ -34,6 +34,7 @@ type DatabaseConfiguration struct {
 
 // LoggingConfiguration holds settings for structured logging.
 type LoggingConfiguration struct {
+	LogToFile  bool          `yaml:"log_to_file"`
 	LogUploads bool          `yaml:"log_uploads"`
 	LogIps     bool          `yaml:"log_ips"`
 	Level      zapcore.Level `yaml:"level"`
@@ -62,7 +63,7 @@ type Configuration struct {
 	FaviconFormat     string                `yaml:"favicon_format"`
 	Storage           StorageConfiguration  `yaml:"storage"`
 	Database          DatabaseConfiguration `yaml:"database"`
-	Logging           LoggingConfiguration  `yaml:"logs"`
+	Logging           LoggingConfiguration  `yaml:"logging"`
 	Cleanup           CleanupConfiguration  `yaml:"cleanup"`
 	DebugMode         bool                  `yaml:"debug"`
 }
