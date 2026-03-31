@@ -68,9 +68,9 @@ func (storage *S3Storage) FileExists(fileID string) (bool, error) {
 		return true, nil
 	}
 
-	var noSuchKey *types.NoSuchKey
-	if isNotFound := errors.As(err, &noSuchKey); isNotFound {
-		// The specific error is NoSuchKey, so the object does not exist.
+	var notFound *types.NotFound
+	if isNotFound := errors.As(err, &notFound); isNotFound {
+		// the object does not exist. Don't propagate this as an error.
 		return false, nil
 	}
 	return false, err
