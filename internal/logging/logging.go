@@ -34,27 +34,37 @@ func Initialize() {
 
 	encoder := zapcore.NewConsoleEncoder(encoderConfig)
 
-	// Append to file it if exists, create it if it doesn't
-	file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
-	if err != nil {
-		fmt.Println("Failed to create log file:", err)
-		panic(err)
-	}
-
-	fileSyncer := zapcore.AddSync(file)
-
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
 
-	// Join the outputs
-	core := zapcore.NewTee(
-		zapcore.NewCore(encoder, fileSyncer, zapcore.DebugLevel),
-		zapcore.NewCore(encoder, consoleErrors, highPriority),
-		zapcore.NewCore(encoder, consoleDebugging, lowPriority),
-	)
+	if config.Logging.LogToFile {
+		// Append to file it if exists, create it if it doesn't
+		file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
-	logger = zap.New(core)
+		if err != nil {
+			fmt.Println("Failed to create log file:", err)
+			panic(err)
+		}
+
+		fileSyncer := zapcore.AddSync(file)
+
+		// Join the outputs
+		core := zapcore.NewTee(
+			zapcore.NewCore(encoder, fileSyncer, zapcore.DebugLevel),
+			zapcore.NewCore(encoder, consoleErrors, highPriority),
+			zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+		)
+
+		logger = zap.New(core)
+	} else {
+		// Only log to console
+		core := zapcore.NewTee(
+			zapcore.NewCore(encoder, consoleErrors, highPriority),
+			zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+		)
+
+		logger = zap.New(core)
+	}
 }
 
 func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
