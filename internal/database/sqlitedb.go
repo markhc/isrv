@@ -13,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// SQLiteDB implements Database using a SQLite backend.
 type SQLiteDB struct {
 	filePath  string
 	pathIsDSN bool
@@ -20,6 +21,7 @@ type SQLiteDB struct {
 	sqldb *sqlx.DB
 }
 
+// NewSQLiteDB creates a new SQLiteDB from the provided configuration.
 func NewSQLiteDB(config models.Configuration) *SQLiteDB {
 	if config.Database.DSN != "" {
 		return &SQLiteDB{
@@ -28,12 +30,13 @@ func NewSQLiteDB(config models.Configuration) *SQLiteDB {
 		}
 	} else {
 		return &SQLiteDB{
-			filePath:  config.Database.DSN,
+			filePath:  config.Database.FilePath,
 			pathIsDSN: false,
 		}
 	}
 }
 
+// Connect opens the SQLite database connection.
 func (db *SQLiteDB) Connect() error {
 	var err error
 	if db.pathIsDSN {
@@ -49,10 +52,12 @@ func (db *SQLiteDB) Connect() error {
 	return nil
 }
 
+// Close releases the underlying database connection.
 func (db *SQLiteDB) Close() error {
 	return db.sqldb.Close()
 }
 
+// Migrate applies all pending up-migrations using the embedded migration files.
 func (db *SQLiteDB) Migrate() error {
 	iofsSource, err := iofs.New(migrations, "migrations")
 	if err != nil {
@@ -76,6 +81,7 @@ func (db *SQLiteDB) Migrate() error {
 	return nil
 }
 
+// OnFileUpload inserts a new file record with the given metadata and expiration time.
 func (db *SQLiteDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader, expirationTime time.Time, ipAddress string) error {
 	metadata := make(map[string]string)
 	if fileHeader.Header.Get("Content-Type") != "" {
@@ -95,16 +101,19 @@ func (db *SQLiteDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader
 	return err
 }
 
+// OnFileDownload increments the download counter for the given file ID.
 func (db *SQLiteDB) OnFileDownload(fileID string) error {
 	_, err := db.sqldb.Exec("UPDATE files SET download_count = download_count + 1 WHERE id = ?", fileID)
 	return err
 }
 
+// OnFileDelete removes the record for the given file ID from the database.
 func (db *SQLiteDB) OnFileDelete(fileID string) error {
 	_, err := db.sqldb.Exec("DELETE FROM files WHERE id = ?", fileID)
 	return err
 }
 
+// GetFileMetadata returns the metadata map for the given file ID.
 func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
 	var metadataStr string
 	err := db.sqldb.Get(&metadataStr, "SELECT metadata FROM files WHERE id = ?", fileID)
@@ -121,6 +130,7 @@ func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
 	return metadata, nil
 }
 
+// GetExpiredFiles returns the IDs of all files whose expiration time is in the past.
 func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 	rows, err := db.sqldb.Query("SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP")
 	if err != nil {
@@ -136,6 +146,10 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 			return nil, err
 		}
 		expiredFiles = append(expiredFiles, fileID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return expiredFiles, nil

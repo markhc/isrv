@@ -2,6 +2,7 @@ package utils
 
 import (
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+// GenerateRandomString returns a random alphanumeric string of the given length.
 func GenerateRandomString(length int) string {
 	var data = make([]byte, length)
 	for i := 0; i < length; i++ {
@@ -18,14 +20,15 @@ func GenerateRandomString(length int) string {
 	return string(data)
 }
 
+// Pow3 returns x raised to the power of 3.
 func Pow3(x float64) float64 {
 	return x * x * x
 }
 
+// ParseExpiresForm parses the "expires" form field value into a time.Time.
+// The value may be either a duration in hours (small integers) or a Unix
+// timestamp in milliseconds.
 func ParseExpiresForm(expiresStr string) (time.Time, error) {
-	// Parses the "expires" form field which can be in the format of
-	// either an integer number of hours or milliseconds since UNIX epoch.
-
 	var expires int64
 	var err error
 
@@ -44,8 +47,9 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	return time.UnixMilli(expires), nil
 }
 
+// GetIPAddress returns the client IP address from the request, respecting
+// X-Forwarded-For and X-Real-IP proxy headers when present.
 func GetIPAddress(r *http.Request) string {
-	// Get the client's IP address from the request, accounting for proxies
 	fwdAddress := r.Header.Get("X-Forwarded-For")
 	if fwdAddress != "" {
 		ips := strings.Split(fwdAddress, ", ")
@@ -62,9 +66,9 @@ func GetIPAddress(r *http.Request) string {
 
 	// No proxy headers, return the remote address from the request
 	// Note: r.RemoteAddr may include the port number
-	ip = r.RemoteAddr
-	if colonIndex := strings.LastIndex(ip, ":"); colonIndex != -1 && strings.Count(ip, ":") == 1 {
-		ip = ip[:colonIndex]
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return ip
 }

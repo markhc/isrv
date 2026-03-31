@@ -10,6 +10,8 @@ import (
 	"github.com/markhc/isrv/internal/storage"
 )
 
+// Service periodically scans for expired files and removes them from both
+// storage and the database.
 type Service struct {
 	db       database.Database
 	storage  storage.Storage
@@ -21,6 +23,8 @@ type Service struct {
 	wg     sync.WaitGroup
 }
 
+// NewService creates a new cleanup Service with the given database, storage backend,
+// enabled flag, and polling interval.
 func NewService(db database.Database, storage storage.Storage, enabled bool, interval time.Duration) *Service {
 	return &Service{
 		db:       db,
@@ -30,6 +34,8 @@ func NewService(db database.Database, storage storage.Storage, enabled bool, int
 	}
 }
 
+// Start launches the background cleanup goroutine. It is a no-op if the service
+// is disabled.
 func (s *Service) Start() {
 	if !s.enabled {
 		logging.LogInfo("File cleanup service is disabled")
@@ -44,6 +50,8 @@ func (s *Service) Start() {
 	logging.LogInfo("File cleanup service started", logging.String("interval", s.interval.String()))
 }
 
+// Stop signals the cleanup goroutine to exit and waits for it to finish.
+// It is a no-op if the service is disabled or was never started.
 func (s *Service) Stop() {
 	if !s.enabled || s.cancel == nil {
 		return

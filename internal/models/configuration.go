@@ -5,6 +5,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// StorageConfiguration holds settings for the storage backend.
 type StorageConfiguration struct {
 	Type string `yaml:"type"` // "local" or "s3"
 	// Base directory for local storage
@@ -19,6 +20,7 @@ type StorageConfiguration struct {
 	Endpoint   string `yaml:"endpoint"`
 }
 
+// DatabaseConfiguration holds settings for the database backend.
 type DatabaseConfiguration struct {
 	Type     string `yaml:"type"`      // "sqlite" and "postgres" supported
 	DSN      string `yaml:"dsn"`       // Data Source Name. If provided, overrides other settings
@@ -30,6 +32,7 @@ type DatabaseConfiguration struct {
 	FilePath string `yaml:"file_path"` // For file-based databases
 }
 
+// LoggingConfiguration holds settings for structured logging.
 type LoggingConfiguration struct {
 	LogUploads bool          `yaml:"log_uploads"`
 	LogIps     bool          `yaml:"log_ips"`
@@ -37,11 +40,13 @@ type LoggingConfiguration struct {
 	Path       string        `yaml:"path"`
 }
 
+// CleanupConfiguration holds settings for the background file cleanup service.
 type CleanupConfiguration struct {
 	Enabled  bool   `yaml:"enabled"`
 	Interval string `yaml:"interval"`
 }
 
+// Configuration is the top-level application configuration.
 type Configuration struct {
 	ServerName        string                `yaml:"server_name"`
 	ServerURL         string                `yaml:"server_url"`
