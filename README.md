@@ -90,21 +90,18 @@ Configuration can be provided via:
 
 ### Environment Variables
 
-Environment variables take precedence over values defined in the configuration file.
+When set, environment variables override the corresponding values from the configuration file.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SERVER_NAME` | `iSRV` | Sets the server name |
-| `SERVER_URL` | `http://localhost:8080` | Sets the server URL |
-| `SERVER_HOST` | `0.0.0.0` | Sets the server host address |
-| `SERVER_PORT` | `8080` | Sets the server port |
-| `CONFIG_DIR` | - | Sets the configuration directory |
-| `CONFIG_FILE` | - | Sets the configuration file name |
-| `DATA_DIR` | `data` | Sets the data directory |
-| `LOG_DIR` | `config` | Sets the log directory |
-| `LOG_FILE` | `isrv.log` | Sets the log file name |
-| `FILENAME_LENGTH` | `12` | Sets the length of randomly generated file names |
-| `MAX_FILE_SIZE_MB` | `102400` | Sets the maximum file size in megabytes |
+| `ISRV_SERVER_NAME` | `iSRV` | Sets the server name |
+| `ISRV_SERVER_URL` | `http://localhost:8080` | Sets the server URL |
+| `ISRV_SERVER_HOST` | `0.0.0.0` | Sets the server host address |
+| `ISRV_SERVER_PORT` | `8080` | Sets the server port |
+| `ISRV_STORAGE_PATH` | - | Sets the storage base path |
+| `ISRV_LOGGING_PATH` | - | Sets the log file path |
+| `ISRV_RANDOM_ID_LENGTH` | `12` | Sets the length of randomly generated file IDs |
+| `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
 
 
 ## Development
