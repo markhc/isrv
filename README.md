@@ -20,10 +20,13 @@ isrv is a lightweight file sharing service that provides anonymous temporary sto
 
 This project is a work in progress, here's a list of things I am working on in no particular order:
 
+- Implement tests
 - Implement remote storage options (S3, GCS)
+- Support PostgreSQL database
 - Allow users to manage their uploads (return a token on upload that can be used to delete/manage the file)
 - Compress files at rest to save storage when convenient (text and other highly compressible formats)
 - Optional file encryption at rest
+- Optional archival strategies (e.g Move older files to another storage location)
 
 ## Installation
 
@@ -78,8 +81,28 @@ The web interface will be available at `http://localhost:8080`.
 ## Configuration
 
 Configuration can be provided via:
-- Environment variables
 - Configuration file
+- Environment variables
+
+### Configuration file
+
+[default_config.yaml](internal/configuration/default_config.yaml)
+
+### Environment Variables
+
+When set, environment variables override the corresponding values from the configuration file.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ISRV_SERVER_NAME` | `iSRV` | Sets the server name |
+| `ISRV_SERVER_URL` | `http://localhost:8080` | Sets the server URL |
+| `ISRV_SERVER_HOST` | `0.0.0.0` | Sets the server host address |
+| `ISRV_SERVER_PORT` | `8080` | Sets the server port |
+| `ISRV_STORAGE_PATH` | - | Sets the storage base path |
+| `ISRV_LOGGING_PATH` | - | Sets the log file path |
+| `ISRV_RANDOM_ID_LENGTH` | `12` | Sets the length of randomly generated file IDs |
+| `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
+
 
 ## Development
 

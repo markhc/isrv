@@ -19,7 +19,7 @@ min_age_days: 30
 max_age_days: 365
 
 # length of randomly generated file ids
-random_id_length: 20
+random_id_length: 12
 
 # Disables the index page that shows project information and help, among other things.
 disable_index_page: false

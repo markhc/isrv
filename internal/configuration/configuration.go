@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/markhc/isrv/internal/environment"
 	"github.com/markhc/isrv/internal/models"
 	"go.uber.org/zap"
 )
@@ -42,35 +42,59 @@ func Load(configPath string, debug bool) {
 		}
 	}
 
+	applyEnvOverrides()
 	verifyConfiguration()
+}
+
+// applyEnvOverrides overrides config values with any explicitly set ISRV_* environment variables.
+// Uses os.LookupEnv so that only variables present in the environment take effect;
+// unset variables do not override YAML-derived values.
+func applyEnvOverrides() {
+	if v, ok := os.LookupEnv("ISRV_SERVER_NAME"); ok {
+		config.ServerName = v
+	}
+	if v, ok := os.LookupEnv("ISRV_SERVER_URL"); ok {
+		config.ServerURL = v
+	}
+	if v, ok := os.LookupEnv("ISRV_SERVER_HOST"); ok {
+		config.ServerHost = v
+	}
+	if v, ok := os.LookupEnv("ISRV_SERVER_PORT"); ok {
+		if port, err := strconv.Atoi(v); err == nil {
+			config.ServerPort = port
+		}
+	}
+	if v, ok := os.LookupEnv("ISRV_STORAGE_PATH"); ok {
+		config.Storage.BasePath = v
+	}
+	if v, ok := os.LookupEnv("ISRV_LOGGING_PATH"); ok {
+		config.Logging.Path = v
+	}
+	if v, ok := os.LookupEnv("ISRV_RANDOM_ID_LENGTH"); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			config.RandomIDLength = n
+		}
+	}
+	if v, ok := os.LookupEnv("ISRV_MAX_FILE_SIZE_MB"); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			config.MaxFileSizeMB = n
+		}
+	}
 }
 
 // Check known configuration file paths to see if any exist
 func configFileExists() (bool, string) {
-	env := environment.ParseEnv()
-
-	if env.ConfigPathIsSet {
-		_, err := os.Stat(env.ConfigPath)
-
+	knownPaths := []string{
+		"./config.yaml",
+		"./config/config.yaml",
+		"/config/config.yaml",
+		filepath.Join(os.Getenv("HOME"), ".config", "isrv", "config.yaml"),
+		"/etc/isrv/config.yaml",
+	}
+	for _, path := range knownPaths {
+		_, err := os.Stat(path)
 		if !os.IsNotExist(err) {
-			return true, env.ConfigPath
-		}
-
-		fmt.Println("Configuration path is set but the file does not exist:", env.ConfigPath)
-	} else {
-		knownPaths := []string{
-			"./config.yaml",
-			"./config/config.yaml",
-			"/config/config.yaml",
-			filepath.Join(os.Getenv("HOME"), ".config", "isrv", "config.yaml"),
-			"/etc/isrv/config.yaml",
-		}
-		for _, path := range knownPaths {
-			_, err := os.Stat(path)
-
-			if !os.IsNotExist(err) {
-				return true, path
-			}
+			return true, path
 		}
 	}
 
@@ -106,13 +130,25 @@ func verifyConfiguration() {
 		panic("Invalid configuration: storage.type must be either 'local' or 's3'")
 	}
 
-	if config.Storage.Type == "local" {
+	switch config.Storage.Type {
+	case "local":
 		if config.Storage.BasePath == "" {
 			panic("Invalid configuration: base_path cannot be empty")
 		}
 		// Ensure data directory ends with a slash
 		if !strings.HasSuffix(config.Storage.BasePath, string(os.PathSeparator)) {
 			config.Storage.BasePath += string(os.PathSeparator)
+		}
+	case "s3":
+		if config.Storage.Region == "" {
+			panic("Invalid configuration: region must be provided for S3 storage")
+		}
+
+		if config.Storage.Endpoint == "" {
+			// Set default endpoint based on region if not provided
+			if config.Storage.Region != "" {
+				config.Storage.Endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", config.Storage.Region)
+			}
 		}
 	}
 }
@@ -138,7 +174,7 @@ func getDefaultConfig() models.Configuration {
 		MaxFileSizeMB:     512,
 		MinAgeDays:        30,
 		MaxAgeDays:        365,
-		RandomIDLength:    20,
+		RandomIDLength:    12,
 		DisableIndexPage:  false,
 		DisableUploadPage: true,
 		FaviconURL:        "",

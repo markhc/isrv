@@ -10,6 +10,15 @@ services:
       - UID=${UID}
       - GID=${GID}
       - TZ=UTC
-      - LOG_LEVEL=info
+      # Custom environment variables for the application
+      # These can be used to override configuration settings or provide additional parameters.
+      - LOG_LEVEL=info                  # Set the log level (e.g., debug, info, warn, error)
+      - DATA_DIR=/data/upload_data      # Set the data directory for uploads
+      - CONFIG_PATH=/config/config.yaml # Set the path to the configuration file
     volumes:
+      # Mount the configuration file
       - ./config.yaml:/config/config.yaml
+      # Mount the data directory for uploads
+      - ./data:/data/upload_data
+    command: ["./isrv", "--disable-supervisor"]
+

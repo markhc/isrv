@@ -107,7 +107,11 @@ func (s *Service) performCleanup() {
 }
 
 func (s *Service) cleanupFile(fileID string) error {
-	err := s.storage.DeleteFile(fileID)
+	// Create a context with timeout for the storage operation
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err := s.storage.DeleteFile(ctx, fileID)
 	if err != nil {
 		logging.LogError("Failed to delete file from storage",
 			logging.String("file_id", fileID),

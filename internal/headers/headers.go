@@ -25,7 +25,7 @@ func SetHeaders(w http.ResponseWriter, fileName string, fileMetadata map[string]
 		AddCacheHeader(w)
 	}
 
-	if contentType, ok := fileMetadata["content_type"]; ok {
+	if contentType, ok := fileMetadata["Content-Type"]; ok {
 		SetContentType(w, contentType)
 	}
 

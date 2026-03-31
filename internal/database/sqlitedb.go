@@ -79,7 +79,7 @@ func (db *SQLiteDB) Migrate() error {
 func (db *SQLiteDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader, expirationTime time.Time, ipAddress string) error {
 	metadata := make(map[string]string)
 	if fileHeader.Header.Get("Content-Type") != "" {
-		metadata["content_type"] = fileHeader.Header.Get("Content-Type")
+		metadata["Content-Type"] = fileHeader.Header.Get("Content-Type")
 	}
 
 	jsonMetadata, err := json.Marshal(metadata)
