@@ -181,7 +181,8 @@ func Test_GetIPAddress_remoteAddr(t *testing.T) {
 	}{
 		{"IPv4 with port", "192.168.1.100:54321", "192.168.1.100"},
 		{"IPv4 without port", "10.0.0.5", "10.0.0.5"},
-		{"IPv6 with port", "[::1]:8080", "[::1]:8080"}, // IPv6 has multiple colons, so no stripping
+		{"IPv6 with port", "[::1]:8080", "::1"},
+		{"IPv6 without port", "2001:db8::1", "2001:db8::1"},
 		{"localhost with port", "127.0.0.1:9000", "127.0.0.1"},
 	}
 

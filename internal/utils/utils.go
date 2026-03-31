@@ -2,6 +2,7 @@ package utils
 
 import (
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -65,9 +66,9 @@ func GetIPAddress(r *http.Request) string {
 
 	// No proxy headers, return the remote address from the request
 	// Note: r.RemoteAddr may include the port number
-	ip = r.RemoteAddr
-	if colonIndex := strings.LastIndex(ip, ":"); colonIndex != -1 && strings.Count(ip, ":") == 1 {
-		ip = ip[:colonIndex]
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return ip
 }
