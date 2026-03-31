@@ -91,11 +91,9 @@ func LogError(message string, fields ...zap.Field) {
 	logger.Error(message, fields...)
 }
 
-// LogFatal logs a message at fatal level and then panics to stop execution.
+// LogFatal logs a message at fatal level and then exits the application.
 func LogFatal(message string, fields ...zap.Field) {
 	logger.Fatal(message, fields...)
-	_ = logger.Sync()
-	panic(1)
 }
 
 // String creates a zap string field.
