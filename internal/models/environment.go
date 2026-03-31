@@ -11,7 +11,6 @@ type Environment struct {
 	LogDir         string `env:"LOG_DIR" envDefault:"config"`                   // Sets the log directory
 	LogFile        string `env:"LOG_FILE" envDefault:"isrv.log"`                // Sets the log file name
 	FileNameLength int    `env:"FILENAME_LENGTH" envDefault:"12"`               // Sets the length of randomly generated file names
-	ShareIdLength  int    `env:"SHARE_ID_LENGTH" envDefault:"8"`                // Sets the length of shareable links ids
 	MaxFileSizeMB  int    `env:"MAX_FILE_SIZE_MB" envDefault:"102400"`          // Sets the maximum file size in megabytes
 
 	// Non-env fields

@@ -2,7 +2,6 @@ package storage
 
 import (
 	"io"
-	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -46,19 +45,7 @@ func (ls *LocalStorage) FileExists(fileID string) (bool, error) {
 	return err == nil, err
 }
 
-func (ls *LocalStorage) SaveFile(fileID string, data []byte) (string, error) {
-	if exists, _ := ls.FileExists(fileID); exists {
-		return "", fs.ErrExist
-	}
-
-	filePath := path.Join(ls.BasePath, fileID)
-	err := os.WriteFile(filePath, data, 0644)
-	if err != nil {
-		return "", err
-	}
-	return filePath, nil
-}
-func (ls *LocalStorage) SaveFileUpload(fileID string, file multipart.File) (string, error) {
+func (ls *LocalStorage) SaveFileUpload(fileID string, file multipart.File, _ *multipart.FileHeader) (string, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 
 	dst, err := os.Create(filePath)
@@ -76,6 +63,7 @@ func (ls *LocalStorage) SaveFileUpload(fileID string, file multipart.File) (stri
 
 	return filePath, nil
 }
+
 func (ls *LocalStorage) RetrieveFile(fileID string) ([]byte, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 	data, err := os.ReadFile(filePath)

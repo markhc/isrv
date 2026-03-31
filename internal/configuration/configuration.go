@@ -106,13 +106,25 @@ func verifyConfiguration() {
 		panic("Invalid configuration: storage.type must be either 'local' or 's3'")
 	}
 
-	if config.Storage.Type == "local" {
+	switch config.Storage.Type {
+	case "local":
 		if config.Storage.BasePath == "" {
 			panic("Invalid configuration: base_path cannot be empty")
 		}
 		// Ensure data directory ends with a slash
 		if !strings.HasSuffix(config.Storage.BasePath, string(os.PathSeparator)) {
 			config.Storage.BasePath += string(os.PathSeparator)
+		}
+	case "s3":
+		if config.Storage.Region == "" {
+			panic("Invalid configuration: region must be provided for S3 storage")
+		}
+
+		if config.Storage.Endpoint == "" {
+			// Set default endpoint based on region if not provided
+			if config.Storage.Region != "" {
+				config.Storage.Endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", config.Storage.Region)
+			}
 		}
 	}
 }
@@ -138,7 +150,7 @@ func getDefaultConfig() models.Configuration {
 		MaxFileSizeMB:     512,
 		MinAgeDays:        30,
 		MaxAgeDays:        365,
-		RandomIDLength:    20,
+		RandomIDLength:    12,
 		DisableIndexPage:  false,
 		DisableUploadPage: true,
 		FaviconURL:        "",

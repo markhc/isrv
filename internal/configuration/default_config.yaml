@@ -19,7 +19,7 @@ min_age_days: 30
 max_age_days: 365
 
 # length of randomly generated file ids
-random_id_length: 20
+random_id_length: 12
 
 # Disables the index page that shows project information and help, among other things.
 disable_index_page: false
@@ -34,7 +34,7 @@ favicon_format: "png"
 
 # storage configuration
 storage:
-  # supported types: local, s3
+  # supported types: local, s3, gcs
   type: local
   # for local storage, this is the directory where files will be saved. For S3, this is the base path within the bucket (can be empty)
   base_path: ./upload_data/

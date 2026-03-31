@@ -12,4 +12,9 @@ services:
       - TZ=UTC
       - LOG_LEVEL=info
     volumes:
+      # Mount the configuration file
       - ./config.yaml:/config/config.yaml
+      # Mount the data directory for uploads
+      - ./data:/data/upload_data
+    command: ["./isrv", "--disable-supervisor", "--config", "/config/config.yaml"]
+

@@ -396,7 +396,7 @@ func processUpload(config *models.Configuration, file multipart.File, header *mu
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
 
-	path, err := storageClient.SaveFileUpload(fileID, file)
+	path, err := storageClient.SaveFileUpload(fileID, file, header)
 	if err != nil {
 		logging.LogError("Failed to save uploaded file", logging.Error(err))
 		return "", err
