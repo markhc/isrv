@@ -54,7 +54,9 @@ RUN addgroup -g $GROUP_ID -S isrv && \
 
 COPY --from=builder /app/isrv /app/isrv
 
-RUN mkdir -p /config && chown -R isrv:isrv /config
+RUN mkdir -p /config && \
+    chown -R isrv:isrv /config && \
+    chown -R isrv:isrv /app
 
 USER isrv
 
