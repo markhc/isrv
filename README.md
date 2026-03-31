@@ -1,14 +1,16 @@
 # isrv
 
+[![Go Build](https://github.com/markhc/isrv/actions/workflows/build.yaml/badge.svg)](https://github.com/markhc/isrv/actions/workflows/build.yaml)
+
 Simple anonymous and temporary file sharing service.
 
 Visit https://isrv.nl to see it in action.
 
-[![Go Build](https://github.com/markhc/isrv/actions/workflows/build.yaml/badge.svg)](https://github.com/markhc/isrv/actions/workflows/build.yaml)
-
 ## Description
 
 isrv is a lightweight file sharing service that provides anonymous temporary storage with customizable expiration times. Users can upload files and share them via generated links without requiring registration or personal information.
+
+Thanks for the folks of [0x0.st](https://0x0.st/) for the expiration formula and "frontend" (if you can call it that).
 
 ## Goals
 
@@ -108,7 +110,6 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_LOGGING_PATH` | - | Sets the log file path |
 | `ISRV_RANDOM_ID_LENGTH` | `12` | Sets the length of randomly generated file IDs |
 | `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
-
 
 ## Development
 
