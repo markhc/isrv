@@ -6,6 +6,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"path"
 	"time"
 
@@ -58,8 +59,8 @@ func NewS3Storage(config models.StorageConfiguration) *S3Storage {
 	}
 }
 
-func (storage *S3Storage) FileExists(fileID string) (bool, error) {
-	_, err := storage.Client.HeadObject(context.Background(), &s3.HeadObjectInput{
+func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, error) {
+	_, err := storage.Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -76,12 +77,15 @@ func (storage *S3Storage) FileExists(fileID string) (bool, error) {
 	return false, err
 }
 
-func (storage *S3Storage) SaveFileUpload(fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
-	_, err := storage.Client.PutObject(context.Background(), &s3.PutObjectInput{
+func (storage *S3Storage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
+	sanitizedFileName := url.PathEscape(fileHeader.Filename)
+	contentDisposition := "inline; filename=\"" + sanitizedFileName + "\""
+
+	_, err := storage.Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:             aws.String(storage.Bucket),
 		Key:                aws.String(path.Join(storage.BasePath, fileID)),
 		Body:               file,
-		ContentDisposition: aws.String("inline; filename=\"" + fileHeader.Filename + "\""),
+		ContentDisposition: aws.String(contentDisposition),
 		ContentType:        aws.String(fileHeader.Header.Get("Content-Type")),
 	})
 
@@ -91,8 +95,8 @@ func (storage *S3Storage) SaveFileUpload(fileID string, file multipart.File, fil
 
 	return fileID, nil
 }
-func (storage *S3Storage) RetrieveFile(fileID string) ([]byte, error) {
-	output, err := storage.Client.GetObject(context.Background(), &s3.GetObjectInput{
+func (storage *S3Storage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
+	output, err := storage.Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -111,8 +115,8 @@ func (storage *S3Storage) RetrieveFile(fileID string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (storage *S3Storage) DeleteFile(fileID string) error {
-	_, err := storage.Client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
+func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
+	_, err := storage.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -124,9 +128,27 @@ func (storage *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, file
 	objectKey := path.Join(storage.BasePath, fileID)
 	presignClient := s3.NewPresignClient(storage.Client)
 
-	presignedUrl, err := presignClient.PresignGetObject(context.Background(), &s3.GetObjectInput{
-		Bucket: aws.String(storage.Bucket),
-		Key:    aws.String(objectKey),
+	cacheControl := "no-cache"
+	if cachingEnabled {
+		cacheControl = "public, max-age=39600" // Cache for 12 hours
+	}
+
+	contentDisposition := "attachment"
+	if inlineContent {
+		contentDisposition = "inline"
+	}
+
+	contentType := "application/octet-stream"
+	if ct, ok := metadata["Content-Type"]; ok {
+		contentType = ct
+	}
+
+	presignedUrl, err := presignClient.PresignGetObject(r.Context(), &s3.GetObjectInput{
+		Bucket:                     aws.String(storage.Bucket),
+		Key:                        aws.String(objectKey),
+		ResponseCacheControl:       aws.String(cacheControl),
+		ResponseContentDisposition: aws.String(contentDisposition + "; filename=\"" + fileName + "\""),
+		ResponseContentType:        aws.String(contentType),
 	}, s3.WithPresignExpires(12*time.Hour)) // URL valid for 12 hours
 
 	if err != nil {

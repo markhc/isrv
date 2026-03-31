@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -36,7 +37,7 @@ func NewLocalStorage(config models.StorageConfiguration) *LocalStorage {
 	return &LocalStorage{BasePath: config.BasePath}
 }
 
-func (ls *LocalStorage) FileExists(fileID string) (bool, error) {
+func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 	_, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
@@ -45,7 +46,7 @@ func (ls *LocalStorage) FileExists(fileID string) (bool, error) {
 	return err == nil, err
 }
 
-func (ls *LocalStorage) SaveFileUpload(fileID string, file multipart.File, _ *multipart.FileHeader) (string, error) {
+func (ls *LocalStorage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, _ *multipart.FileHeader) (string, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 
 	dst, err := os.Create(filePath)
@@ -64,7 +65,7 @@ func (ls *LocalStorage) SaveFileUpload(fileID string, file multipart.File, _ *mu
 	return filePath, nil
 }
 
-func (ls *LocalStorage) RetrieveFile(fileID string) ([]byte, error) {
+func (ls *LocalStorage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -73,7 +74,7 @@ func (ls *LocalStorage) RetrieveFile(fileID string) ([]byte, error) {
 	return data, nil
 }
 
-func (ls *LocalStorage) DeleteFile(fileID string) error {
+func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	filePath := path.Join(ls.BasePath, fileID)
 	err := os.Remove(filePath)
 	if err != nil {

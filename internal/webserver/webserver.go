@@ -348,7 +348,7 @@ func uploadHandler(config *models.Configuration) http.HandlerFunc {
 
 		logging.LogInfo("File upload requested", logging.String("filename", header.Filename), logging.Int64("size", header.Size), logging.TimeRFC3339("expiration", expiration), logging.String("ip_address", ipAddress))
 
-		fileURL, err := processUpload(config, file, header, expiration, ipAddress)
+		fileURL, err := processUpload(r.Context(), config, file, header, expiration, ipAddress)
 		if err != nil {
 			logging.LogError("Failed to process file upload", logging.Error(err))
 			err = setJsonResponse(w, http.StatusInternalServerError, "Failed to process upload")
@@ -391,12 +391,12 @@ func calculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 	return defaultExpiresTime
 }
 
-func processUpload(config *models.Configuration, file multipart.File, header *multipart.FileHeader, expiration time.Time, ipAddress string) (string, error) {
+func processUpload(ctx context.Context, config *models.Configuration, file multipart.File, header *multipart.FileHeader, expiration time.Time, ipAddress string) (string, error) {
 	logging.LogInfo("Processing uploaded file: " + header.Filename)
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
 
-	path, err := storageClient.SaveFileUpload(fileID, file, header)
+	path, err := storageClient.SaveFileUpload(ctx, fileID, file, header)
 	if err != nil {
 		logging.LogError("Failed to save uploaded file", logging.Error(err))
 		return "", err
