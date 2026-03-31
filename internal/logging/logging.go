@@ -12,6 +12,8 @@ import (
 
 var logger *zap.Logger
 
+// Initialize sets up the global logger, writing to both the configured log
+// file and the console (stdout/stderr split by level).
 func Initialize() {
 	config := configuration.Get()
 
@@ -59,42 +61,44 @@ func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
 }
 
-// Returns the instance of the global logger.
+// GetLogger returns the global zap.Logger instance.
 func GetLogger() *zap.Logger {
 	return logger
 }
 
-// Logs a debugging message.
+// LogDebug logs a message at debug level.
 func LogDebug(message string, fields ...zap.Field) {
 	logger.Debug(message, fields...)
 }
 
-// Logs an informational message.
+// LogInfo logs a message at info level.
 func LogInfo(message string, fields ...zap.Field) {
 	logger.Info(message, fields...)
 }
 
-// Logs a warning message.
+// LogWarn logs a message at warn level.
 func LogWarn(message string, fields ...zap.Field) {
 	logger.Warn(message, fields...)
 }
 
-// Logs an error message.
+// LogError logs a message at error level.
 func LogError(message string, fields ...zap.Field) {
 	logger.Error(message, fields...)
 }
 
-// Logs a fatal message and then panics to stop execution.
+// LogFatal logs a message at fatal level and then panics to stop execution.
 func LogFatal(message string, fields ...zap.Field) {
 	logger.Fatal(message, fields...)
 	_ = logger.Sync()
 	panic(1)
 }
 
+// String creates a zap string field.
 func String(key, value string) zap.Field {
 	return zap.String(key, value)
 }
 
+// Int creates a zap int field.
 func Int(key string, value int) zap.Field {
 	return zap.Int(key, value)
 }

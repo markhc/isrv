@@ -17,7 +17,7 @@ import (
 	"github.com/markhc/isrv/internal/models"
 )
 
-// LocalStorage implements the Storage interface for local filesystem storage
+// S3Storage implements the Storage interface using an S3-compatible object store.
 type S3Storage struct {
 	Endpoint string
 	Bucket   string
@@ -26,6 +26,8 @@ type S3Storage struct {
 	Client   *s3.Client
 }
 
+// NewS3Storage creates an S3Storage from the provided configuration and verifies
+// bucket access. It panics if the bucket cannot be reached.
 func NewS3Storage(config models.StorageConfiguration) *S3Storage {
 	options := s3.Options{
 		Region: config.Region,
@@ -59,6 +61,7 @@ func NewS3Storage(config models.StorageConfiguration) *S3Storage {
 	}
 }
 
+// FileExists reports whether an object with the given ID exists in the S3 bucket.
 func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, error) {
 	_, err := storage.Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(storage.Bucket),
@@ -77,6 +80,7 @@ func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, 
 	return false, err
 }
 
+// SaveFileUpload uploads the file to the S3 bucket and returns the object key.
 func (storage *S3Storage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
 	sanitizedFileName := url.PathEscape(fileHeader.Filename)
 	contentDisposition := "inline; filename=\"" + sanitizedFileName + "\""
@@ -95,6 +99,8 @@ func (storage *S3Storage) SaveFileUpload(ctx context.Context, fileID string, fil
 
 	return fileID, nil
 }
+
+// RetrieveFile downloads and returns the raw bytes of the object with the given ID.
 func (storage *S3Storage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
 	output, err := storage.Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(storage.Bucket),
@@ -115,6 +121,7 @@ func (storage *S3Storage) RetrieveFile(ctx context.Context, fileID string) ([]by
 	return buf.Bytes(), nil
 }
 
+// DeleteFile removes the object with the given ID from the S3 bucket.
 func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 	_, err := storage.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(storage.Bucket),
@@ -124,6 +131,7 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 	return err
 }
 
+// ServeFile generates a pre-signed S3 URL and redirects the client to it.
 func (storage *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
 	sanitizedFileName := url.PathEscape(fileName)
 	objectKey := path.Join(storage.BasePath, fileID)

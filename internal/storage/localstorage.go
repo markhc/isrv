@@ -18,6 +18,9 @@ type LocalStorage struct {
 	BasePath string
 }
 
+// NewLocalStorage creates a LocalStorage rooted at the path specified in config.
+// It creates the directory if it does not already exist and panics on any
+// unrecoverable error.
 func NewLocalStorage(config models.StorageConfiguration) *LocalStorage {
 	if dir, err := os.Stat(config.BasePath); os.IsNotExist(err) {
 		logging.LogInfo("Base path does not exist, creating directory", logging.String("path", config.BasePath))
@@ -37,6 +40,7 @@ func NewLocalStorage(config models.StorageConfiguration) *LocalStorage {
 	return &LocalStorage{BasePath: config.BasePath}
 }
 
+// FileExists reports whether a file with the given ID exists on disk.
 func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 	_, err := os.Stat(filePath)
@@ -46,6 +50,7 @@ func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, er
 	return err == nil, err
 }
 
+// SaveFileUpload writes the uploaded file to disk under BasePath and returns the full file path.
 func (ls *LocalStorage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, _ *multipart.FileHeader) (string, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 
@@ -65,6 +70,7 @@ func (ls *LocalStorage) SaveFileUpload(ctx context.Context, fileID string, file 
 	return filePath, nil
 }
 
+// RetrieveFile reads and returns the raw bytes of the file with the given ID.
 func (ls *LocalStorage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
 	filePath := path.Join(ls.BasePath, fileID)
 	data, err := os.ReadFile(filePath)
@@ -74,6 +80,7 @@ func (ls *LocalStorage) RetrieveFile(ctx context.Context, fileID string) ([]byte
 	return data, nil
 }
 
+// DeleteFile removes the file with the given ID from disk.
 func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	filePath := path.Join(ls.BasePath, fileID)
 	err := os.Remove(filePath)
@@ -83,6 +90,7 @@ func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	return nil
 }
 
+// ServeFile sets response headers and serves the file directly from disk.
 func (ls *LocalStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
 	headers.SetHeaders(w, fileName, metadata, inlineContent, cachingEnabled)
 	http.ServeFile(w, r, path.Join(ls.BasePath, fileID))

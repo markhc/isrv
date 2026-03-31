@@ -23,9 +23,9 @@ func Get() *models.Configuration {
 	return &config
 }
 
-// Loads the app configuration
-// If a path is provided, it attempts to load from that path,
-// otherwise it checks known locations for a configuration file
+// Load reads the application configuration.
+// If configPath is non-empty it loads from that file; otherwise it searches
+// known default locations. If no file is found, built-in defaults are used.
 func Load(configPath string, debug bool) {
 	if configPath != "" {
 		loadFromFile(configPath, debug)

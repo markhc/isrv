@@ -36,6 +36,8 @@ var staticFilesEmbedded embed.FS
 var storageClient storage.Storage
 var dbInstance database.Database
 
+// Start initialises all dependencies, registers routes, and runs the HTTP server
+// until an interrupt or termination signal is received.
 func Start() {
 	config := configuration.Get()
 	initializeTemplates(templatesFolderEmbedded)
