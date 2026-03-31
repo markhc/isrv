@@ -66,6 +66,11 @@ func GetLogger() *zap.Logger {
 	return logger
 }
 
+// InitializeNop sets the global logger to a no-op logger. Intended for use in tests.
+func InitializeNop() {
+	logger = zap.NewNop()
+}
+
 // LogDebug logs a message at debug level.
 func LogDebug(message string, fields ...zap.Field) {
 	logger.Debug(message, fields...)

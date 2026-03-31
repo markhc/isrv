@@ -11,19 +11,34 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/markhc/isrv/internal/models"
 )
 
+// s3API is the subset of *s3.Client operations used by S3Storage.
+type s3API interface {
+	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+}
+
+// s3Presigner is the subset of *s3.PresignClient operations used by S3Storage.
+type s3Presigner interface {
+	PresignGetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
+}
+
 // S3Storage implements the Storage interface using an S3-compatible object store.
 type S3Storage struct {
-	Endpoint string
-	Bucket   string
-	Region   string
-	BasePath string
-	Client   *s3.Client
+	Endpoint  string
+	Bucket    string
+	Region    string
+	BasePath  string
+	client    s3API
+	presigner s3Presigner
 }
 
 // NewS3Storage creates an S3Storage from the provided configuration and verifies
@@ -53,17 +68,18 @@ func NewS3Storage(config models.StorageConfiguration) *S3Storage {
 	}
 
 	return &S3Storage{
-		Endpoint: config.Endpoint,
-		Bucket:   config.BucketName,
-		Region:   config.Region,
-		BasePath: config.BasePath,
-		Client:   awsClient,
+		Endpoint:  config.Endpoint,
+		Bucket:    config.BucketName,
+		Region:    config.Region,
+		BasePath:  config.BasePath,
+		client:    awsClient,
+		presigner: s3.NewPresignClient(awsClient),
 	}
 }
 
 // FileExists reports whether an object with the given ID exists in the S3 bucket.
 func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, error) {
-	_, err := storage.Client.HeadObject(ctx, &s3.HeadObjectInput{
+	_, err := storage.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -85,7 +101,7 @@ func (storage *S3Storage) SaveFileUpload(ctx context.Context, fileID string, fil
 	sanitizedFileName := url.PathEscape(fileHeader.Filename)
 	contentDisposition := "inline; filename=\"" + sanitizedFileName + "\""
 
-	_, err := storage.Client.PutObject(ctx, &s3.PutObjectInput{
+	_, err := storage.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:             aws.String(storage.Bucket),
 		Key:                aws.String(path.Join(storage.BasePath, fileID)),
 		Body:               file,
@@ -102,7 +118,7 @@ func (storage *S3Storage) SaveFileUpload(ctx context.Context, fileID string, fil
 
 // RetrieveFile downloads and returns the raw bytes of the object with the given ID.
 func (storage *S3Storage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
-	output, err := storage.Client.GetObject(ctx, &s3.GetObjectInput{
+	output, err := storage.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -123,7 +139,7 @@ func (storage *S3Storage) RetrieveFile(ctx context.Context, fileID string) ([]by
 
 // DeleteFile removes the object with the given ID from the S3 bucket.
 func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
-	_, err := storage.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	_, err := storage.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -135,7 +151,6 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 func (storage *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
 	sanitizedFileName := url.PathEscape(fileName)
 	objectKey := path.Join(storage.BasePath, fileID)
-	presignClient := s3.NewPresignClient(storage.Client)
 
 	cacheControl := "no-cache"
 	if cachingEnabled {
@@ -152,7 +167,7 @@ func (storage *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, file
 		contentType = ct
 	}
 
-	presignedUrl, err := presignClient.PresignGetObject(r.Context(), &s3.GetObjectInput{
+	presignedUrl, err := storage.presigner.PresignGetObject(r.Context(), &s3.GetObjectInput{
 		Bucket:                     aws.String(storage.Bucket),
 		Key:                        aws.String(objectKey),
 		ResponseCacheControl:       aws.String(cacheControl),

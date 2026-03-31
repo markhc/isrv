@@ -26,15 +26,12 @@ func NewLocalStorage(config models.StorageConfiguration) *LocalStorage {
 		logging.LogInfo("Base path does not exist, creating directory", logging.String("path", config.BasePath))
 		err := os.MkdirAll(config.BasePath, 0755)
 		if err != nil {
-			logging.LogError("Failed to create base directory", logging.Error(err))
-			panic(err)
+			logging.LogFatal("Failed to create base directory", logging.Error(err))
 		}
 	} else if err != nil {
-		logging.LogError("Failed to access base path", logging.Error(err))
-		panic(err)
+		logging.LogFatal("Failed to access base path", logging.Error(err))
 	} else if !dir.IsDir() {
-		logging.LogError("Base path exists but is not a directory", logging.String("path", config.BasePath))
-		panic("Base path exists but is not a directory")
+		logging.LogFatal("Base path exists but is not a directory", logging.String("path", config.BasePath))
 	}
 
 	return &LocalStorage{BasePath: config.BasePath}
