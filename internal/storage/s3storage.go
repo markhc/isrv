@@ -125,12 +125,13 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 }
 
 func (storage *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
+	sanitizedFileName := url.PathEscape(fileName)
 	objectKey := path.Join(storage.BasePath, fileID)
 	presignClient := s3.NewPresignClient(storage.Client)
 
 	cacheControl := "no-cache"
 	if cachingEnabled {
-		cacheControl = "public, max-age=39600" // Cache for 12 hours
+		cacheControl = "public, max-age=43200" // Cache for 12 hours
 	}
 
 	contentDisposition := "attachment"
@@ -147,7 +148,7 @@ func (storage *S3Storage) ServeFile(w http.ResponseWriter, r *http.Request, file
 		Bucket:                     aws.String(storage.Bucket),
 		Key:                        aws.String(objectKey),
 		ResponseCacheControl:       aws.String(cacheControl),
-		ResponseContentDisposition: aws.String(contentDisposition + "; filename=\"" + fileName + "\""),
+		ResponseContentDisposition: aws.String(contentDisposition + "; filename=\"" + sanitizedFileName + "\""),
 		ResponseContentType:        aws.String(contentType),
 	}, s3.WithPresignExpires(12*time.Hour)) // URL valid for 12 hours
 
