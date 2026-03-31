@@ -30,7 +30,7 @@ func NewSQLiteDB(config models.Configuration) *SQLiteDB {
 		}
 	} else {
 		return &SQLiteDB{
-			filePath:  config.Database.DSN,
+			filePath:  config.Database.FilePath,
 			pathIsDSN: false,
 		}
 	}
@@ -146,6 +146,10 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 			return nil, err
 		}
 		expiredFiles = append(expiredFiles, fileID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return expiredFiles, nil
