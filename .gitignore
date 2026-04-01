@@ -38,5 +38,5 @@ dist/
 
 config.yaml
 !config.yaml.example
-
+data/
 upload_data/
