@@ -28,22 +28,39 @@ import (
 
 //go:embed templates
 var templatesFolderEmbedded embed.FS
-var templateFolder *template.Template
 
 //go:embed static
 var staticFilesEmbedded embed.FS
 
-var storageClient storage.Storage
-var dbInstance database.Database
+// server holds the dependencies and state for HTTP handlers.
+type server struct {
+	config    *models.Configuration
+	db        database.Database
+	storage   storage.Storage
+	templates *template.Template
+}
+
+// newServer creates a new server with the given dependencies.
+func newServer(config *models.Configuration, db database.Database, stor storage.Storage) (*server, error) {
+	tmpl, err := initializeTemplates(templatesFolderEmbedded)
+	if err != nil {
+		return nil, err
+	}
+	return &server{
+		config:    config,
+		db:        db,
+		storage:   stor,
+		templates: tmpl,
+	}, nil
+}
 
 // Start initialises all dependencies, registers routes, and runs the HTTP server
 // until an interrupt or termination signal is received.
 func Start() {
 	config := configuration.Get()
-	initializeTemplates(templatesFolderEmbedded)
-
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
+	var storageClient storage.Storage
 	switch config.Storage.Type {
 	case "local":
 		storageClient = storage.NewLocalStorage(config.Storage)
@@ -53,11 +70,10 @@ func Start() {
 		logging.LogFatal("Invalid storage type", logging.String("type", config.Storage.Type))
 	}
 
+	var dbInstance database.Database
 	switch config.Database.Type {
 	case "sqlite":
 		dbInstance = database.NewSQLiteDB(*config)
-	// case "postgres":
-	// 	db = database.NewPostgresDB(*config)
 	default:
 		logging.LogFatal("Invalid database type", logging.String("type", config.Database.Type))
 	}
@@ -66,7 +82,6 @@ func Start() {
 	if err != nil {
 		logging.LogFatal("Failed to connect to database", logging.Error(err))
 	}
-
 	defer dbInstance.Close()
 
 	err = dbInstance.Migrate()
@@ -74,17 +89,20 @@ func Start() {
 		logging.LogFatal("Failed to migrate database", logging.Error(err))
 	}
 
-	// Parse cleanup interval from config
+	srv, err := newServer(config, dbInstance, storageClient)
+	if err != nil {
+		logging.LogFatal("Failed to initialise server", logging.Error(err))
+	}
+
 	cleanupInterval, err := time.ParseDuration(config.Cleanup.Interval)
 	if err != nil {
 		logging.LogFatal("Invalid cleanup interval", logging.String("interval", config.Cleanup.Interval), logging.Error(err))
 	}
 
-	// Initialize and start cleanup service
 	cleanupService := cleanup.NewService(dbInstance, storageClient, config.Cleanup.Enabled, cleanupInterval)
 	cleanupService.Start()
 
-	faviconData := []byte{}
+	var faviconData []byte
 	if config.FaviconURL != "" {
 		faviconData, err = fetchFavicon(config.FaviconURL)
 		if err != nil {
@@ -93,83 +111,70 @@ func Start() {
 	}
 
 	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(handler404)
+	router.NotFoundHandler = http.HandlerFunc(srv.handler404)
 
 	if !config.DisableIndexPage {
-		router.Handle("/", http.HandlerFunc(indexHandler)).
-			Methods("GET")
+		router.Handle("/", http.HandlerFunc(srv.indexHandler)).Methods("GET")
 	}
 	if !config.DisableUploadPage {
-		router.Handle("/static/{file}", staticFilesHandler(staticFilesDir)).
-			Methods("GET")
+		router.Handle("/static/{file}", srv.staticFilesHandler(staticFilesDir)).Methods("GET")
 	}
 	if config.FaviconURL != "" && faviconData != nil {
-		router.Handle("/favicon."+config.FaviconFormat, faviconHandler(config, faviconData)).
-			Methods("GET")
+		router.Handle("/favicon."+config.FaviconFormat, srv.faviconHandler(faviconData)).Methods("GET")
 	}
-	router.Handle("/d/{fileID}", loggingMiddleware(downloadHandler(config))).
-		Methods("GET")
-	router.Handle("/d/{fileID}/{fileName}", loggingMiddleware(downloadHandler(config))).
-		Methods("GET")
-	router.Handle("/", loggingMiddleware(uploadHandler(config))).
-		Methods("POST")
+	router.Handle("/d/{fileID}", srv.loggingMiddleware(srv.downloadHandler())).Methods("GET")
+	router.Handle("/d/{fileID}/{fileName}", srv.loggingMiddleware(srv.downloadHandler())).Methods("GET")
+	router.Handle("/", srv.loggingMiddleware(srv.uploadHandler())).Methods("POST")
 
 	logging.LogInfo("Starting webserver", logging.String("host", config.ServerHost), logging.Int("port", config.ServerPort))
-	srv := &http.Server{
+	httpSrv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		Handler:      router,
 	}
 
-	// Channel to listen for interrupt signals
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start server in a goroutine
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logging.LogFatal("Failed to start server", logging.Error(err))
 		}
 	}()
 
 	logging.LogInfo("Server started successfully")
 
-	// Wait for interrupt signal
 	<-quit
 	logging.LogInfo("Shutting down server...")
 
-	// Create a deadline for shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Stop cleanup service
 	cleanupService.Stop()
 
-	// Attempt graceful shutdown of HTTP server
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := httpSrv.Shutdown(ctx); err != nil {
 		logging.LogError("Server forced to shutdown", logging.Error(err))
 	}
 
 	logging.LogInfo("Server shutdown complete")
 }
 
-func loggingMiddleware(next http.Handler) http.Handler {
+func (s *server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logging.LogInfo("incoming request", logging.String("method", r.Method), logging.String("path", r.URL.Path), logging.String("ip_address", utils.GetIPAddress(r)))
 		next.ServeHTTP(w, r)
 	})
 }
 
-func initializeTemplates(templatesFS embed.FS) {
-	var err error
-
-	templateFolder, err = template.New("").ParseFS(templatesFS, "templates/*.tmpl")
+func initializeTemplates(templatesFS embed.FS) (*template.Template, error) {
+	templateFolder, err := template.New("").ParseFS(templatesFS, "templates/*.tmpl")
 
 	if err != nil {
 		logging.LogError("Failed to initialize templates")
-		panic(err)
+		return nil, err
 	}
+	return templateFolder, nil
 }
 
 func fetchFavicon(url string) ([]byte, error) {
@@ -233,23 +238,23 @@ func setJsonResponse(w http.ResponseWriter, statusCode int, data string) error {
 	return err
 }
 
-func handler404(w http.ResponseWriter, r *http.Request) {
+func (s *server) handler404(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 
 	data := struct {
 		Config *models.Configuration
 	}{
-		Config: configuration.Get(),
+		Config: s.config,
 	}
 
-	err := templateFolder.ExecuteTemplate(w, "notfound", data)
+	err := s.templates.ExecuteTemplate(w, "notfound", data)
 	if err != nil {
 		logging.LogError("Failed to execute template: " + err.Error())
 	}
 }
 
-func indexHandler(w http.ResponseWriter, r *http.Request) {
+func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
 	logging.LogDebug("indexHandler", logging.String("path", r.URL.Path))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -257,19 +262,19 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Config *models.Configuration
 	}{
-		Config: configuration.Get(),
+		Config: s.config,
 	}
 
-	err := templateFolder.ExecuteTemplate(w, "index", data)
+	err := s.templates.ExecuteTemplate(w, "index", data)
 	if err != nil {
 		logging.LogError("Failed to execute template: " + err.Error())
 	}
 }
 
-func faviconHandler(config *models.Configuration, faviconData []byte) http.HandlerFunc {
+func (s *server) faviconHandler(faviconData []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		headers.AddCacheHeader(w)
-		headers.SetContentType(w, "image/"+config.FaviconFormat)
+		headers.SetContentType(w, "image/"+s.config.FaviconFormat)
 		_, err := w.Write(faviconData)
 		if err != nil {
 			logging.LogError("Failed to write favicon response", logging.Error(err))
@@ -277,7 +282,7 @@ func faviconHandler(config *models.Configuration, faviconData []byte) http.Handl
 	}
 }
 
-func staticFilesHandler(staticFilesDir fs.FS) http.HandlerFunc {
+func (s *server) staticFilesHandler(staticFilesDir fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logging.LogDebug("staticFilesHandler", logging.String("path", r.URL.Path))
 
@@ -295,7 +300,7 @@ func staticFilesHandler(staticFilesDir fs.FS) http.HandlerFunc {
 	}
 }
 
-func downloadHandler(_ *models.Configuration) http.HandlerFunc {
+func (s *server) downloadHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		fileID := vars["fileID"]
@@ -308,18 +313,18 @@ func downloadHandler(_ *models.Configuration) http.HandlerFunc {
 		logging.LogDebug("Serving file", logging.String("file_id", fileID), logging.String("file_name", fileName), logging.String("path", r.URL.Path))
 
 		// Update file metrics
-		err := dbInstance.OnFileDownload(fileID)
+		err := s.db.OnFileDownload(fileID)
 		if err != nil {
 			logging.LogError("Failed to update file metrics", logging.Error(err))
 		}
 
-		metadata, _ := dbInstance.GetFileMetadata(fileID) // Fetch metadata to set appropriate headers
+		metadata, _ := s.db.GetFileMetadata(fileID) // Fetch metadata to set appropriate headers
 
-		storageClient.ServeFile(w, r, fileID, fileName, metadata, true, true)
+		s.storage.ServeFile(w, r, fileID, fileName, metadata, true, true)
 	}
 }
 
-func uploadHandler(config *models.Configuration) http.HandlerFunc {
+func (s *server) uploadHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -337,8 +342,8 @@ func uploadHandler(config *models.Configuration) http.HandlerFunc {
 		defer file.Close()
 
 		// Check file size
-		if header.Size > int64(config.MaxFileSizeMB*1024*1024) {
-			err = setJsonResponse(w, http.StatusRequestEntityTooLarge, "File size exceeds the maximum allowed limit of "+fmt.Sprintf("%d MB", config.MaxFileSizeMB))
+		if header.Size > int64(s.config.MaxFileSizeMB*1024*1024) {
+			err = setJsonResponse(w, http.StatusRequestEntityTooLarge, "File size exceeds the maximum allowed limit of "+fmt.Sprintf("%d MB", s.config.MaxFileSizeMB))
 			if err != nil {
 				logging.LogError("Failed to write response", logging.Error(err))
 			}
@@ -346,11 +351,11 @@ func uploadHandler(config *models.Configuration) http.HandlerFunc {
 		}
 
 		ipAddress := utils.GetIPAddress(r)
-		expiration := calculateExpirationTime(r, header.Size, config)
+		expiration := calculateExpirationTime(r, header.Size, s.config)
 
 		logging.LogInfo("File upload requested", logging.String("filename", header.Filename), logging.Int64("size", header.Size), logging.TimeRFC3339("expiration", expiration), logging.String("ip_address", ipAddress))
 
-		fileURL, err := processUpload(r.Context(), config, file, header, expiration, ipAddress)
+		fileURL, err := s.processUpload(r.Context(), file, header, expiration, ipAddress)
 		if err != nil {
 			logging.LogError("Failed to process file upload", logging.Error(err))
 			err = setJsonResponse(w, http.StatusInternalServerError, "Failed to process upload")
@@ -393,12 +398,12 @@ func calculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 	return defaultExpiresTime
 }
 
-func processUpload(ctx context.Context, config *models.Configuration, file multipart.File, header *multipart.FileHeader, expiration time.Time, ipAddress string) (string, error) {
+func (s *server) processUpload(ctx context.Context, file multipart.File, header *multipart.FileHeader, expiration time.Time, ipAddress string) (string, error) {
 	logging.LogInfo("Processing uploaded file: " + header.Filename)
 
-	fileID := utils.GenerateRandomString(config.RandomIDLength)
+	fileID := utils.GenerateRandomString(s.config.RandomIDLength)
 
-	path, err := storageClient.SaveFileUpload(ctx, fileID, file, header)
+	path, err := s.storage.SaveFileUpload(ctx, fileID, file, header)
 	if err != nil {
 		logging.LogError("Failed to save uploaded file", logging.Error(err))
 		return "", err
@@ -406,10 +411,10 @@ func processUpload(ctx context.Context, config *models.Configuration, file multi
 
 	logging.LogInfo("File uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
-	err = dbInstance.OnFileUpload(fileID, header, expiration, ipAddress)
+	err = s.db.OnFileUpload(fileID, header, expiration, ipAddress)
 	if err != nil {
 		logging.LogError("Failed to update file metrics", logging.Error(err))
 	}
 
-	return config.ServerURL + "/d/" + fileID + "/" + header.Filename, nil
+	return s.config.ServerURL + "/d/" + fileID + "/" + header.Filename, nil
 }
