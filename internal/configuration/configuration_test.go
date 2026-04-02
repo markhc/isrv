@@ -176,9 +176,10 @@ func TestLoad_NoConfigFile_DebugMode(t *testing.T) {
 
 func TestApplyEnvOverrides(t *testing.T) {
 	tests := []struct {
-		name     string
-		envVars  map[string]string
-		expected func(*testing.T, models.Configuration)
+		name        string
+		envVars     map[string]string
+		expectPanic bool
+		expected    func(*testing.T, models.Configuration)
 	}{
 		{
 			name: "server configuration overrides",
@@ -188,6 +189,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 				"ISRV_SERVER_HOST": "127.0.0.1",
 				"ISRV_SERVER_PORT": "9090",
 			},
+			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.Equal(t, "env-server", cfg.ServerName)
 				assert.Equal(t, "https://example.com", cfg.ServerURL)
@@ -200,6 +202,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 			envVars: map[string]string{
 				"ISRV_STORAGE_PATH": "/env/storage/path/",
 			},
+			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.Equal(t, "/env/storage/path/", cfg.Storage.BasePath)
 			},
@@ -212,6 +215,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 				"ISRV_LOGGING_IPS_ENABLED":     "false",
 				"ISRV_LOGGING_UPLOADS_ENABLED": "false",
 			},
+			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.True(t, cfg.Logging.LogToFile)
 				assert.Equal(t, "/env/log/path", cfg.Logging.Path)
@@ -225,6 +229,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 				"ISRV_RANDOM_ID_LENGTH": "16",
 				"ISRV_MAX_FILE_SIZE_MB": "1024",
 			},
+			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.Equal(t, 16, cfg.RandomIDLength)
 				assert.Equal(t, 1024, cfg.MaxFileSizeMB)
@@ -236,27 +241,18 @@ func TestApplyEnvOverrides(t *testing.T) {
 				"ISRV_CLEANUP_ENABLED":  "false",
 				"ISRV_CLEANUP_INTERVAL": "5m",
 			},
+			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.False(t, cfg.Cleanup.Enabled)
 				assert.Equal(t, 5*time.Minute, cfg.Cleanup.Interval)
 			},
 		},
 		{
-			name: "invalid values are ignored",
+			name: "invalid values panics",
 			envVars: map[string]string{
-				"ISRV_SERVER_PORT":             "invalid",
-				"ISRV_LOGGING_FILE_ENABLED":    "invalid",
-				"ISRV_LOGGING_IPS_ENABLED":     "invalid",
-				"ISRV_LOGGING_UPLOADS_ENABLED": "invalid",
-				"ISRV_RANDOM_ID_LENGTH":        "invalid",
-				"ISRV_MAX_FILE_SIZE_MB":        "invalid",
-				"ISRV_CLEANUP_ENABLED":         "invalid",
+				"ISRV_SERVER_PORT": "invalid",
 			},
-			expected: func(t *testing.T, cfg models.Configuration) {
-				// Values should remain at their default/original values
-				// since invalid values are ignored
-				assert.Equal(t, 8080, cfg.ServerPort) // default
-			},
+			expectPanic: true,
 		},
 	}
 
@@ -273,12 +269,18 @@ func TestApplyEnvOverrides(t *testing.T) {
 			// Initialize with defaults
 			config = getDefaultConfig()
 
-			// Apply environment overrides
-			applyEnvOverrides()
+			if tt.expectPanic {
+				assert.Panics(t, func() {
+					// Apply environment overrides
+					applyEnvOverrides()
+				})
+			} else {
+				// Apply environment overrides
+				applyEnvOverrides()
 
-			// Verify expected changes
-			tt.expected(t, config)
-
+				// Verify expected changes
+				tt.expected(t, config)
+			}
 			// Restore original config
 			config = originalConfig
 		})

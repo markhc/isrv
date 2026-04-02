@@ -6,11 +6,11 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 )
 
@@ -107,20 +107,24 @@ func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 }
 
 // RespondWithError sends a JSON error response and logs any write failures.
-func RespondWithError(w http.ResponseWriter, code int, message string) {
+func RespondWithError(w http.ResponseWriter, code int, message string) error {
 	errorData := make(map[string]string)
 	errorData["error"] = message
 
 	if err := setJsonResponse(w, code, errorData); err != nil {
-		logging.LogError("failed to write error response", logging.Error(err))
+		return fmt.Errorf("failed to write error response: %w", err)
 	}
+
+	return nil
 }
 
 // RespondWithSuccess sends a JSON success response and logs any write failures.
-func RespondWithSuccess(w http.ResponseWriter, data any) {
+func RespondWithSuccess(w http.ResponseWriter, data any) error {
 	if err := setJsonResponse(w, http.StatusOK, data); err != nil {
-		logging.LogError("failed to write success response", logging.Error(err))
+		return fmt.Errorf("failed to write success response: %w", err)
 	}
+
+	return nil
 }
 
 func setJsonResponse(w http.ResponseWriter, statusCode int, data any) error {
@@ -136,6 +140,95 @@ func setJsonResponse(w http.ResponseWriter, statusCode int, data any) error {
 	_, err = w.Write(b)
 	if err != nil {
 		return fmt.Errorf("failed to write JSON response: %w", err)
+	}
+
+	return nil
+}
+
+// SetStructField sets a field in the struct based on a dot-separated path.
+// uses reflection to navigate the struct and set the value, converting types as needed.
+//
+// WARNING: Ugly function below! I'm sorry!
+//
+//nolint:gocognit,cyclop,funlen
+func SetStructField(target any, fieldPath string, value any) error {
+	parts := strings.Split(fieldPath, ".")
+	current := target
+
+	for i, part := range parts {
+		v := reflect.ValueOf(current).Elem()
+		field := reflect.Indirect(v).FieldByName(part)
+		if !field.IsValid() {
+			return fmt.Errorf("invalid field path: %s", fieldPath)
+		}
+
+		if i == len(parts)-1 {
+			// Last part, set the value
+			//
+			//nolint:exhaustive
+			switch field.Kind() {
+			case reflect.String:
+				if s, ok := value.(string); ok {
+					field.SetString(s)
+				} else {
+					return fmt.Errorf("unsupported value type for string field: %T", value)
+				}
+			case reflect.Int:
+				if n, ok := value.(int); ok {
+					field.SetInt(int64(n))
+				} else if s, ok := value.(string); ok {
+					if n, err := strconv.Atoi(s); err == nil {
+						field.SetInt(int64(n))
+					} else {
+						return fmt.Errorf("unsupported value type for int field: %T", value)
+					}
+				} else {
+					return fmt.Errorf("unsupported value type for int field: %T", value)
+				}
+			case reflect.Bool:
+				if b, ok := value.(bool); ok {
+					field.SetBool(b)
+				} else if s, ok := value.(string); ok {
+					if b, err := strconv.ParseBool(s); err == nil {
+						field.SetBool(b)
+					} else {
+						return fmt.Errorf("unsupported value type for bool field: %T", value)
+					}
+				} else {
+					return fmt.Errorf("unsupported value type for bool field: %T", value)
+				}
+			case reflect.Int64:
+				if field.Type() == reflect.TypeFor[time.Duration]() {
+					if d, ok := value.(time.Duration); ok {
+						field.Set(reflect.ValueOf(d))
+					} else if s, ok := value.(string); ok {
+						if d, err := time.ParseDuration(s); err == nil {
+							field.Set(reflect.ValueOf(d))
+						} else {
+							return fmt.Errorf("unsupported value type for duration field: %T", value)
+						}
+					} else {
+						return fmt.Errorf("unsupported value type for duration field: %T", value)
+					}
+				} else {
+					if n, ok := value.(int64); ok {
+						field.SetInt(n)
+					} else if s, ok := value.(string); ok {
+						if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+							field.SetInt(n)
+						} else {
+							return fmt.Errorf("unsupported value type for int64 field: %T", value)
+						}
+					} else {
+						return fmt.Errorf("unsupported value type for int64 field: %T", value)
+					}
+				}
+			default:
+				return fmt.Errorf("unsupported field type: %s", field.Kind())
+			}
+		} else {
+			current = field.Addr().Interface()
+		}
 	}
 
 	return nil

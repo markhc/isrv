@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/markhc/isrv/internal/models"
+	"github.com/markhc/isrv/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -50,62 +49,29 @@ func Load(configPath string, debug bool) {
 // applyEnvOverrides overrides config values with any explicitly set ISRV_* environment variables.
 // Uses os.LookupEnv so that only variables present in the environment take effect;
 // unset variables do not override YAML-derived values.
-//
-//nolint:cyclop
 func applyEnvOverrides() {
-	if v, ok := os.LookupEnv("ISRV_SERVER_NAME"); ok {
-		config.ServerName = v
+	mapEnv := map[string]string{
+		"ISRV_SERVER_NAME":             "ServerName",
+		"ISRV_SERVER_URL":              "ServerURL",
+		"ISRV_SERVER_HOST":             "ServerHost",
+		"ISRV_SERVER_PORT":             "ServerPort",
+		"ISRV_STORAGE_PATH":            "Storage.BasePath",
+		"ISRV_LOGGING_FILE_ENABLED":    "Logging.LogToFile",
+		"ISRV_LOGGING_PATH":            "Logging.Path",
+		"ISRV_LOGGING_IPS_ENABLED":     "Logging.LogIps",
+		"ISRV_LOGGING_UPLOADS_ENABLED": "Logging.LogUploads",
+		"ISRV_RANDOM_ID_LENGTH":        "RandomIDLength",
+		"ISRV_MAX_FILE_SIZE_MB":        "MaxFileSizeMB",
+		"ISRV_CLEANUP_ENABLED":         "Cleanup.Enabled",
+		"ISRV_CLEANUP_INTERVAL":        "Cleanup.Interval",
 	}
-	if v, ok := os.LookupEnv("ISRV_SERVER_URL"); ok {
-		config.ServerURL = v
-	}
-	if v, ok := os.LookupEnv("ISRV_SERVER_HOST"); ok {
-		config.ServerHost = v
-	}
-	if v, ok := os.LookupEnv("ISRV_SERVER_PORT"); ok {
-		if port, err := strconv.Atoi(v); err == nil {
-			config.ServerPort = port
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_STORAGE_PATH"); ok {
-		config.Storage.BasePath = v
-	}
-	if v, ok := os.LookupEnv("ISRV_LOGGING_FILE_ENABLED"); ok {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			config.Logging.LogToFile = enabled
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_LOGGING_PATH"); ok {
-		config.Logging.Path = v
-	}
-	if v, ok := os.LookupEnv("ISRV_LOGGING_IPS_ENABLED"); ok {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			config.Logging.LogIps = enabled
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_LOGGING_UPLOADS_ENABLED"); ok {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			config.Logging.LogUploads = enabled
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_RANDOM_ID_LENGTH"); ok {
-		if n, err := strconv.Atoi(v); err == nil {
-			config.RandomIDLength = n
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_MAX_FILE_SIZE_MB"); ok {
-		if n, err := strconv.Atoi(v); err == nil {
-			config.MaxFileSizeMB = n
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_CLEANUP_ENABLED"); ok {
-		if enabled, err := strconv.ParseBool(v); err == nil {
-			config.Cleanup.Enabled = enabled
-		}
-	}
-	if v, ok := os.LookupEnv("ISRV_CLEANUP_INTERVAL"); ok {
-		if duration, err := time.ParseDuration(v); err == nil {
-			config.Cleanup.Interval = duration
+
+	for envVar, configField := range mapEnv {
+		if v, ok := os.LookupEnv(envVar); ok {
+			err := utils.SetStructField(&config, configField, v)
+			if err != nil {
+				panic(fmt.Errorf("failed to apply environment variable override for %s: %w", envVar, err))
+			}
 		}
 	}
 }

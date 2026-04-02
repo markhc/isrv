@@ -269,3 +269,207 @@ func Test_CalculateExpirationTime(t *testing.T) {
 		assert.WithinDuration(t, target, exp, 2*time.Second)
 	})
 }
+
+func Test_SetStructField_integer(t *testing.T) {
+	type TestStruct struct {
+		IntField int
+	}
+
+	ts := &TestStruct{}
+	err := SetStructField(ts, "IntField", 42)
+	assert.NoError(t, err)
+	assert.Equal(t, 42, ts.IntField)
+}
+
+func Test_SetStructField_string(t *testing.T) {
+	type TestStruct struct {
+		StringField string
+	}
+
+	ts := &TestStruct{}
+	err := SetStructField(ts, "StringField", "hello")
+	assert.NoError(t, err)
+	assert.Equal(t, "hello", ts.StringField)
+}
+
+func Test_SetStructField_bool(t *testing.T) {
+	type TestStruct struct {
+		BoolField bool
+	}
+
+	ts := &TestStruct{}
+
+	t.Run("true value", func(t *testing.T) {
+		err := SetStructField(ts, "BoolField", true)
+		assert.NoError(t, err)
+		assert.Equal(t, true, ts.BoolField)
+	})
+
+	t.Run("false value", func(t *testing.T) {
+		err := SetStructField(ts, "BoolField", false)
+		assert.NoError(t, err)
+		assert.Equal(t, false, ts.BoolField)
+	})
+
+	t.Run("string value", func(t *testing.T) {
+		err := SetStructField(ts, "BoolField", "true")
+		assert.NoError(t, err)
+		assert.Equal(t, true, ts.BoolField)
+	})
+
+	t.Run("invalid type (string)", func(t *testing.T) {
+		err := SetStructField(ts, "BoolField", "notabool")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for bool field")
+		assert.Equal(t, true, ts.BoolField) // should remain unchanged
+	})
+
+	t.Run("invalid type (int)", func(t *testing.T) {
+		err := SetStructField(ts, "BoolField", 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for bool field")
+		assert.Equal(t, true, ts.BoolField) // should remain unchanged
+	})
+}
+
+func Test_SetStructField_duration(t *testing.T) {
+	type TestStruct struct {
+		DurationField time.Duration
+	}
+
+	ts := &TestStruct{}
+
+	t.Run("valid duration", func(t *testing.T) {
+		err := SetStructField(ts, "DurationField", 2*time.Hour)
+		assert.NoError(t, err)
+		assert.Equal(t, 2*time.Hour, ts.DurationField)
+	})
+
+	t.Run("negative duration", func(t *testing.T) {
+		err := SetStructField(ts, "DurationField", -30*time.Minute)
+		assert.NoError(t, err)
+		assert.Equal(t, -30*time.Minute, ts.DurationField)
+	})
+
+	t.Run("valid duration string", func(t *testing.T) {
+		err := SetStructField(ts, "DurationField", "4h")
+		assert.NoError(t, err)
+		assert.Equal(t, 4*time.Hour, ts.DurationField)
+	})
+
+	t.Run("negative duration string", func(t *testing.T) {
+		err := SetStructField(ts, "DurationField", "-1h")
+		assert.NoError(t, err)
+		assert.Equal(t, -1*time.Hour, ts.DurationField)
+	})
+
+	t.Run("invalid type (string)", func(t *testing.T) {
+		err := SetStructField(ts, "DurationField", "notaduration")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for duration field")
+		assert.Equal(t, -1*time.Hour, ts.DurationField) // should remain unchanged
+	})
+
+	t.Run("invalid type (int)", func(t *testing.T) {
+		err := SetStructField(ts, "DurationField", 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for duration field")
+		assert.Equal(t, -1*time.Hour, ts.DurationField) // should remain unchanged
+	})
+}
+
+func Test_SetStructField_int(t *testing.T) {
+	type TestStruct struct {
+		IntField int
+	}
+
+	ts := &TestStruct{}
+
+	t.Run("valid int64", func(t *testing.T) {
+		err := SetStructField(ts, "IntField", int(42))
+		assert.NoError(t, err)
+		assert.Equal(t, int(42), ts.IntField)
+	})
+
+	t.Run("negative int", func(t *testing.T) {
+		err := SetStructField(ts, "IntField", int(-42))
+		assert.NoError(t, err)
+		assert.Equal(t, int(-42), ts.IntField)
+	})
+
+	t.Run("invalid type (string)", func(t *testing.T) {
+		err := SetStructField(ts, "IntField", "notanint")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for int field")
+		assert.Equal(t, int(-42), ts.IntField) // should remain unchanged
+	})
+}
+
+func Test_SetStructField_int64(t *testing.T) {
+	type TestStruct struct {
+		Int64Field int64
+	}
+
+	ts := &TestStruct{}
+
+	t.Run("valid int64", func(t *testing.T) {
+		err := SetStructField(ts, "Int64Field", int64(42))
+		assert.NoError(t, err)
+		assert.Equal(t, int64(42), ts.Int64Field)
+	})
+
+	t.Run("negative int64", func(t *testing.T) {
+		err := SetStructField(ts, "Int64Field", int64(-42))
+		assert.NoError(t, err)
+		assert.Equal(t, int64(-42), ts.Int64Field)
+	})
+
+	t.Run("invalid type (string)", func(t *testing.T) {
+		err := SetStructField(ts, "Int64Field", "notanint64")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for int64 field")
+		assert.Equal(t, int64(-42), ts.Int64Field) // should remain unchanged
+	})
+
+	t.Run("invalid type (int)", func(t *testing.T) {
+		err := SetStructField(ts, "Int64Field", 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for int64 field")
+		assert.Equal(t, int64(-42), ts.Int64Field) // should remain unchanged
+	})
+}
+
+func Test_SetStructField_dotpaths(t *testing.T) {
+	type TestStruct struct {
+		Nested struct {
+			IntField int
+		}
+	}
+
+	ts := &TestStruct{}
+
+	t.Run("valid int64", func(t *testing.T) {
+		err := SetStructField(ts, "Nested.IntField", int(42))
+		assert.NoError(t, err)
+		assert.Equal(t, int(42), ts.Nested.IntField)
+	})
+
+	t.Run("invalid type (string)", func(t *testing.T) {
+		err := SetStructField(ts, "Nested.IntField", "notanint")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported value type for int field")
+		assert.Equal(t, int(42), ts.Nested.IntField) // should remain unchanged
+	})
+}
+
+func Test_SetStructField_invalidPath(t *testing.T) {
+	type TestStruct struct {
+		IntField int
+	}
+
+	ts := &TestStruct{IntField: 42}
+	err := SetStructField(ts, "NonExistentField", 100)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid field path")
+	assert.Equal(t, 42, ts.IntField) // should remain unchanged
+}
