@@ -124,8 +124,7 @@ func defaultSearchPaths() []string {
 // configFileExists checks which of the given paths exists and returns the first match.
 func configFileExists(paths []string) (bool, string) {
 	for _, path := range paths {
-		_, err := os.Stat(path)
-		if !os.IsNotExist(err) {
+		if _, err := os.Stat(path); err == nil {
 			return true, path
 		}
 	}

@@ -576,8 +576,15 @@ func TestGenerateDefaultConfig_CreatesDirectory(t *testing.T) {
 }
 
 func TestGenerateDefaultConfig_NoPermission(t *testing.T) {
-	// On Unix systems, /root is typically not writable by non-root users
-	configPath := "/root/isrv/config.yaml"
+	if os.Getuid() == 0 {
+		t.Skip("Skipping permission test when running as root")
+	}
+
+	// Create a read-only temporary directory
+	tmpDir := t.TempDir()
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	require.NoError(t, os.Mkdir(readOnlyDir, 0o555))
+	configPath := filepath.Join(readOnlyDir, "config.yaml")
 
 	// Test generating config in a non-writable location should panic
 	assert.Panics(t, func() {
