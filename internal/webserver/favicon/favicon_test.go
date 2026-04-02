@@ -44,10 +44,10 @@ func Test_fetchFavicon(t *testing.T) {
 		assert.Equal(t, data, result)
 	})
 
-	t.Run("local file exceeding 4 KiB returns error", func(t *testing.T) {
+	t.Run("local file exceeding maxFaviconSize returns error", func(t *testing.T) {
 		f, err := os.CreateTemp(t.TempDir(), "big*.png")
 		require.NoError(t, err)
-		f.Write(bytes.Repeat([]byte("x"), 4*1024+1))
+		f.Write(bytes.Repeat([]byte("x"), maxFaviconSize+1))
 		f.Close()
 
 		_, err = FetchFavicon(context.Background(), f.Name())
@@ -79,11 +79,11 @@ func Test_fetchFavicon(t *testing.T) {
 		assert.Contains(t, err.Error(), "404")
 	})
 
-	t.Run("http URL exceeding 4 KiB Content-Length returns error", func(t *testing.T) {
+	t.Run("http URL exceeding maxFaviconSize Content-Length returns error", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Length", fmt.Sprintf("%d", 4*1024+1))
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", maxFaviconSize+1))
 			w.WriteHeader(http.StatusOK)
-			w.Write(bytes.Repeat([]byte("x"), 4*1024+1))
+			w.Write(bytes.Repeat([]byte("x"), maxFaviconSize+1))
 		}))
 		defer ts.Close()
 

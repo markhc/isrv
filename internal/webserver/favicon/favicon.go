@@ -13,11 +13,9 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 )
 
-func FetchFavicon(ctx context.Context, url string) ([]byte, error) {
-	// We enforce a max size of 4KiB for the favicon to prevent problems
-	// This is mostly due to the fact that the favicon is fetched and stored in memory
-	const maxFaviconSize = int64(4 * 1024) // 4 KiB
+const maxFaviconSize = 1 * 1024 * 1024 // 1MiB
 
+func FetchFavicon(ctx context.Context, url string) ([]byte, error) {
 	if url == "" {
 		return nil, nil
 	}
