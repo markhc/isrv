@@ -60,12 +60,20 @@ func newServer(config *models.Configuration, db database.Database, stor storage.
 
 // Start initialises all dependencies, registers routes, and runs the HTTP server
 // until an interrupt or termination signal is received.
+//
+//nolint:funlen
 func Start(ctx context.Context) {
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
 	config := configuration.Get()
 	storageClient := createStorage(ctx, config)
 	dbInstance := createDb(config)
+
+	defer func() {
+		if err := dbInstance.Close(); err != nil {
+			logging.LogError("failed to close database connection", logging.Error(err))
+		}
+	}()
 
 	srv, err := newServer(config, dbInstance, storageClient)
 	if err != nil {
@@ -163,10 +171,10 @@ func createDb(config *models.Configuration) database.Database {
 	if err != nil {
 		logging.LogFatal("failed to connect to database", logging.Error(err))
 	}
-	defer dbInstance.Close()
 
 	err = dbInstance.Migrate()
 	if err != nil {
+		dbInstance.Close()
 		logging.LogFatal("failed to migrate database", logging.Error(err))
 	}
 
