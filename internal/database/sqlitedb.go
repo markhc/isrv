@@ -119,6 +119,7 @@ func (db *SQLiteDB) Migrate() error {
 func (db *SQLiteDB) OnFileUpload(
 	fileID string,
 	fileHeader *multipart.FileHeader,
+	token string,
 	expirationTime time.Time,
 	ipAddress string,
 ) error {
@@ -133,9 +134,9 @@ func (db *SQLiteDB) OnFileUpload(
 	}
 
 	_, err = db.sqldb.Exec(`
-		INSERT INTO files (id, file_name, file_size, expiration_time, ip_address, metadata) 
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, fileID, fileHeader.Filename, fileHeader.Size, expirationTime, ipAddress, string(jsonMetadata))
+		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, metadata) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, fileID, fileHeader.Filename, fileHeader.Size, token, expirationTime, ipAddress, string(jsonMetadata))
 	if err != nil {
 		return fmt.Errorf("failed to insert file record: %w", err)
 	}
@@ -203,4 +204,20 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 	}
 
 	return expiredFiles, nil
+}
+
+func (db *SQLiteDB) GetFileByToken(token string) (string, error) {
+	// An empty token is not valid and should return an error immediately
+	if token == "" {
+		return "", fmt.Errorf("token cannot be empty")
+	}
+
+	var fileID string
+
+	err := db.sqldb.Get(&fileID, "SELECT id FROM files WHERE token = ?", token)
+	if err != nil {
+		return "", fmt.Errorf("failed to query file by token: %w", err)
+	}
+
+	return fileID, nil
 }

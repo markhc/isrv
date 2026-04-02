@@ -1,9 +1,11 @@
 package utils
 
 import (
+	cryptoRand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	mathRand "math/rand"
 	"net"
 	"net/http"
 	"reflect"
@@ -16,11 +18,23 @@ import (
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+// GenerateFileToken generates a cryptographically secure random token for file identification and management.
+func GenerateFileToken() (string, error) {
+	const length = 32
+
+	b := make([]byte, length)
+	if _, err := cryptoRand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to get random bytes: %w", err)
+	}
+
+	return hex.EncodeToString(b), nil
+}
+
 // GenerateRandomString returns a random alphanumeric string of the given length.
 func GenerateRandomString(length int) string {
 	data := make([]byte, length)
-	for i := range length {
-		data[i] = charset[rand.Intn(len(charset))] // #nosec G404 -- This is not used for security purposes
+	for i := range data {
+		data[i] = charset[mathRand.Intn(len(charset))] // #nosec G404 -- This is not used for security purposes
 	}
 
 	return string(data)

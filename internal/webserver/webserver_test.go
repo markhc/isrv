@@ -2,7 +2,6 @@ package webserver
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io/fs"
 	"mime/multipart"
@@ -11,10 +10,10 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/markhc/isrv/internal/logging"
+	"github.com/markhc/isrv/internal/mocks"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -27,52 +26,10 @@ func TestMain(m *testing.M) {
 }
 
 // ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-type MockDB struct{ mock.Mock }
-
-func (m *MockDB) Connect() error { return m.Called().Error(0) }
-func (m *MockDB) Close() error   { return m.Called().Error(0) }
-func (m *MockDB) Migrate() error { return m.Called().Error(0) }
-func (m *MockDB) OnFileUpload(fileID string, h *multipart.FileHeader, exp time.Time, ip string) error {
-	return m.Called(fileID, h, exp, ip).Error(0)
-}
-func (m *MockDB) OnFileDownload(fileID string) error { return m.Called(fileID).Error(0) }
-func (m *MockDB) OnFileDelete(fileID string) error   { return m.Called(fileID).Error(0) }
-func (m *MockDB) GetFileMetadata(fileID string) (map[string]string, error) {
-	args := m.Called(fileID)
-	md, _ := args.Get(0).(map[string]string)
-	return md, args.Error(1)
-}
-func (m *MockDB) GetExpiredFiles() ([]string, error) {
-	args := m.Called()
-	files, _ := args.Get(0).([]string)
-	return files, args.Error(1)
-}
-
-type MockStorage struct{ mock.Mock }
-
-func (m *MockStorage) FileExists(ctx context.Context, fileID string) (bool, error) {
-	args := m.Called(ctx, fileID)
-	return args.Bool(0), args.Error(1)
-}
-func (m *MockStorage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, h *multipart.FileHeader) (string, error) {
-	args := m.Called(ctx, fileID, file, h)
-	return args.String(0), args.Error(1)
-}
-func (m *MockStorage) DeleteFile(ctx context.Context, fileID string) error {
-	return m.Called(ctx, fileID).Error(0)
-}
-func (m *MockStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID, fileName string, metadata map[string]string, inline, caching bool) {
-	m.Called(w, r, fileID, fileName, metadata, inline, caching)
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-func newTestServer(t *testing.T, cfg *models.Configuration, db *MockDB, stor *MockStorage) *server {
+func newTestServer(t *testing.T, cfg *models.Configuration, db *mocks.MockDB, stor *mocks.MockStorage) *server {
 	t.Helper()
 	tmpl, err := initializeTemplates(templatesFolderEmbedded)
 	if err != nil {
@@ -97,7 +54,7 @@ func defaultConfig() *models.Configuration {
 // ---------------------------------------------------------------------------
 
 func Test_handler404(t *testing.T) {
-	srv := newTestServer(t, defaultConfig(), &MockDB{}, &MockStorage{})
+	srv := newTestServer(t, defaultConfig(), &mocks.MockDB{}, &mocks.MockStorage{})
 
 	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -114,7 +71,7 @@ func Test_handler404(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_indexHandler(t *testing.T) {
-	srv := newTestServer(t, defaultConfig(), &MockDB{}, &MockStorage{})
+	srv := newTestServer(t, defaultConfig(), &mocks.MockDB{}, &mocks.MockStorage{})
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -133,7 +90,7 @@ func Test_indexHandler(t *testing.T) {
 func Test_faviconHandler(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.FaviconFormat = "png"
-	srv := newTestServer(t, cfg, &MockDB{}, &MockStorage{})
+	srv := newTestServer(t, cfg, &mocks.MockDB{}, &mocks.MockStorage{})
 
 	faviconBytes := []byte{0x89, 0x50, 0x4E, 0x47} // PNG magic bytes
 
@@ -175,7 +132,7 @@ func Test_staticFilesHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := newTestServer(t, defaultConfig(), &MockDB{}, &MockStorage{})
+			srv := newTestServer(t, defaultConfig(), &mocks.MockDB{}, &mocks.MockStorage{})
 
 			staticDir, _ := fs.Sub(staticFilesEmbedded, "static")
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
@@ -227,8 +184,8 @@ func Test_downloadHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := &MockDB{}
-			stor := &MockStorage{}
+			db := &mocks.MockDB{}
+			stor := &mocks.MockStorage{}
 			srv := newTestServer(t, defaultConfig(), db, stor)
 
 			db.On("OnFileDownload", tt.fileID).Return(tt.downloadErr)
@@ -274,23 +231,23 @@ func Test_uploadHandler(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setup          func(t *testing.T) (*http.Request, *MockDB, *MockStorage)
+		setup          func(t *testing.T) (*http.Request, *mocks.MockDB, *mocks.MockStorage)
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name: "missing file field returns 400",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *mocks.MockDB, *mocks.MockStorage) {
 				req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(""))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				return req, &MockDB{}, &MockStorage{}
+				return req, &mocks.MockDB{}, &mocks.MockStorage{}
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "file' field is missing",
 		},
 		{
 			name: "file too large returns 413",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *mocks.MockDB, *mocks.MockStorage) {
 				cfg := defaultConfig()
 				cfg.MaxFileSizeMB = 1
 				// Build a header with a large declared size by crafting the request manually.
@@ -301,19 +258,19 @@ func Test_uploadHandler(t *testing.T) {
 				// The easiest way is to set MaxFileSizeMB very small so any file triggers it.
 				// We set it to 0 on the config stored in the server, not the request.
 				_ = cfg
-				return req, &MockDB{}, &MockStorage{}
+				return req, &mocks.MockDB{}, &mocks.MockStorage{}
 			},
 			expectedStatus: http.StatusRequestEntityTooLarge,
 			expectedBody:   "file size exceeds the maximum allowed limit",
 		},
 		{
 			name: "SaveFileUpload error returns 500",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *mocks.MockDB, *mocks.MockStorage) {
 				body, ct := multipartBody(t, "file.txt", []byte("hello"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				db := &MockDB{}
-				stor := &MockStorage{}
+				db := &mocks.MockDB{}
+				stor := &mocks.MockStorage{}
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("", errors.New("storage failure"))
 				return req, db, stor
@@ -323,12 +280,12 @@ func Test_uploadHandler(t *testing.T) {
 		},
 		{
 			name: "OnFileUpload error is non-fatal",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *mocks.MockDB, *mocks.MockStorage) {
 				body, ct := multipartBody(t, "file.txt", []byte("hello"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				db := &MockDB{}
-				stor := &MockStorage{}
+				db := &mocks.MockDB{}
+				stor := &mocks.MockStorage{}
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/file.txt", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -340,12 +297,12 @@ func Test_uploadHandler(t *testing.T) {
 		},
 		{
 			name: "happy path returns 200 with URL",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *mocks.MockDB, *mocks.MockStorage) {
 				body, ct := multipartBody(t, "photo.png", []byte("image data"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				db := &MockDB{}
-				stor := &MockStorage{}
+				db := &mocks.MockDB{}
+				stor := &mocks.MockStorage{}
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/photo.png", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).

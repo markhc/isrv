@@ -3,13 +3,12 @@ package cleanup
 import (
 	"context"
 	"errors"
-	"mime/multipart"
-	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/markhc/isrv/internal/logging"
+	"github.com/markhc/isrv/internal/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -20,61 +19,9 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// MockDB implements database.Database using testify/mock.
-type MockDB struct{ mock.Mock }
-
-func (m *MockDB) Connect() error { return m.Called().Error(0) }
-func (m *MockDB) Close() error   { return m.Called().Error(0) }
-func (m *MockDB) Migrate() error { return m.Called().Error(0) }
-
-func (m *MockDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader, expirationTime time.Time, ipAddress string) error {
-	return m.Called(fileID, fileHeader, expirationTime, ipAddress).Error(0)
-}
-
-func (m *MockDB) OnFileDownload(fileID string) error {
-	return m.Called(fileID).Error(0)
-}
-
-func (m *MockDB) OnFileDelete(fileID string) error {
-	return m.Called(fileID).Error(0)
-}
-
-func (m *MockDB) GetFileMetadata(fileID string) (map[string]string, error) {
-	args := m.Called(fileID)
-	metadata, _ := args.Get(0).(map[string]string)
-	return metadata, args.Error(1)
-}
-
-func (m *MockDB) GetExpiredFiles() ([]string, error) {
-	args := m.Called()
-	files, _ := args.Get(0).([]string)
-	return files, args.Error(1)
-}
-
-// MockStorage implements storage.Storage using testify/mock.
-type MockStorage struct{ mock.Mock }
-
-func (m *MockStorage) FileExists(ctx context.Context, fileID string) (bool, error) {
-	args := m.Called(ctx, fileID)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *MockStorage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
-	args := m.Called(ctx, fileID, file, fileHeader)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockStorage) DeleteFile(ctx context.Context, fileID string) error {
-	return m.Called(ctx, fileID).Error(0)
-}
-
-func (m *MockStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
-	m.Called(w, r, fileID, fileName, metadata, inlineContent, cachingEnabled)
-}
-
 func Test_Service_performCleanup_expiredFiles(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 	expectedFiles := []string{"file1", "file2", "file3"}
 
 	db.On("GetExpiredFiles").Return(expectedFiles, nil)
@@ -91,8 +38,8 @@ func Test_Service_performCleanup_expiredFiles(t *testing.T) {
 }
 
 func Test_Service_performCleanup_noExpiredFiles(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	db.On("GetExpiredFiles").Return([]string{}, nil)
 
@@ -105,8 +52,8 @@ func Test_Service_performCleanup_noExpiredFiles(t *testing.T) {
 }
 
 func Test_Service_performCleanup_dbError(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	db.On("GetExpiredFiles").Return(nil, errors.New("database error"))
 
@@ -119,8 +66,8 @@ func Test_Service_performCleanup_dbError(t *testing.T) {
 }
 
 func Test_Service_performCleanup_storageError(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	db.On("GetExpiredFiles").Return([]string{"file1"}, nil)
 	stor.On("DeleteFile", mock.Anything, "file1").Return(errors.New("storage error"))
@@ -134,8 +81,8 @@ func Test_Service_performCleanup_storageError(t *testing.T) {
 }
 
 func Test_Service_performCleanup_databaseDeleteError(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	db.On("GetExpiredFiles").Return([]string{"file1"}, nil)
 	stor.On("DeleteFile", mock.Anything, "file1").Return(nil)
@@ -149,8 +96,8 @@ func Test_Service_performCleanup_databaseDeleteError(t *testing.T) {
 }
 
 func Test_Service_Start_disabled(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	service := NewService(db, stor, false, time.Minute) // enabled=false
 
@@ -164,8 +111,8 @@ func Test_Service_Start_disabled(t *testing.T) {
 }
 
 func Test_Service_Start_enabled(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	// GetExpiredFiles may or may not be called depending on timing.
 	db.On("GetExpiredFiles").Return([]string{}, nil).Maybe()
@@ -185,8 +132,8 @@ func Test_Service_Start_enabled(t *testing.T) {
 }
 
 func Test_Service_cleanupFile_success(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(nil)
 	db.On("OnFileDelete", "test-file").Return(nil)
@@ -201,8 +148,8 @@ func Test_Service_cleanupFile_success(t *testing.T) {
 }
 
 func Test_Service_cleanupFile_storageErrorOnly(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(errors.New("storage failed"))
 	db.On("OnFileDelete", "test-file").Return(nil)
@@ -217,8 +164,8 @@ func Test_Service_cleanupFile_storageErrorOnly(t *testing.T) {
 }
 
 func Test_Service_cleanupFile_databaseErrorOnly(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(nil)
 	db.On("OnFileDelete", "test-file").Return(errors.New("database failed"))
@@ -233,8 +180,8 @@ func Test_Service_cleanupFile_databaseErrorOnly(t *testing.T) {
 }
 
 func Test_Service_cleanupFile_bothErrors(t *testing.T) {
-	db := &MockDB{}
-	stor := &MockStorage{}
+	db := &mocks.MockDB{}
+	stor := &mocks.MockStorage{}
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(errors.New("storage failed"))
 	db.On("OnFileDelete", "test-file").Return(errors.New("database failed"))

@@ -84,7 +84,7 @@ func Test_SQLiteDB_OnFileUpload(t *testing.T) {
 				header.Header.Set("Content-Type", tt.contentType)
 			}
 
-			err := db.OnFileUpload(tt.fileID, header, tt.expirationTime, tt.ipAddress)
+			err := db.OnFileUpload(tt.fileID, header, "", tt.expirationTime, tt.ipAddress)
 			require.NoError(t, err)
 
 			metadata, err := db.GetFileMetadata(tt.fileID)
@@ -110,7 +110,7 @@ func Test_SQLiteDB_OnFileDownload(t *testing.T) {
 		Size:     100,
 		Header:   make(textproto.MIMEHeader),
 	}
-	err := db.OnFileUpload(fileID, header, time.Now().Add(24*time.Hour), "192.168.1.1")
+	err := db.OnFileUpload(fileID, header, "", time.Now().Add(24*time.Hour), "192.168.1.1")
 	require.NoError(t, err, "setup failed")
 
 	for i := 1; i <= 3; i++ {
@@ -139,7 +139,7 @@ func Test_SQLiteDB_OnFileDelete(t *testing.T) {
 			Size:     100,
 			Header:   make(textproto.MIMEHeader),
 		}
-		err := db.OnFileUpload(fileID, header, time.Now().Add(24*time.Hour), "192.168.1.1")
+		err := db.OnFileUpload(fileID, header, "", time.Now().Add(24*time.Hour), "192.168.1.1")
 		require.NoError(t, err, "setup failed for %s", fileID)
 	}
 
@@ -180,7 +180,7 @@ func Test_SQLiteDB_GetExpiredFiles(t *testing.T) {
 			Size:     100,
 			Header:   make(textproto.MIMEHeader),
 		}
-		err := db.OnFileUpload(tc.fileID, header, tc.expirationTime, "192.168.1.1")
+		err := db.OnFileUpload(tc.fileID, header, "", tc.expirationTime, "192.168.1.1")
 		if err != nil {
 			t.Fatalf("Setup failed for %s: %v", tc.fileID, err)
 		}
@@ -237,7 +237,7 @@ func Test_SQLiteDB_GetFileMetadata(t *testing.T) {
 				header.Header.Set("Content-Type", tt.contentType)
 			}
 
-			err := db.OnFileUpload(tt.fileID, header, time.Now().Add(24*time.Hour), "192.168.1.1")
+			err := db.OnFileUpload(tt.fileID, header, "", time.Now().Add(24*time.Hour), "192.168.1.1")
 			require.NoError(t, err, "setup failed")
 
 			metadata, err := db.GetFileMetadata(tt.fileID)
@@ -274,6 +274,49 @@ func Test_SQLiteDB_Connect_and_Migrate(t *testing.T) {
 		Size:     100,
 		Header:   make(textproto.MIMEHeader),
 	}
-	assert.NoError(t, db.OnFileUpload("connect-test", header, time.Now().Add(24*time.Hour), "192.168.1.1"))
+	assert.NoError(t, db.OnFileUpload("connect-test", header, "", time.Now().Add(24*time.Hour), "192.168.1.1"))
 	assert.NoError(t, db.Close())
+}
+
+func Test_SQLiteDB_GetFileByToken(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Setup: Insert test files with tokens
+	testCases := []struct {
+		fileID string
+		token  string
+	}{
+		{"token-test-1", "token-abc123"},
+		{"token-test-2", "token-def456"},
+		{"token-test-3", ""},
+		{"token-test-4", ""},
+	}
+
+	for _, tc := range testCases {
+		header := &multipart.FileHeader{
+			Filename: tc.fileID + ".txt",
+			Size:     100,
+			Header:   make(textproto.MIMEHeader),
+		}
+		if tc.token != "" {
+			header.Header.Set("Token", tc.token)
+		}
+		err := db.OnFileUpload(tc.fileID, header, tc.token, time.Now().Add(24*time.Hour), "192.168.1.1")
+		require.NoError(t, err, "setup failed")
+	}
+
+	for _, tc := range testCases {
+		fileID, err := db.GetFileByToken(tc.token)
+		if tc.token != "" {
+			require.NoError(t, err, "GetFileByToken() failed for token %s", tc.token)
+			assert.Equal(t, tc.fileID, fileID, "GetFileByToken() returned wrong file ID for token %s", tc.token)
+		} else {
+			assert.Error(t, err, "GetFileByToken() should fail for empty token")
+		}
+	}
+
+	// Test non-existing token
+	_, err := db.GetFileByToken("non-existing-token")
+	assert.Error(t, err, "GetFileByToken() should fail for non-existing token")
 }

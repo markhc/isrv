@@ -16,7 +16,7 @@ type Database interface {
 	Migrate() error
 
 	// OnFileUpload records a new file upload in the database.
-	OnFileUpload(fileID string, fileHeader *multipart.FileHeader, expirationTime time.Time, ipAddress string) error
+	OnFileUpload(fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error
 	// OnFileDownload increments the download counter for the given file.
 	OnFileDownload(fileID string) error
 	// OnFileDelete removes the record for the given file from the database.
@@ -26,6 +26,8 @@ type Database interface {
 	GetFileMetadata(fileID string) (map[string]string, error)
 	// GetExpiredFiles returns the IDs of all files whose expiration time has passed.
 	GetExpiredFiles() ([]string, error)
+	// GetFileByToken returns the file ID associated with the given token, or an error if not found.
+	GetFileByToken(token string) (string, error)
 }
 
 //go:embed migrations

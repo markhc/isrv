@@ -353,7 +353,7 @@ func (s *server) uploadHandler() http.HandlerFunc {
 			logging.String("ip_address", ipAddress),
 		)
 
-		fileURL, err := s.processUpload(r.Context(), file, header, expiration, ipAddress)
+		fileURL, token, err := s.processUpload(r.Context(), file, header, expiration, ipAddress)
 		if err != nil {
 			logging.LogError("failed to process file upload", logging.Error(err))
 			utils.RespondWithError(w, http.StatusInternalServerError, "failed to process upload")
@@ -364,10 +364,12 @@ func (s *server) uploadHandler() http.HandlerFunc {
 		utils.RespondWithSuccess(w, struct {
 			Status     string `json:"status"`
 			Filename   string `json:"filename"`
+			Token      string `json:"token"`
 			Expiration string `json:"expiration"`
 		}{
 			Status:     "success",
 			Filename:   fileURL,
+			Token:      token,
 			Expiration: expiration.Format(time.RFC3339),
 		})
 	}
@@ -401,6 +403,7 @@ func (s *server) processUpload(
 	ipAddress string,
 ) (
 	string,
+	string,
 	error,
 ) {
 	logging.LogInfo("processing uploaded file: " + header.Filename)
@@ -411,12 +414,20 @@ func (s *server) processUpload(
 	if err != nil {
 		logging.LogError("failed to save uploaded file", logging.Error(err))
 
-		return "", fmt.Errorf("failed to save uploaded file: %w", err)
+		return "", "", fmt.Errorf("failed to save uploaded file: %w", err)
+	}
+
+	// Generate a unique token for this file upload, which can be used for future operations like deletion.
+	token, err := utils.GenerateFileToken()
+	if err != nil {
+		logging.LogError("failed to generate file token", logging.Error(err))
+
+		return "", "", fmt.Errorf("failed to generate file token: %w", err)
 	}
 
 	logging.LogInfo("file uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
-	err = s.db.OnFileUpload(fileID, header, expiration, ipAddress)
+	err = s.db.OnFileUpload(fileID, header, token, expiration, ipAddress)
 	if err != nil {
 		logging.LogError("failed to update file metrics", logging.Error(err))
 	}
@@ -424,5 +435,5 @@ func (s *server) processUpload(
 	// URL encode the filename to prevent abuse
 	safeFilename := url.PathEscape(header.Filename)
 
-	return s.config.ServerURL + "/d/" + fileID + "/" + safeFilename, nil
+	return s.config.ServerURL + "/d/" + fileID + "/" + safeFilename, token, nil
 }
