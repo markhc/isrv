@@ -1,11 +1,14 @@
 package utils
 
 import (
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -213,4 +216,56 @@ func Test_GetIPAddress_precedence(t *testing.T) {
 
 	result2 := GetIPAddress(req2)
 	assert.Equal(t, "198.51.100.20", result2)
+}
+
+func Test_CalculateExpirationTime(t *testing.T) {
+	cfg := &models.Configuration{
+		MaxFileSizeMB: 100,
+		MinAgeDays:    30,
+		MaxAgeDays:    365,
+	}
+
+	t.Run("no expires param uses formula", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		before := time.Now()
+		exp := CalculateExpirationTime(req, 0, cfg)
+		after := time.Now()
+
+		assert.True(t, exp.After(before))
+		assert.True(t, exp.Before(after.Add(time.Duration(cfg.MaxAgeDays)*24*time.Hour+time.Second)))
+	})
+
+	t.Run("expires unix ms earlier than default is used", func(t *testing.T) {
+		// value < 1000000 is treated as hours; use a large unix ms value
+		target := time.Now().Add(1 * time.Hour)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/?expires=%d", target.UnixMilli()), nil)
+		exp := CalculateExpirationTime(req, 0, cfg)
+
+		assert.WithinDuration(t, target, exp, 2*time.Second)
+	})
+
+	t.Run("expires unix ms later than default falls back to default", func(t *testing.T) {
+		farFuture := time.Now().Add(10 * 365 * 24 * time.Hour)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/?expires=%d", farFuture.UnixMilli()), nil)
+		exp := CalculateExpirationTime(req, 0, cfg)
+
+		assert.True(t, exp.Before(farFuture))
+	})
+
+	t.Run("invalid expires string falls back to default", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/?expires=notanumber", nil)
+		before := time.Now()
+		exp := CalculateExpirationTime(req, 0, cfg)
+
+		assert.True(t, exp.After(before))
+	})
+
+	t.Run("expires in hours is interpreted as hours", func(t *testing.T) {
+		// value < 1000000 is treated as hours
+		req := httptest.NewRequest(http.MethodPost, "/?expires=2", nil)
+		target := time.Now().Add(2 * time.Hour)
+		exp := CalculateExpirationTime(req, 0, cfg)
+
+		assert.WithinDuration(t, target, exp, 2*time.Second)
+	})
 }
