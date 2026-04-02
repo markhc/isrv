@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -420,5 +421,8 @@ func (s *server) processUpload(
 		logging.LogError("failed to update file metrics", logging.Error(err))
 	}
 
-	return s.config.ServerURL + "/d/" + fileID + "/" + header.Filename, nil
+	// URL encode the filename to prevent abuse
+	safeFilename := url.PathEscape(header.Filename)
+
+	return s.config.ServerURL + "/d/" + fileID + "/" + safeFilename, nil
 }
