@@ -107,9 +107,14 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_SERVER_HOST` | `0.0.0.0` | Sets the server host address |
 | `ISRV_SERVER_PORT` | `8080` | Sets the server port |
 | `ISRV_STORAGE_PATH` | - | Sets the storage base path |
+| `ISRV_LOGGING_FILE_ENABLED` | `true` | Wether we should log to a file |
+| `ISRV_LOGGING_IPS_ENABLED` | `true` | Log uploaders IP |
+| `ISRV_LOGGING_UPLOADS_ENABLED` | `true` | Log uploads |
 | `ISRV_LOGGING_PATH` | - | Sets the log file path |
 | `ISRV_RANDOM_ID_LENGTH` | `12` | Sets the length of randomly generated file IDs |
 | `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
+| `ISRV_CLEANUP_ENABLED` | `true` | Enable the job that removes expires files |
+| `ISRV_CLEANUP_INTERVAL` | `1m` | The interval at which the cleanup job runs |
 
 ## Development
 
