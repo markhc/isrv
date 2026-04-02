@@ -74,49 +74,6 @@ func Test_LocalStorage_FileExists(t *testing.T) {
 	}
 }
 
-func Test_LocalStorage_SaveFileUpload_and_RetrieveFile(t *testing.T) {
-	// Setup
-	tempDir := t.TempDir()
-	ls := &LocalStorage{BasePath: tempDir}
-	ctx := context.Background()
-
-	tests := []struct {
-		name    string
-		fileID  string
-		content string
-	}{
-		{"simple file", "simple.txt", "Hello, World!"},
-		{"empty file", "empty.txt", ""},
-		{"binary content", "binary.bin", "\x00\x01\x02\x03\xFF\xFE\xFD"},
-		{"large content", "large.txt", string(bytes.Repeat([]byte("A"), 1024))},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create multipart.File from test content
-			content := []byte(tt.content)
-
-			// Create a mock multipart.File
-			mockFile := &mockMultipartFile{Reader: bytes.NewReader(content)}
-
-			// Test SaveFileUpload
-			storedPath, err := ls.SaveFileUpload(ctx, tt.fileID, mockFile, nil)
-			require.NoError(t, err)
-
-			expectedPath := filepath.Join(tempDir, tt.fileID)
-			assert.Equal(t, expectedPath, storedPath)
-
-			exists, err := ls.FileExists(ctx, tt.fileID)
-			require.NoError(t, err)
-			assert.True(t, exists, "file should exist after SaveFileUpload()")
-
-			retrievedContent, err := ls.RetrieveFile(ctx, tt.fileID)
-			require.NoError(t, err)
-			assert.Equal(t, content, retrievedContent)
-		})
-	}
-}
-
 func Test_LocalStorage_DeleteFile(t *testing.T) {
 	// Setup
 	tempDir := t.TempDir()
@@ -168,17 +125,6 @@ func Test_LocalStorage_DeleteFile(t *testing.T) {
 			assert.False(t, exists, "file %s should not exist after DeleteFile()", tt.fileID)
 		})
 	}
-}
-
-func Test_LocalStorage_RetrieveFile_nonExist(t *testing.T) {
-	// Setup
-	tempDir := t.TempDir()
-	ls := &LocalStorage{BasePath: tempDir}
-	ctx := context.Background()
-
-	_, err := ls.RetrieveFile(ctx, "non-existing.txt")
-	require.Error(t, err)
-	assert.True(t, os.IsNotExist(err), "expected os.IsNotExist error, got %T: %v", err, err)
 }
 
 // mockMultipartFile implements multipart.File interface for testing

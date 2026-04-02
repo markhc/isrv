@@ -40,17 +40,14 @@ func Initialize() {
 
 	if config.Logging.LogToFile {
 		if dir := filepath.Dir(config.Logging.Path); dir != "." {
-			if err := os.Mkdir(dir, 0755); err != nil && !os.IsExist(err) {
-				fmt.Println("Failed to create log directory:", err)
+			if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
 				panic(err)
 			}
 		}
 
 		// Append to file it if exists, create it if it doesn't
-		file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
+		file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
-			fmt.Println("Failed to create log file:", err)
 			panic(err)
 		}
 
@@ -148,6 +145,6 @@ func TimeRFC3339(key string, value time.Time) zap.Field {
 	return zap.String(key, value.Format(time.RFC3339))
 }
 
-func Any(key string, value interface{}) zap.Field {
+func Any(key string, value any) zap.Field {
 	return zap.Any(key, value)
 }

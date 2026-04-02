@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -13,10 +14,11 @@ const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 // GenerateRandomString returns a random alphanumeric string of the given length.
 func GenerateRandomString(length int) string {
-	var data = make([]byte, length)
-	for i := 0; i < length; i++ {
-		data[i] = charset[rand.Intn(len(charset))]
+	data := make([]byte, length)
+	for i := range length {
+		data[i] = charset[rand.Intn(len(charset))] // #nosec G404 -- This is not used for security purposes
 	}
+
 	return string(data)
 }
 
@@ -34,13 +36,14 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 
 	expires, err = strconv.ParseInt(expiresStr, 10, 64)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("invalid expires value: %w", err)
 	}
 
 	// If the value is less than 1,000,000, assume it's in hours
 	if expires < 1000000 {
 		expires = expires * 3600 * 1000 // convert hours to milliseconds
 		expiresTime := time.Now().Add(time.Duration(expires) * time.Millisecond)
+
 		return expiresTime, nil
 	}
 
@@ -70,5 +73,6 @@ func GetIPAddress(r *http.Request) string {
 	if err != nil {
 		return r.RemoteAddr
 	}
+
 	return ip
 }

@@ -1,0 +1,34 @@
+# Defines the configuration version.
+# The only possible value is "2".
+version: "2"
+
+linters:
+  default: all
+  disable:
+    - err113   # "do not define dynamic errors"
+    - depguard
+    - errcheck
+    - exhaustruct
+    - gochecknoglobals
+    - gosec
+    - mnd
+    - nestif
+    - revive
+    - noinlineerr
+    - varnamelen
+    - wsl
+    - wsl_v5
+
+formatters:
+  enable:
+    - goimports
+    - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  tests: false
