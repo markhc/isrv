@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -38,13 +39,13 @@ func TestLoad_ExplicitPath(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test-config.yaml")
 
 	configContent := `
-server_name: "test-server"
-server_port: 9000
-random_id_length: 12
-max_file_size_mb: 512
+serverName: "test-server"
+serverPort: 9000
+randomIdLength: 12
+maxFileSizeMb: 512
 storage:
   type: "local" 
-  base_path: "/test/path/"
+  basePath: "/test/path/"
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
 
@@ -71,13 +72,13 @@ func TestLoad_ExplicitPath_DebugMode(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test-config.yaml")
 
 	configContent := `
-server_name: "test-server"
-server_port: 9000
-random_id_length: 12
-max_file_size_mb: 512
+serverName: "test-server"
+serverPort: 9000
+randomIdLength: 12
+maxFileSizeMb: 512
 storage:
   type: "local" 
-  base_path: "./data/"
+  basePath: "./data/"
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
 
@@ -107,13 +108,13 @@ func TestLoad_DefaultLocations(t *testing.T) {
 
 	// Create config in default location
 	configContent := `
-server_name: "default-location-server"
-server_port: 8888
-random_id_length: 12
-max_file_size_mb: 512
+serverName: "default-location-server"
+serverPort: 8888
+randomIdLength: 12
+maxFileSizeMb: 512
 storage:
   type: "local"
-  base_path: "./data/"
+  basePath: "./data/"
 `
 	require.NoError(t, os.WriteFile("config.yaml", []byte(configContent), 0644))
 
@@ -237,7 +238,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 			},
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.False(t, cfg.Cleanup.Enabled)
-				assert.Equal(t, "5m", cfg.Cleanup.Interval)
+				assert.Equal(t, 5*time.Minute, cfg.Cleanup.Interval)
 			},
 		},
 		{
@@ -444,21 +445,11 @@ func TestVerifyConfiguration(t *testing.T) {
 			setupFunc: func() models.Configuration {
 				cfg := getDefaultConfig()
 				cfg.Cleanup.Enabled = true
-				cfg.Cleanup.Interval = "invalid-duration"
+				cfg.Cleanup.Interval = time.Duration(-1)
 				return cfg
 			},
 			expectPanic:  true,
-			panicMessage: "Invalid configuration: cleanup.interval must be a valid duration string (e.g., '1h', '30m')",
-		},
-		{
-			name: "disabled cleanup with invalid interval should not panic",
-			setupFunc: func() models.Configuration {
-				cfg := getDefaultConfig()
-				cfg.Cleanup.Enabled = false
-				cfg.Cleanup.Interval = "invalid-duration"
-				return cfg
-			},
-			expectPanic: false,
+			panicMessage: "Invalid configuration: cleanup.interval must be a positive duration",
 		},
 		{
 			name: "local storage path gets trailing separator added",
@@ -562,8 +553,8 @@ func TestGenerateDefaultConfig(t *testing.T) {
 
 	// Should contain embedded default config content
 	content := string(data)
-	assert.Contains(t, content, "server_name:")
-	assert.Contains(t, content, "server_port:")
+	assert.Contains(t, content, "serverName:")
+	assert.Contains(t, content, "serverPort:")
 	assert.Contains(t, content, "storage:")
 }
 
@@ -620,13 +611,13 @@ func TestLoad_WithEnvironmentOverrides(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test-config.yaml")
 
 	configContent := `
-server_name: "yaml-server"
-server_port: 8000
-random_id_length: 12
-max_file_size_mb: 512
+serverName: "yaml-server"
+serverPort: 8000
+randomIdLength: 12
+maxFileSizeMb: 512
 storage:
   type: "local"
-  base_path: "./data/"
+  basePath: "./data/"
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
 

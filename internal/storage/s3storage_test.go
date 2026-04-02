@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +56,7 @@ func (m *MockS3Presigner) PresignGetObject(_ context.Context, params *s3.GetObje
 
 // ---- test helpers ----
 
-func newTestS3Storage(client s3API, presigner s3Presigner) *S3Storage {
+func newTestS3Storage(client s3api, presigner s3presigner) *S3Storage {
 	return &S3Storage{
 		Endpoint:  "http://test",
 		Bucket:    "test-bucket",
@@ -142,42 +141,6 @@ func Test_S3Storage_SaveFileUpload(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, "test-id", gotID)
-			}
-			client.AssertExpectations(t)
-		})
-	}
-}
-
-func Test_S3Storage_RetrieveFile(t *testing.T) {
-	tests := []struct {
-		name    string
-		content []byte
-		getErr  error
-		wantErr bool
-	}{
-		{name: "success", content: []byte("file content")},
-		{name: "get error", getErr: errors.New("not found"), wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := &MockS3Client{}
-			var returnOut *s3.GetObjectOutput
-			if tt.content != nil {
-				returnOut = &s3.GetObjectOutput{Body: io.NopCloser(bytes.NewReader(tt.content))}
-			}
-			client.On("GetObject", mock.MatchedBy(func(p *s3.GetObjectInput) bool {
-				return p.Key != nil && *p.Key == "files/test-id"
-			})).Return(returnOut, tt.getErr)
-
-			s := newTestS3Storage(client, nil)
-			got, err := s.RetrieveFile(context.Background(), "test-id")
-
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.content, got)
 			}
 			client.AssertExpectations(t)
 		})

@@ -2,6 +2,7 @@ package cleanup
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -18,9 +19,7 @@ type Service struct {
 	interval time.Duration
 	enabled  bool
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	wg sync.WaitGroup
 }
 
 // NewService creates a new cleanup Service with the given database, storage backend,
@@ -36,34 +35,33 @@ func NewService(db database.Database, storage storage.Storage, enabled bool, int
 
 // Start launches the background cleanup goroutine. It is a no-op if the service
 // is disabled.
-func (s *Service) Start() {
+func (s *Service) Start(ctx context.Context) context.CancelFunc {
 	if !s.enabled {
-		logging.LogInfo("File cleanup service is disabled")
-		return
+		logging.LogInfo("file cleanup service is disabled")
+
+		return nil
 	}
 
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-
+	cancellableCtx, cancel := context.WithCancel(ctx)
 	s.wg.Add(1)
-	go s.cleanupLoop()
+	go s.cleanupLoop(cancellableCtx)
 
-	logging.LogInfo("File cleanup service started", logging.String("interval", s.interval.String()))
+	logging.LogInfo("file cleanup service started", logging.String("interval", s.interval.String()))
+
+	return cancel
 }
 
-// Stop signals the cleanup goroutine to exit and waits for it to finish.
-// It is a no-op if the service is disabled or was never started.
-func (s *Service) Stop() {
-	if !s.enabled || s.cancel == nil {
+// Join waits for the cleanup service to finish any ongoing cleanup cycles.
+// It should be called after the context passed to Start is cancelled to ensure a graceful shutdown.
+func (s *Service) Join() {
+	if !s.enabled {
 		return
 	}
 
-	logging.LogInfo("Stopping file cleanup service")
-	s.cancel()
 	s.wg.Wait()
-	logging.LogInfo("File cleanup service stopped")
 }
 
-func (s *Service) cleanupLoop() {
+func (s *Service) cleanupLoop(ctx context.Context) {
 	defer s.wg.Done()
 
 	ticker := time.NewTicker(s.interval)
@@ -71,36 +69,38 @@ func (s *Service) cleanupLoop() {
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.performCleanup()
+			s.performCleanup(ctx)
 		}
 	}
 }
 
-func (s *Service) performCleanup() {
-	logging.LogDebug("Starting cleanup cycle")
+func (s *Service) performCleanup(ctx context.Context) {
+	logging.LogDebug("starting cleanup cycle")
 
 	expiredFiles, err := s.db.GetExpiredFiles()
 	if err != nil {
-		logging.LogError("Failed to get expired files", logging.Error(err))
+		logging.LogError("failed to get expired files", logging.Error(err))
+
 		return
 	}
 
 	if len(expiredFiles) == 0 {
-		logging.LogDebug("No expired files found")
+		logging.LogDebug("no expired files found")
+
 		return
 	}
 
-	logging.LogInfo("Found expired files", logging.Int("count", len(expiredFiles)))
+	logging.LogInfo("found expired files", logging.Int("count", len(expiredFiles)))
 
 	successCount := 0
 	failureCount := 0
 
 	for _, fileID := range expiredFiles {
-		if err := s.cleanupFile(fileID); err != nil {
-			logging.LogError("Failed to cleanup file",
+		if err := s.cleanupFile(ctx, fileID); err != nil {
+			logging.LogError("failed to cleanup file",
 				logging.String("file_id", fileID),
 				logging.Error(err))
 			failureCount++
@@ -109,19 +109,19 @@ func (s *Service) performCleanup() {
 		}
 	}
 
-	logging.LogInfo("Cleanup cycle completed",
+	logging.LogInfo("cleanup cycle completed",
 		logging.Int("success", successCount),
 		logging.Int("failures", failureCount))
 }
 
-func (s *Service) cleanupFile(fileID string) error {
+func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
 	// Create a context with timeout for the storage operation
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	err := s.storage.DeleteFile(ctx, fileID)
 	if err != nil {
-		logging.LogError("Failed to delete file from storage",
+		logging.LogError("failed to delete file from storage",
 			logging.String("file_id", fileID),
 			logging.Error(err))
 
@@ -131,22 +131,23 @@ func (s *Service) cleanupFile(fileID string) error {
 	// Delete from database
 	dbErr := s.db.OnFileDelete(fileID)
 	if dbErr != nil {
-		logging.LogError("Failed to delete file from database",
+		logging.LogError("failed to delete file from database",
 			logging.String("file_id", fileID),
 			logging.Error(dbErr))
 
 		// If storage deletion succeeded but database deletion failed,
 		// we still consider it a partial failure
 		if err == nil {
-			return dbErr
+			return fmt.Errorf("failed to delete file from database: %w", dbErr)
 		}
 	}
 
 	// If both operations failed, return the storage error as primary
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete file from storage: %w", err)
 	}
 
-	logging.LogDebug("Successfully cleaned up file", logging.String("file_id", fileID))
+	logging.LogDebug("successfully cleaned up file", logging.String("file_id", fileID))
+
 	return nil
 }

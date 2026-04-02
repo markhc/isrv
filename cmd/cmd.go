@@ -28,10 +28,12 @@ func (s *iSrvService) Serve(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			logging.LogInfo("Shutting down iSrv service")
+			logging.LogInfo("shutting down iSrv service")
+
 			return nil
 		default:
-			webserver.Start()
+			webserver.Start(ctx)
+
 			return nil
 		}
 	}
@@ -41,6 +43,7 @@ var rootCmd = &cobra.Command{
 	Use:   "isrv",
 	Short: "isrv is a file sharing web server",
 	Run: func(cmd *cobra.Command, args []string) {
+		//nolint:all
 		if versionFlag {
 			fmt.Println("isrv: A file sharing web server")
 			fmt.Println("Build info:")
@@ -49,11 +52,13 @@ var rootCmd = &cobra.Command{
 			fmt.Println("  Date:     ", configuration.BuildDate)
 			fmt.Println("  Golang:   ", configuration.BuildGoVersion)
 			fmt.Println("  Platform: ", configuration.BuildPlatform)
+
 			return
 		}
 
 		if makeConfig {
 			configuration.GenerateDefaultConfig(filepath.Join(os.Getenv("HOME"), ".config", "isrv", "config.yaml"))
+
 			return
 		}
 
@@ -63,12 +68,12 @@ var rootCmd = &cobra.Command{
 		// If debug mode is enabled or the supervisor is disabled, run the webserver directly
 		if configuration.Get().DebugMode || disableSupervisor {
 			if configuration.Get().DebugMode {
-				logging.LogDebug("Debug mode is enabled")
+				logging.LogDebug("debug mode is enabled")
 			} else {
-				logging.LogInfo("Supervisor is disabled")
+				logging.LogInfo("supervisor is disabled")
 			}
 
-			webserver.Start()
+			webserver.Start(context.Background())
 		} else {
 			supervisor := suture.NewSimple("iSrv")
 			service := &iSrvService{}
@@ -77,10 +82,10 @@ var rootCmd = &cobra.Command{
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 			defer stop()
 
-			logging.LogInfo("Starting iSrv service supervisor")
+			logging.LogInfo("starting isrv service supervisor")
 			err := supervisor.Serve(ctx)
 			if err != nil {
-				logging.LogError("iSrv service supervisor encountered an error", logging.Error(err))
+				logging.LogError("isrv service supervisor encountered an error", logging.Error(err))
 			}
 		}
 	},
@@ -92,7 +97,11 @@ func Execute() {
 	rootCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to configuration file")
 
 	rootCmd.Flags().BoolVar(&makeConfig, "makeconf", false, "Generate a default configuration file and exit")
-	rootCmd.Flags().BoolVar(&disableSupervisor, "disable-supervisor", false, "Disable the supervisor and run the webserver directly")
+	rootCmd.Flags().BoolVar(
+		&disableSupervisor,
+		"disable-supervisor",
+		false,
+		"Disable the supervisor and run the webserver directly")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

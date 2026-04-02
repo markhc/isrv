@@ -62,11 +62,6 @@ func (m *MockStorage) SaveFileUpload(ctx context.Context, fileID string, file mu
 	args := m.Called(ctx, fileID, file, h)
 	return args.String(0), args.Error(1)
 }
-func (m *MockStorage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
-	args := m.Called(ctx, fileID)
-	b, _ := args.Get(0).([]byte)
-	return b, args.Error(1)
-}
 func (m *MockStorage) DeleteFile(ctx context.Context, fileID string) error {
 	return m.Called(ctx, fileID).Error(0)
 }
@@ -108,7 +103,7 @@ func Test_handler404(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
 	w := httptest.NewRecorder()
 
-	srv.handler404(w, req)
+	srv.handler404()(w, req)
 
 	resp := w.Result()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
@@ -125,7 +120,7 @@ func Test_indexHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 
-	srv.indexHandler(w, req)
+	srv.indexHandler()(w, req)
 
 	resp := w.Result()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -310,7 +305,7 @@ func Test_uploadHandler(t *testing.T) {
 				return req, &MockDB{}, &MockStorage{}
 			},
 			expectedStatus: http.StatusRequestEntityTooLarge,
-			expectedBody:   "File size exceeds",
+			expectedBody:   "file size exceeds the maximum allowed limit",
 		},
 		{
 			name: "SaveFileUpload error returns 500",
@@ -325,7 +320,7 @@ func Test_uploadHandler(t *testing.T) {
 				return req, db, stor
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   "Failed to process upload",
+			expectedBody:   "failed to process upload",
 		},
 		{
 			name: "OnFileUpload error is non-fatal",
@@ -342,7 +337,7 @@ func Test_uploadHandler(t *testing.T) {
 				return req, db, stor
 			},
 			expectedStatus: http.StatusOK,
-			expectedBody:   `"status": "success"`,
+			expectedBody:   `"status":"success"`,
 		},
 		{
 			name: "happy path returns 200 with URL",
@@ -359,7 +354,7 @@ func Test_uploadHandler(t *testing.T) {
 				return req, db, stor
 			},
 			expectedStatus: http.StatusOK,
-			expectedBody:   `"status": "success"`,
+			expectedBody:   `"status":"success"`,
 		},
 	}
 
@@ -453,7 +448,8 @@ func Test_fetchFavicon(t *testing.T) {
 		f.Write(data)
 		f.Close()
 
-		result, err := fetchFavicon(f.Name())
+		ctx := context.Background()
+		result, err := fetchFavicon(ctx, f.Name())
 		require.NoError(t, err)
 		assert.Equal(t, data, result)
 	})
@@ -465,7 +461,8 @@ func Test_fetchFavicon(t *testing.T) {
 		f.Write(data)
 		f.Close()
 
-		result, err := fetchFavicon("file://" + f.Name())
+		ctx := context.Background()
+		result, err := fetchFavicon(ctx, "file://"+f.Name())
 		require.NoError(t, err)
 		assert.Equal(t, data, result)
 	})
@@ -476,7 +473,8 @@ func Test_fetchFavicon(t *testing.T) {
 		f.Write(bytes.Repeat([]byte("x"), 4*1024+1))
 		f.Close()
 
-		_, err = fetchFavicon(f.Name())
+		ctx := context.Background()
+		_, err = fetchFavicon(ctx, f.Name())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "maximum allowed limit")
 	})
@@ -489,7 +487,8 @@ func Test_fetchFavicon(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		result, err := fetchFavicon(ts.URL + "/favicon.gif")
+		ctx := context.Background()
+		result, err := fetchFavicon(ctx, ts.URL+"/favicon.gif")
 		require.NoError(t, err)
 		assert.Equal(t, data, result)
 	})
@@ -500,7 +499,8 @@ func Test_fetchFavicon(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		_, err := fetchFavicon(ts.URL + "/missing.png")
+		ctx := context.Background()
+		_, err := fetchFavicon(ctx, ts.URL+"/missing.png")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "404")
 	})
@@ -513,7 +513,8 @@ func Test_fetchFavicon(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		_, err := fetchFavicon(ts.URL + "/big.png")
+		ctx := context.Background()
+		_, err := fetchFavicon(ctx, ts.URL+"/big.png")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "maximum allowed limit")
 	})

@@ -19,7 +19,7 @@ var defaultConfig string
 
 var config models.Configuration
 
-// Get returns the current configuration
+// Get returns the current configuration.
 func Get() *models.Configuration {
 	return &config
 }
@@ -33,7 +33,7 @@ func Load(configPath string, debug bool) {
 	} else if exists, path := configFileExists(defaultSearchPaths()); exists {
 		loadFromFile(path, debug)
 	} else {
-		fmt.Println("Using default configuration values...")
+		fmt.Println("no configuration file found, using built-in defaults") //nolint
 		// No configuration file found, use defaults
 		config = getDefaultConfig()
 
@@ -50,6 +50,8 @@ func Load(configPath string, debug bool) {
 // applyEnvOverrides overrides config values with any explicitly set ISRV_* environment variables.
 // Uses os.LookupEnv so that only variables present in the environment take effect;
 // unset variables do not override YAML-derived values.
+//
+//nolint:cyclop
 func applyEnvOverrides() {
 	if v, ok := os.LookupEnv("ISRV_SERVER_NAME"); ok {
 		config.ServerName = v
@@ -102,7 +104,9 @@ func applyEnvOverrides() {
 		}
 	}
 	if v, ok := os.LookupEnv("ISRV_CLEANUP_INTERVAL"); ok {
-		config.Cleanup.Interval = v
+		if duration, err := time.ParseDuration(v); err == nil {
+			config.Cleanup.Interval = duration
+		}
 	}
 }
 
@@ -126,23 +130,17 @@ func configFileExists(paths []string) (bool, string) {
 		}
 	}
 
-	fmt.Println("No configuration file found in known locations")
-
 	return false, ""
 }
 
 func loadFromFile(path string, debug bool) {
 	data, err := os.ReadFile(path)
-
 	if err != nil {
-		fmt.Println("Failed to read configuration file:", err)
 		panic(err)
 	}
 
 	err = yaml.Unmarshal(data, &config)
-
 	if err != nil {
-		fmt.Println("Failed to parse configuration file:", err)
 		panic(err)
 	}
 
@@ -152,7 +150,9 @@ func loadFromFile(path string, debug bool) {
 	}
 }
 
-// Verify that the loaded configuration is valid and attempt to fix any issues
+// Verify that the loaded configuration is valid and attempt to fix any issues.
+//
+//nolint:cyclop
 func verifyConfiguration() {
 	if config.Storage.Type != "local" && config.Storage.Type != "s3" {
 		panic("Invalid configuration: storage.type must be either 'local' or 's3'")
@@ -193,8 +193,8 @@ func verifyConfiguration() {
 	}
 
 	if config.Cleanup.Enabled {
-		if _, err := time.ParseDuration(config.Cleanup.Interval); err != nil {
-			panic("Invalid configuration: cleanup.interval must be a valid duration string (e.g., '1h', '30m')")
+		if config.Cleanup.Interval <= 0 {
+			panic("Invalid configuration: cleanup.interval must be a positive duration")
 		}
 	}
 }
@@ -207,19 +207,15 @@ func getDefaultConfig() models.Configuration {
 	var defaultConfigStruct models.Configuration
 
 	err := yaml.Unmarshal([]byte(defaultConfig), &defaultConfigStruct)
-
 	if err != nil {
-		fmt.Println("Failed to parse default configuration:", err)
 		panic(err)
 	}
 
 	return defaultConfigStruct
 }
 
-// GenerateDefaultConfig generates a default configuration file at the specified path
+// GenerateDefaultConfig generates a default configuration file at the specified path.
 func GenerateDefaultConfig(configPath string) {
-	fmt.Println("Generating default configuration file", configPath)
-
 	// Check if the embedded default config is available
 	if defaultConfig == "" {
 		panic("Default configuration is not embedded in the binary")
@@ -228,19 +224,14 @@ func GenerateDefaultConfig(configPath string) {
 	// Check that the directory exists, if not attempt to create it
 	dir := filepath.Dir(configPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, 0755)
+		err = os.MkdirAll(dir, 0o755)
 		if err != nil {
-			fmt.Println("Failed to create configuration directory:", err)
 			panic(err)
 		}
 	}
 
-	err := os.WriteFile(configPath, []byte(defaultConfig), 0644)
-
+	err := os.WriteFile(configPath, []byte(defaultConfig), 0o644)
 	if err != nil {
-		fmt.Println("Failed to write default configuration file:", err)
 		panic(err)
 	}
-
-	fmt.Println("Default configuration file generated at:", configPath)
 }

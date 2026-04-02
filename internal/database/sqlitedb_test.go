@@ -160,7 +160,7 @@ func Test_SQLiteDB_GetExpiredFiles(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	baseTime := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
+	baseTime := time.Now().UTC()
 
 	testCases := []struct {
 		fileID         string

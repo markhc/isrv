@@ -26,7 +26,13 @@ func SetContentType(w http.ResponseWriter, contentType string) {
 
 // SetHeaders applies caching, content-type, and content-disposition headers
 // based on the provided file metadata and options.
-func SetHeaders(w http.ResponseWriter, fileName string, fileMetadata map[string]string, inlineContent bool, cachingEnabled bool) {
+func SetHeaders(
+	w http.ResponseWriter,
+	fileName string,
+	fileMetadata map[string]string,
+	inlineContent bool,
+	cachingEnabled bool,
+) {
 	if cachingEnabled {
 		AddCacheHeader(w)
 	}

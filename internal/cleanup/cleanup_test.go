@@ -64,12 +64,6 @@ func (m *MockStorage) SaveFileUpload(ctx context.Context, fileID string, file mu
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockStorage) RetrieveFile(ctx context.Context, fileID string) ([]byte, error) {
-	args := m.Called(ctx, fileID)
-	data, _ := args.Get(0).([]byte)
-	return data, args.Error(1)
-}
-
 func (m *MockStorage) DeleteFile(ctx context.Context, fileID string) error {
 	return m.Called(ctx, fileID).Error(0)
 }
@@ -90,7 +84,7 @@ func Test_Service_performCleanup_expiredFiles(t *testing.T) {
 	}
 
 	service := NewService(db, stor, true, time.Minute)
-	service.performCleanup()
+	service.performCleanup(context.Background())
 
 	db.AssertExpectations(t)
 	stor.AssertExpectations(t)
@@ -103,7 +97,7 @@ func Test_Service_performCleanup_noExpiredFiles(t *testing.T) {
 	db.On("GetExpiredFiles").Return([]string{}, nil)
 
 	service := NewService(db, stor, true, time.Minute)
-	service.performCleanup()
+	service.performCleanup(context.Background())
 
 	db.AssertExpectations(t)
 	stor.AssertNotCalled(t, "DeleteFile")
@@ -117,7 +111,7 @@ func Test_Service_performCleanup_dbError(t *testing.T) {
 	db.On("GetExpiredFiles").Return(nil, errors.New("database error"))
 
 	service := NewService(db, stor, true, time.Minute)
-	service.performCleanup()
+	service.performCleanup(context.Background())
 
 	db.AssertExpectations(t)
 	stor.AssertNotCalled(t, "DeleteFile")
@@ -133,7 +127,7 @@ func Test_Service_performCleanup_storageError(t *testing.T) {
 	db.On("OnFileDelete", "file1").Return(nil)
 
 	service := NewService(db, stor, true, time.Minute)
-	service.performCleanup()
+	service.performCleanup(context.Background())
 
 	db.AssertExpectations(t)
 	stor.AssertExpectations(t)
@@ -148,7 +142,7 @@ func Test_Service_performCleanup_databaseDeleteError(t *testing.T) {
 	db.On("OnFileDelete", "file1").Return(errors.New("database delete error"))
 
 	service := NewService(db, stor, true, time.Minute)
-	service.performCleanup()
+	service.performCleanup(context.Background())
 
 	db.AssertExpectations(t)
 	stor.AssertExpectations(t)
@@ -160,12 +154,11 @@ func Test_Service_Start_disabled(t *testing.T) {
 
 	service := NewService(db, stor, false, time.Minute) // enabled=false
 
-	service.Start()
-
-	require.Nil(t, service.ctx)
-	require.Nil(t, service.cancel)
-
-	service.Stop() // should not panic or block
+	cancel := service.Start(context.Background())
+	if cancel != nil {
+		cancel()
+	}
+	service.Join() // should not panic or block
 
 	db.AssertNotCalled(t, "GetExpiredFiles")
 }
@@ -179,16 +172,16 @@ func Test_Service_Start_enabled(t *testing.T) {
 
 	service := NewService(db, stor, true, time.Millisecond*10)
 
-	service.Start()
-
-	require.NotNil(t, service.ctx)
-	require.NotNil(t, service.cancel)
+	cancel := service.Start(context.Background())
 
 	time.Sleep(time.Millisecond * 5)
 
-	service.Stop()
+	if cancel != nil {
+		cancel()
+	}
+	service.Join()
 
-	require.Error(t, service.ctx.Err())
+	db.AssertExpectations(t)
 }
 
 func Test_Service_cleanupFile_success(t *testing.T) {
@@ -200,7 +193,7 @@ func Test_Service_cleanupFile_success(t *testing.T) {
 
 	service := NewService(db, stor, true, time.Minute)
 
-	err := service.cleanupFile("test-file")
+	err := service.cleanupFile(context.Background(), "test-file")
 
 	require.NoError(t, err)
 	db.AssertExpectations(t)
@@ -216,7 +209,7 @@ func Test_Service_cleanupFile_storageErrorOnly(t *testing.T) {
 
 	service := NewService(db, stor, true, time.Minute)
 
-	err := service.cleanupFile("test-file")
+	err := service.cleanupFile(context.Background(), "test-file")
 
 	require.Error(t, err)
 	db.AssertExpectations(t)
@@ -232,7 +225,7 @@ func Test_Service_cleanupFile_databaseErrorOnly(t *testing.T) {
 
 	service := NewService(db, stor, true, time.Minute)
 
-	err := service.cleanupFile("test-file")
+	err := service.cleanupFile(context.Background(), "test-file")
 
 	require.Error(t, err)
 	db.AssertExpectations(t)
@@ -248,10 +241,10 @@ func Test_Service_cleanupFile_bothErrors(t *testing.T) {
 
 	service := NewService(db, stor, true, time.Minute)
 
-	err := service.cleanupFile("test-file")
+	err := service.cleanupFile(context.Background(), "test-file")
 
 	// Storage error is returned as the primary error when both fail.
-	assert.EqualError(t, err, "storage failed")
+	assert.EqualError(t, err, "failed to delete file from storage: storage failed")
 	db.AssertExpectations(t)
 	stor.AssertExpectations(t)
 }

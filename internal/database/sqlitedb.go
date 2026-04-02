@@ -3,6 +3,7 @@ package database
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/url"
 	"os"
@@ -44,7 +45,7 @@ func NewSQLiteDB(config models.Configuration) *SQLiteDB {
 func (db *SQLiteDB) Connect() error {
 	if dir := sqliteDir(db.filePath, db.pathIsDSN); dir != "" {
 		if _, err := os.Stat(dir); err != nil && errors.Is(err, os.ErrNotExist) {
-			return err
+			return fmt.Errorf("database directory does not exist: %w", err)
 		}
 	}
 
@@ -56,7 +57,7 @@ func (db *SQLiteDB) Connect() error {
 	}
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	return nil
@@ -76,40 +77,51 @@ func sqliteDir(path string, isDSN bool) string {
 	if dir == "." {
 		return ""
 	}
+
 	return dir
 }
 
 // Close releases the underlying database connection.
 func (db *SQLiteDB) Close() error {
-	return db.sqldb.Close()
+	if err := db.sqldb.Close(); err != nil {
+		return fmt.Errorf("failed to close database: %w", err)
+	}
+
+	return nil
 }
 
 // Migrate applies all pending up-migrations using the embedded migration files.
 func (db *SQLiteDB) Migrate() error {
 	iofsSource, err := iofs.New(migrations, "migrations")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create migration source: %w", err)
 	}
 
 	sqliteDriver, err := sqlite.WithInstance(db.sqldb.DB, &sqlite.Config{})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create SQLite migration driver: %w", err)
 	}
 
 	m, err := migrate.NewWithInstance("iofs", iofsSource, "sqlite", sqliteDriver)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create migration instance: %w", err)
 	}
 
 	err = m.Up()
-	if err != nil && err != migrate.ErrNoChange {
-		return err
+	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("failed to run database migrations: %w", err)
 	}
+
 	return nil
 }
 
 // OnFileUpload inserts a new file record with the given metadata and expiration time.
-func (db *SQLiteDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader, expirationTime time.Time, ipAddress string) error {
+func (db *SQLiteDB) OnFileUpload(
+	fileID string,
+	fileHeader *multipart.FileHeader,
+	expirationTime time.Time,
+	ipAddress string,
+) error {
 	metadata := make(map[string]string)
 	if fileHeader.Header.Get("Content-Type") != "" {
 		metadata["Content-Type"] = fileHeader.Header.Get("Content-Type")
@@ -124,20 +136,31 @@ func (db *SQLiteDB) OnFileUpload(fileID string, fileHeader *multipart.FileHeader
 		INSERT INTO files (id, file_name, file_size, expiration_time, ip_address, metadata) 
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, fileID, fileHeader.Filename, fileHeader.Size, expirationTime, ipAddress, string(jsonMetadata))
+	if err != nil {
+		return fmt.Errorf("failed to insert file record: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 // OnFileDownload increments the download counter for the given file ID.
 func (db *SQLiteDB) OnFileDownload(fileID string) error {
 	_, err := db.sqldb.Exec("UPDATE files SET download_count = download_count + 1 WHERE id = ?", fileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to update download count: %w", err)
+	}
+
+	return nil
 }
 
 // OnFileDelete removes the record for the given file ID from the database.
 func (db *SQLiteDB) OnFileDelete(fileID string) error {
 	_, err := db.sqldb.Exec("DELETE FROM files WHERE id = ?", fileID)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to delete file record: %w", err)
+	}
+
+	return nil
 }
 
 // GetFileMetadata returns the metadata map for the given file ID.
@@ -145,13 +168,13 @@ func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
 	var metadataStr string
 	err := db.sqldb.Get(&metadataStr, "SELECT metadata FROM files WHERE id = ?", fileID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query file metadata: %w", err)
 	}
 
 	var metadata map[string]string
 	err = json.Unmarshal([]byte(metadataStr), &metadata)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse file metadata: %w", err)
 	}
 
 	return metadata, nil
@@ -161,7 +184,7 @@ func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
 func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 	rows, err := db.sqldb.Query("SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query expired files: %w", err)
 	}
 	defer rows.Close()
 
@@ -170,13 +193,13 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 		var fileID string
 		err := rows.Scan(&fileID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan expired file row: %w", err)
 		}
 		expiredFiles = append(expiredFiles, fileID)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to iterate expired file rows: %w", err)
 	}
 
 	return expiredFiles, nil
