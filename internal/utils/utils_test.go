@@ -461,3 +461,15 @@ func Test_SetStructField_dotpaths(t *testing.T) {
 		assert.Equal(t, int(42), ts.Nested.IntField) // should remain unchanged
 	})
 }
+
+func Test_SetStructField_invalidPath(t *testing.T) {
+	type TestStruct struct {
+		IntField int
+	}
+
+	ts := &TestStruct{IntField: 42}
+	err := SetStructField(ts, "NonExistentField", 100)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid field path")
+	assert.Equal(t, 42, ts.IntField) // should remain unchanged
+}
