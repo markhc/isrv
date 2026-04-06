@@ -54,31 +54,53 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	return time.UnixMilli(expires), nil
 }
 
-// GetIPAddress returns the client IP address from the request, respecting
-// X-Forwarded-For and X-Real-IP proxy headers when present.
-func GetIPAddress(r *http.Request) string {
-	fwdAddress := r.Header.Get("X-Forwarded-For")
-	if fwdAddress != "" {
-		ips := strings.Split(fwdAddress, ", ")
-		if len(ips) > 1 {
-			return ips[0]
-		} else {
-			return fwdAddress
+// GetIPAddress returns the real client IP, but only reads X-Forwarded-For
+// and X-Real-IP headers when the direct connection (RemoteAddr) comes from one of
+// the configured trustedProxies.
+func GetIPAddress(r *http.Request, trustedProxies []string) string {
+	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteIP = r.RemoteAddr
+	}
+
+	if len(trustedProxies) == 0 || !isInTrustedProxies(remoteIP, trustedProxies) {
+		return remoteIP
+	}
+
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// XFF may be a comma-separated list; the leftmost entry is the original client.
+		if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
+			return ip
 		}
 	}
-	ip := r.Header.Get("X-Real-IP")
-	if ip != "" {
-		return ip
+
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		return xri
 	}
 
-	// No proxy headers, return the remote address from the request
-	// Note: r.RemoteAddr may include the port number
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+	return remoteIP
+}
+
+// isInTrustedProxies reports whether ip matches any entry in the list.
+// Each entry may be a single IP address or a CIDR range (e.g. "10.0.0.0/8").
+func isInTrustedProxies(ip string, trustedProxies []string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
 	}
 
-	return ip
+	for _, proxy := range trustedProxies {
+		if strings.ContainsRune(proxy, '/') {
+			_, network, err := net.ParseCIDR(proxy)
+			if err == nil && network.Contains(parsed) {
+				return true
+			}
+		} else if ip == proxy {
+			return true
+		}
+	}
+
+	return false
 }
 
 func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Configuration) time.Time {

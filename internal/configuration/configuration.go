@@ -215,6 +215,9 @@ func verifyCleanupConfig() {
 
 func verifyRateLimitConfig() {
 	if config.RateLimit.Enabled {
+		// Ensure trusted proxies are set if behind a proxy
+		config.RateLimit.TrustedProxies = config.TrustedProxies
+
 		if config.RateLimit.RequestsPerMinute <= 0 {
 			panic("Invalid configuration: rate_limit.requests_per_minute must be a positive integer")
 		}
@@ -233,7 +236,7 @@ func verifyRateLimitConfig() {
 			panic("Invalid configuration: rate_limit.on_limit_exceeded must be one of: " + strings.Join(possibleActions, ", "))
 		}
 
-		if config.RateLimit.BlockDuration <= 0 {
+		if config.RateLimit.OnLimitExceeded == models.RateLimitActionBlock && config.RateLimit.BlockDuration <= 0 {
 			panic("Invalid configuration: rate_limit.block_duration must be a positive duration")
 		}
 	}

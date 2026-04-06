@@ -10,6 +10,16 @@ serverUrl: http://localhost:8080
 serverHost: 0.0.0.0
 serverPort: 8080
 
+# list of trusted proxy IPs or CIDR ranges for correctly identifying client IPs behind proxies.
+# This is important for accurate rate limiting and logging.
+# If your server is behind a reverse proxy (like NGINX, Cloudflare, etc.), 
+# you should add the proxy's IP address or CIDR range here.
+# example:
+# trustedProxies:
+#   - "127.0.0.1"
+#   - "10.0.0.0/8"
+trustedProxies: []
+
 # maximum file size in megabytes for uploads
 maxFileSizeMb: 512
 

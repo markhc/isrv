@@ -158,20 +158,25 @@ func createRouter(srv *server, config *models.Configuration, staticFilesDir fs.F
 
 	router.Handle(
 		"/d/{fileID}",
-		middleware.WithRequestLogging(srv.downloadHandler()),
+		middleware.WithRequestLogging(
+			config.TrustedProxies,
+			srv.downloadHandler()),
 	).Methods(http.MethodGet)
 
 	router.Handle(
 		"/d/{fileID}/{fileName}",
-		middleware.WithRequestLogging(srv.downloadHandler()),
+		middleware.WithRequestLogging(
+			config.TrustedProxies,
+			srv.downloadHandler()),
 	).Methods(http.MethodGet)
 
 	router.Handle(
 		"/",
 		middleware.WithRequestLogging(
+			config.TrustedProxies,
 			middleware.WithRateLimit(
 				config.RateLimit,
-				srv.uploadHandler())),
+				srv.uploadHandler(config.TrustedProxies))),
 	).Methods(http.MethodPost)
 
 	return router
@@ -324,7 +329,7 @@ func (s *server) downloadHandler() http.HandlerFunc {
 	}
 }
 
-func (s *server) uploadHandler() http.HandlerFunc {
+func (s *server) uploadHandler(trustedProxies []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -346,7 +351,7 @@ func (s *server) uploadHandler() http.HandlerFunc {
 			return
 		}
 
-		ipAddress := utils.GetIPAddress(r)
+		ipAddress := utils.GetIPAddress(r, trustedProxies)
 		expiration := utils.CalculateExpirationTime(r, header.Size, s.config)
 
 		logging.LogInfo("file upload requested",

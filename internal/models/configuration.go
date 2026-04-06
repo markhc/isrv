@@ -64,6 +64,8 @@ type RateLimitConfiguration struct {
 	WhitelistIPs      []string                `yaml:"whitelistIps"`
 	OnLimitExceeded   RateLimitExceededAction `yaml:"onLimitExceeded"`
 	BlockDuration     time.Duration           `yaml:"blockDuration,omitempty"` // Only used if action is "block"
+
+	TrustedProxies []string `yaml:"-"` // Populated from top-level trustedProxies for use in middleware
 }
 
 // Configuration is the top-level application configuration.
@@ -72,6 +74,7 @@ type Configuration struct {
 	ServerURL         string                 `yaml:"serverUrl"`
 	ServerHost        string                 `yaml:"serverHost"`
 	ServerPort        int                    `yaml:"serverPort"`
+	TrustedProxies    []string               `yaml:"trustedProxies"`
 	MaxFileSizeMB     int                    `yaml:"maxFileSizeMb"`
 	MinAgeDays        int                    `yaml:"minAgeDays"`
 	MaxAgeDays        int                    `yaml:"maxAgeDays"`

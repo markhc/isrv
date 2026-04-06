@@ -36,7 +36,7 @@ func WithRateLimit(rateLimit models.RateLimitConfiguration, next http.Handler) h
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ipAddress := utils.GetIPAddress(r)
+		ipAddress := utils.GetIPAddress(r, rateLimit.TrustedProxies)
 
 		// Check if the IP is whitelisted
 		if slices.Contains(rateLimit.WhitelistIPs, ipAddress) {

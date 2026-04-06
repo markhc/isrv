@@ -417,28 +417,89 @@ func TestWithRateLimit_MultipleWhitelistedIPs(t *testing.T) {
 	}
 }
 
-// TestWithRateLimit_XForwardedForRateTracking verifies rate limiting keys on the
-// X-Forwarded-For IP, so two requests from different proxies sharing the same client IP
-// consume from the same token bucket.
+// TestWithRateLimit_XForwardedForRateTracking verifies that XFF is respected when the
+// request comes from a configured trusted proxy.
 func TestWithRateLimit_XForwardedForRateTracking(t *testing.T) {
 	clearState()
-	// burst 1: allows exactly one token
 	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
+	cfg.TrustedProxies = []string{"10.10.0.0/24"}
 	handler := WithRateLimit(cfg, okHandler())
 
-	// First request: client 1.2.3.4 via proxy A → allowed
+	// First request: client 1.2.3.4 via trusted proxy → allowed
 	rr1 := doRequestWithXFF(handler, "10.10.0.1", "1.2.3.4")
 	assert.Equal(t, http.StatusOK, rr1.Code)
 
-	// Second request: same client IP via a different proxy → throttled (same bucket)
+	// Second request: same client IP via another trusted proxy → throttled (same bucket)
 	rr2 := doRequestWithXFF(handler, "10.10.0.2", "1.2.3.4")
 	assert.Equal(t, http.StatusTooManyRequests, rr2.Code,
 		"requests from the same forwarded IP should share the same rate limit bucket")
 
-	// A different client IP via the same proxy → still has its own full burst
+	// A different client IP via the same trusted proxy → own bucket
 	rr3 := doRequestWithXFF(handler, "10.10.0.1", "5.6.7.8")
 	assert.Equal(t, http.StatusOK, rr3.Code,
 		"a different forwarded IP should have its own independent bucket")
+}
+
+// TestWithRateLimit_XFFIgnoredWithoutTrustedProxies verifies that when no trusted proxies
+// are configured, XFF headers are ignored and RemoteAddr is used as the rate limit key.
+func TestWithRateLimit_XFFIgnoredWithoutTrustedProxies(t *testing.T) {
+	clearState()
+	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
+	// no TrustedProxies configured
+	handler := WithRateLimit(cfg, okHandler())
+
+	// Two requests with the same spoofed XFF but different RemoteAddrs → separate buckets
+	rr1 := doRequestWithXFF(handler, "10.10.0.1", "1.2.3.4")
+	assert.Equal(t, http.StatusOK, rr1.Code)
+
+	rr2 := doRequestWithXFF(handler, "10.10.0.2", "1.2.3.4")
+	assert.Equal(t, http.StatusOK, rr2.Code,
+		"different remote IPs should have separate buckets; XFF is not trusted")
+
+	// Same RemoteAddr with a different spoofed XFF → shares the bucket (keyed on RemoteAddr)
+	rr3 := doRequestWithXFF(handler, "10.10.0.1", "9.9.9.9")
+	assert.Equal(t, http.StatusTooManyRequests, rr3.Code,
+		"same remote IP shares bucket regardless of XFF value")
+}
+
+// TestWithRateLimit_XFFSpoofingFromUntrustedSource verifies that a client sending a
+// forged XFF header from an untrusted IP is rate-limited by its actual RemoteAddr.
+func TestWithRateLimit_XFFSpoofingFromUntrustedSource(t *testing.T) {
+	clearState()
+	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
+	cfg.TrustedProxies = []string{"10.0.0.1"} // only this proxy is trusted
+	handler := WithRateLimit(cfg, okHandler())
+
+	// Attacker (99.99.99.99) forges XFF to appear as a different IP
+	rr1 := doRequestWithXFF(handler, "99.99.99.99", "1.1.1.1")
+	assert.Equal(t, http.StatusOK, rr1.Code)
+
+	// Second request with different spoofed XFF but same untrusted RemoteAddr → throttled
+	rr2 := doRequestWithXFF(handler, "99.99.99.99", "2.2.2.2")
+	assert.Equal(t, http.StatusTooManyRequests, rr2.Code,
+		"spoofed XFF from untrusted source must not bypass rate limiting")
+}
+
+// TestWithRateLimit_TrustedProxyCIDR verifies that a CIDR range in TrustedProxies
+// causes XFF to be trusted for any proxy within that range.
+func TestWithRateLimit_TrustedProxyCIDR(t *testing.T) {
+	clearState()
+	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
+	cfg.TrustedProxies = []string{"10.20.0.0/16"}
+	handler := WithRateLimit(cfg, okHandler())
+
+	// Proxies 10.20.1.1 and 10.20.2.1 are both within the trusted CIDR
+	rr1 := doRequestWithXFF(handler, "10.20.1.1", "203.0.113.5")
+	assert.Equal(t, http.StatusOK, rr1.Code)
+
+	rr2 := doRequestWithXFF(handler, "10.20.2.1", "203.0.113.5")
+	assert.Equal(t, http.StatusTooManyRequests, rr2.Code,
+		"same client IP via different proxies in the trusted CIDR should share one bucket")
+
+	// A proxy outside the CIDR → XFF ignored, keyed on its own RemoteAddr
+	rr3 := doRequestWithXFF(handler, "10.21.0.1", "203.0.113.5")
+	assert.Equal(t, http.StatusOK, rr3.Code,
+		"proxy outside the trusted CIDR should be treated as its own client")
 }
 
 // TestWithRateLimit_UnrecognizedAction verifies that an unrecognized OnLimitExceeded value
