@@ -21,14 +21,35 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// resetState clears the in-process rate limiter and block list between tests.
-func resetState() {
+// blockInfo returns the block expiry time and offense count for ip.
+// Both values are zero if the IP has no entry.
+func blockInfo(ip string) (until time.Time, offenses int) {
+	blockMu.Lock()
+	defer blockMu.Unlock()
+
+	e := blockList[ip]
+
+	return e.until, e.offenses
+}
+
+// expireBlock backdates an IP's block so it appears already expired.
+func expireBlock(ip string) {
+	blockMu.Lock()
+	defer blockMu.Unlock()
+
+	e := blockList[ip]
+	e.until = time.Now().Add(-time.Millisecond)
+	blockList[ip] = e
+}
+
+// clearState clears all rate-limiter and block-list state.
+func clearState() {
 	visitorsMu.Lock()
 	visitors = make(map[string]*rate.Limiter)
 	visitorsMu.Unlock()
 
 	blockMu.Lock()
-	blockList = make(map[string]time.Time)
+	blockList = make(map[string]blockEntry)
 	blockMu.Unlock()
 }
 
@@ -86,7 +107,7 @@ func TestWithRateLimit_ZeroRPS(t *testing.T) {
 
 // TestWithRateLimit_AllowsUnderLimit verifies requests within the limit are allowed.
 func TestWithRateLimit_AllowsUnderLimit(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(600, 5, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 	for range 5 {
@@ -97,7 +118,7 @@ func TestWithRateLimit_AllowsUnderLimit(t *testing.T) {
 
 // TestWithRateLimit_ThrottleOnExceed returns 429 when burst is exhausted and action is throttle.
 func TestWithRateLimit_ThrottleOnExceed(t *testing.T) {
-	resetState()
+	clearState()
 	// 60 RPM with burst 2 → allows 2 immediate requests, then 429
 	cfg := rateLimitConfig(60, 2, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
@@ -110,7 +131,7 @@ func TestWithRateLimit_ThrottleOnExceed(t *testing.T) {
 
 // TestWithRateLimit_BlockOnExceed blocks the IP and returns 403 after burst is exhausted.
 func TestWithRateLimit_BlockOnExceed(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, 1, models.RateLimitActionBlock)
 	handler := WithRateLimit(cfg, okHandler())
 	doRequest(handler, "10.0.0.3")
@@ -126,7 +147,7 @@ func TestWithRateLimit_BlockOnExceed(t *testing.T) {
 
 // TestWithRateLimit_BlockedIPRejected verifies a pre-blocked IP is rejected immediately.
 func TestWithRateLimit_BlockedIPRejected(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(600, 10, models.RateLimitActionBlock)
 	blockIp("10.0.0.4", 5*time.Minute)
 
@@ -137,7 +158,7 @@ func TestWithRateLimit_BlockedIPRejected(t *testing.T) {
 
 // TestWithRateLimit_BlockExpires verifies that an expired block no longer rejects requests.
 func TestWithRateLimit_BlockExpires(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(600, 10, models.RateLimitActionBlock)
 
 	// Use a past time so the block is already expired
@@ -150,7 +171,7 @@ func TestWithRateLimit_BlockExpires(t *testing.T) {
 
 // TestWithRateLimit_WhitelistedIPBypass verifies whitelisted IPs skip rate limiting entirely.
 func TestWithRateLimit_WhitelistedIPBypass(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(1, 1, models.RateLimitActionThrottle)
 	cfg.WhitelistIPs = []string{"192.168.1.1"}
 	handler := WithRateLimit(cfg, okHandler())
@@ -162,7 +183,7 @@ func TestWithRateLimit_WhitelistedIPBypass(t *testing.T) {
 
 // TestWithRateLimit_NoneActionAllows verifies action=none logs but still serves the request.
 func TestWithRateLimit_NoneActionAllows(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, 1, models.RateLimitActionNone)
 	handler := WithRateLimit(cfg, okHandler())
 	doRequest(handler, "10.0.0.6")
@@ -174,7 +195,7 @@ func TestWithRateLimit_NoneActionAllows(t *testing.T) {
 
 // TestWithRateLimit_IsolatedPerIP verifies rate limiters are per-IP and do not interfere.
 func TestWithRateLimit_IsolatedPerIP(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 
@@ -192,7 +213,7 @@ func TestWithRateLimit_IsolatedPerIP(t *testing.T) {
 // (burst+1)th is the first to be rejected.
 func TestWithRateLimit_BurstExactBoundary(t *testing.T) {
 	const burst = 50
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(6000, burst, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 	for i := range burst {
@@ -208,7 +229,7 @@ func TestWithRateLimit_BurstExactBoundary(t *testing.T) {
 // without interfering with each other.
 func TestWithRateLimit_ManyIPsAllAllowed(t *testing.T) {
 	const ipCount = 500
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, 3, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 	for i := range ipCount {
@@ -223,7 +244,7 @@ func TestWithRateLimit_ManyIPsAllAllowed(t *testing.T) {
 func TestWithRateLimit_SustainedFloodThrottled(t *testing.T) {
 	const total = 200
 	const burst = 5
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, burst, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 	allowed, rejected := 0, 0
@@ -245,7 +266,7 @@ func TestWithRateLimit_SustainedFloodThrottled(t *testing.T) {
 func TestWithRateLimit_SustainedFloodBlocked(t *testing.T) {
 	const total = 200
 	const burst = 5
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, burst, models.RateLimitActionBlock)
 	handler := WithRateLimit(cfg, okHandler())
 
@@ -268,7 +289,7 @@ func TestWithRateLimit_SustainedFloodBlocked(t *testing.T) {
 // IPs get blocked while well-behaved IPs continue to be served.
 func TestWithRateLimit_MultipleIPsSomethingBlocked(t *testing.T) {
 	const burst = 3
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, burst, models.RateLimitActionBlock)
 	handler := WithRateLimit(cfg, okHandler())
 
@@ -294,7 +315,7 @@ func TestWithRateLimit_MultipleIPsSomethingBlocked(t *testing.T) {
 func TestWithRateLimit_ConcurrentRequestsSingleIP(t *testing.T) {
 	const goroutines = 100
 	const burst = 10
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(6000, burst, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 
@@ -318,7 +339,7 @@ func TestWithRateLimit_ConcurrentRequestsSingleIP(t *testing.T) {
 // IPs and verifies all first requests succeed.
 func TestWithRateLimit_ConcurrentRequestsManyIPs(t *testing.T) {
 	const ipCount = 100
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 
@@ -343,7 +364,7 @@ func TestWithRateLimit_ConcurrentRequestsManyIPs(t *testing.T) {
 // refill, a previously exhausted IP can make requests again (throttle policy).
 func TestWithRateLimit_RateLimitRecovery(t *testing.T) {
 	// 120 RPM = 2 tokens/sec, burst 1
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(120, 1, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
 
@@ -363,7 +384,7 @@ func TestWithRateLimit_RateLimitRecovery(t *testing.T) {
 // even while non-whitelisted IPs are being aggressively rate-limited.
 func TestWithRateLimit_WhitelistAmongHighTraffic(t *testing.T) {
 	const burst = 2
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, burst, models.RateLimitActionBlock)
 	cfg.WhitelistIPs = []string{"80.0.0.1"}
 	handler := WithRateLimit(cfg, okHandler())
@@ -383,7 +404,7 @@ func TestWithRateLimit_WhitelistAmongHighTraffic(t *testing.T) {
 
 // TestWithRateLimit_MultipleWhitelistedIPs verifies all entries in the whitelist bypass limiting.
 func TestWithRateLimit_MultipleWhitelistedIPs(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(1, 1, models.RateLimitActionThrottle)
 	cfg.WhitelistIPs = []string{"192.168.2.1", "192.168.2.2"}
 	handler := WithRateLimit(cfg, okHandler())
@@ -400,7 +421,7 @@ func TestWithRateLimit_MultipleWhitelistedIPs(t *testing.T) {
 // X-Forwarded-For IP, so two requests from different proxies sharing the same client IP
 // consume from the same token bucket.
 func TestWithRateLimit_XForwardedForRateTracking(t *testing.T) {
-	resetState()
+	clearState()
 	// burst 1: allows exactly one token
 	cfg := rateLimitConfig(60, 1, models.RateLimitActionThrottle)
 	handler := WithRateLimit(cfg, okHandler())
@@ -423,11 +444,86 @@ func TestWithRateLimit_XForwardedForRateTracking(t *testing.T) {
 // TestWithRateLimit_UnrecognizedAction verifies that an unrecognized OnLimitExceeded value
 // falls through to the default case and returns 429.
 func TestWithRateLimit_UnrecognizedAction(t *testing.T) {
-	resetState()
+	clearState()
 	cfg := rateLimitConfig(60, 1, models.RateLimitExceededAction("badaction"))
 	handler := WithRateLimit(cfg, okHandler())
 
 	doRequest(handler, "90.0.0.1")
 	rr := doRequest(handler, "90.0.0.1")
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
+}
+
+// TestBlockIp_ExponentialBackoff verifies that successive blocks double the block duration.
+func TestBlockIp_ExponentialBackoff(t *testing.T) {
+	const base = time.Second
+	ip := "100.0.0.1"
+
+	for offense := 1; offense <= 5; offense++ {
+		clearState()
+
+		// Apply the block 'offense' times in sequence
+		for range offense {
+			blockIp(ip, base)
+		}
+
+		until, offenses := blockInfo(ip)
+
+		expectedFactor := time.Duration(1 << (offense - 1))
+		expectedMin := base * expectedFactor
+
+		remaining := time.Until(until)
+		assert.GreaterOrEqual(t, remaining, expectedMin-50*time.Millisecond,
+			"offense %d: block duration should be at least %v, got ~%v", offense, expectedMin, remaining)
+		assert.Equal(t, offense, offenses,
+			"offense %d: offense counter should be %d", offense, offense)
+	}
+}
+
+// TestWithRateLimit_BackoffIncreasesOnReblock verifies that when an IP is unblocked and
+// then re-triggers the block action, the new block duration is longer than the first.
+func TestWithRateLimit_BackoffIncreasesOnReblock(t *testing.T) {
+	clearState()
+	const base = 100 * time.Millisecond
+	cfg := rateLimitConfig(60, 1, models.RateLimitActionBlock)
+	cfg.BlockDuration = base
+	handler := WithRateLimit(cfg, okHandler())
+
+	// First offense: exhaust burst → blocked
+	doRequest(handler, "101.0.0.1") // uses the 1 token
+	doRequest(handler, "101.0.0.1") // rate exceeded → block #1
+
+	firstUntil, firstOffenses := blockInfo("101.0.0.1")
+	assert.Equal(t, 1, firstOffenses)
+
+	// Simulate expiry by back-dating the block
+	expireBlock("101.0.0.1")
+
+	// The limiter still exists and has no tokens; the next Allow() call will fail
+	// → second offense block is recorded
+	doRequest(handler, "101.0.0.1")
+
+	secondUntil, secondOffenses := blockInfo("101.0.0.1")
+	assert.Equal(t, 2, secondOffenses)
+	assert.True(t, secondUntil.After(firstUntil),
+		"second block should expire later than the first (backoff applied)")
+}
+
+// TestWithRateLimit_BackoffCappedAtMax verifies that the block duration does not grow
+// beyond maxBackoffFactor × baseDuration.
+func TestWithRateLimit_BackoffCappedAtMax(t *testing.T) {
+	const base = time.Millisecond
+	ip := "102.0.0.1"
+
+	// Apply far more blocks than maxBackoffFactor
+	for range maxBackoffFactor + 10 {
+		blockIp(ip, base)
+	}
+
+	until, _ := blockInfo(ip)
+
+	maxDuration := base * time.Duration(1<<maxBackoffFactor)
+	remaining := time.Until(until)
+	// Allow a small margin for test execution time
+	assert.LessOrEqual(t, remaining, maxDuration+50*time.Millisecond,
+		"block duration must not exceed the cap of %v", maxDuration)
 }

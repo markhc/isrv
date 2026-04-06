@@ -78,6 +78,7 @@ rateLimit:
   # "none" (no action, just log the event)
   onLimitExceeded: "throttle"
   blockDuration: 15m # duration to block IPs that exceed the limit, only applicable if action is "block"
+  blockExponentialBackoff: true # block duration will increase exponentially for repeated offenses
 
 # logging configuration
 logging:

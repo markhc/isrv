@@ -13,6 +13,7 @@ func WithRequestLogging(next http.Handler) http.Handler {
 			"incoming request",
 			logging.String("method", r.Method),
 			logging.String("path", r.URL.Path),
+			logging.Int64("body_size", r.ContentLength),
 			logging.String("ip_address", utils.GetIPAddress(r)))
 		next.ServeHTTP(w, r)
 	})

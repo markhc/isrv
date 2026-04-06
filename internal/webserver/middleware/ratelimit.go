@@ -12,12 +12,20 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// blockEntry holds the expiry time and the number of times an IP has been blocked.
+type blockEntry struct {
+	until    time.Time
+	offenses int
+}
+
+const maxBackoffFactor = 32 // caps the multiplier at 2^5
+
 var (
 	// map of IP addresses to their rate limiters.
 	visitors   = make(map[string]*rate.Limiter)
 	visitorsMu sync.Mutex
 	// blockList keeps track of IPs that are currently blocked and when their block expires.
-	blockList = make(map[string]time.Time)
+	blockList = make(map[string]blockEntry)
 	blockMu   sync.Mutex
 )
 
@@ -62,7 +70,7 @@ func WithRateLimit(rateLimit models.RateLimitConfiguration, next http.Handler) h
 
 				return
 			case models.RateLimitActionThrottle:
-				// For throttle, we could add a Retry-After header or similar, but for simplicity we'll just return 429
+				// We should add X-RateLimit-Retry header with retry time
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 
 				return
@@ -100,23 +108,29 @@ func isBlocked(ip string) bool {
 	blockMu.Lock()
 	defer blockMu.Unlock()
 
-	unblockTime, blocked := blockList[ip]
-	if !blocked {
+	entry, exists := blockList[ip]
+	if !exists {
 		return false
 	}
 
-	if time.Now().After(unblockTime) {
-		delete(blockList, ip)
-
+	// Block has expired; leave the entry so the offense count is preserved
+	if time.Now().After(entry.until) {
 		return false
 	}
 
 	return true
 }
 
-func blockIp(ip string, duration time.Duration) {
+// blockIp records a block for ip, doubling the base duration on each repeated offense.
+func blockIp(ip string, baseDuration time.Duration) {
 	blockMu.Lock()
 	defer blockMu.Unlock()
 
-	blockList[ip] = time.Now().Add(duration)
+	entry := blockList[ip]
+	entry.offenses++
+
+	factor := 1 << min(entry.offenses-1, maxBackoffFactor)
+	entry.until = time.Now().Add(baseDuration * time.Duration(factor))
+
+	blockList[ip] = entry
 }
