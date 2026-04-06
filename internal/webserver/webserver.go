@@ -168,7 +168,10 @@ func createRouter(srv *server, config *models.Configuration, staticFilesDir fs.F
 
 	router.Handle(
 		"/",
-		middleware.WithRequestLogging(srv.uploadHandler()),
+		middleware.WithRequestLogging(
+			middleware.WithRateLimit(
+				config.RateLimit,
+				srv.uploadHandler())),
 	).Methods(http.MethodPost)
 
 	return router

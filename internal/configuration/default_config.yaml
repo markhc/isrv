@@ -65,6 +65,20 @@ database:
   password: ""
   dbName: ""
 
+# rate limit configuration
+# applies to upload, expire and delete endpoints, but not to download or index page
+rateLimit:
+  enabled: true
+  requestsPerMinute: 30
+  burstSize: 10 # number of requests allowed in a short burst before enforcing the rate limit
+  whitelistIps: []
+  # supported actions: 
+  # "throttle" (respond with 429 Too Many Requests and a Retry-After header)
+  # "block" (respond with 403 Forbidden and block the IP for a certain duration)
+  # "none" (no action, just log the event)
+  onLimitExceeded: "throttle"
+  blockDuration: 15m # duration to block IPs that exceed the limit, only applicable if action is "block"
+
 # logging configuration
 logging:
   level: info

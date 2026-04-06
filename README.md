@@ -57,7 +57,7 @@ docker compose up -d
 
 ### From source
 
-Requires Go 1.24 or later:
+Requires Go 1.25 or later:
 
 ```bash
 git clone https://github.com/markhc/isrv.git
