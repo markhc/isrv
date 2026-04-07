@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/logging"
 )
@@ -16,8 +16,7 @@ func Static(staticFilesDir fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logging.LogDebug("staticFilesHandler", logging.String("path", r.URL.Path))
 
-		vars := mux.Vars(r)
-		file := vars["file"]
+		file := chi.URLParam(r, "file")
 
 		if strings.Contains(file, "..") {
 			http.Error(w, "Invalid file path", http.StatusBadRequest)
