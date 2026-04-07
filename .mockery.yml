@@ -1,0 +1,22 @@
+formatter: goimports
+log-level: info
+generate: true
+include-auto-generated: false
+require-template-schema-exists: true
+template: testify
+template-schema: '{{.Template}}.schema.json'
+
+# Shared mocks: place each mock in a dedicated mocks/ sub-package so they can
+# be imported by any test in the repository.
+dir: '{{.InterfaceDir}}/mocks'
+filename: 'mock_{{.InterfaceName}}.go'
+pkgname: 'mocks'
+structname: 'Mock{{.InterfaceName}}'
+
+packages:
+  github.com/markhc/isrv/internal/database:
+    interfaces:
+      Database: {}
+  github.com/markhc/isrv/internal/storage:
+    interfaces:
+      Storage: {}

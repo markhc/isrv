@@ -2,7 +2,6 @@ package handlers_test
 
 import (
 	"bytes"
-	"context"
 	"embed"
 	"errors"
 	"io/fs"
@@ -13,11 +12,12 @@ import (
 	"strings"
 	"testing"
 	"text/template"
-	"time"
 
 	"github.com/gorilla/mux"
+	dbmocks "github.com/markhc/isrv/internal/database/mocks"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
+	stmocks "github.com/markhc/isrv/internal/storage/mocks"
 	"github.com/markhc/isrv/internal/webserver/handlers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -30,48 +30,6 @@ var testTemplatesFS embed.FS
 func TestMain(m *testing.M) {
 	logging.InitializeNop()
 	os.Exit(m.Run())
-}
-
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-type MockDB struct{ mock.Mock }
-
-func (m *MockDB) Connect() error { return m.Called().Error(0) }
-func (m *MockDB) Close() error   { return m.Called().Error(0) }
-func (m *MockDB) Migrate() error { return m.Called().Error(0) }
-func (m *MockDB) OnFileUpload(fileID string, h *multipart.FileHeader, exp time.Time, ip string) error {
-	return m.Called(fileID, h, exp, ip).Error(0)
-}
-func (m *MockDB) OnFileDownload(fileID string) error { return m.Called(fileID).Error(0) }
-func (m *MockDB) OnFileDelete(fileID string) error   { return m.Called(fileID).Error(0) }
-func (m *MockDB) GetFileMetadata(fileID string) (map[string]string, error) {
-	args := m.Called(fileID)
-	md, _ := args.Get(0).(map[string]string)
-	return md, args.Error(1)
-}
-func (m *MockDB) GetExpiredFiles() ([]string, error) {
-	args := m.Called()
-	files, _ := args.Get(0).([]string)
-	return files, args.Error(1)
-}
-
-type MockStorage struct{ mock.Mock }
-
-func (m *MockStorage) FileExists(ctx context.Context, fileID string) (bool, error) {
-	args := m.Called(ctx, fileID)
-	return args.Bool(0), args.Error(1)
-}
-func (m *MockStorage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, h *multipart.FileHeader) (string, error) {
-	args := m.Called(ctx, fileID, file, h)
-	return args.String(0), args.Error(1)
-}
-func (m *MockStorage) DeleteFile(ctx context.Context, fileID string) error {
-	return m.Called(ctx, fileID).Error(0)
-}
-func (m *MockStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID, fileName string, metadata map[string]string, inline, caching bool) {
-	m.Called(w, r, fileID, fileName, metadata, inline, caching)
 }
 
 // ---------------------------------------------------------------------------
@@ -223,8 +181,8 @@ func Test_Download(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := &MockDB{}
-			stor := &MockStorage{}
+			db := dbmocks.NewMockDatabase(t)
+			stor := stmocks.NewMockStorage(t)
 
 			db.On("OnFileDownload", tt.fileID).Return(tt.downloadErr)
 			db.On("GetFileMetadata", tt.fileID).Return(tt.metadata, tt.metadataErr)
@@ -244,9 +202,6 @@ func Test_Download(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			h.ServeHTTP(w, req)
-
-			db.AssertExpectations(t)
-			stor.AssertExpectations(t)
 		})
 	}
 }
@@ -269,39 +224,39 @@ func Test_Upload(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setup          func(t *testing.T) (*http.Request, *MockDB, *MockStorage)
+		setup          func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage)
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name: "missing file field returns 400",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(""))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				return req, &MockDB{}, &MockStorage{}
+				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "file' field is missing",
 		},
 		{
 			name: "file too large returns 413",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				body, ct := multipartBody(t, "big.bin", bytes.Repeat([]byte("x"), 10))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				return req, &MockDB{}, &MockStorage{}
+				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
 			},
 			expectedStatus: http.StatusRequestEntityTooLarge,
 			expectedBody:   "file size exceeds the maximum allowed limit",
 		},
 		{
 			name: "SaveFileUpload error returns 500",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				body, ct := multipartBody(t, "file.txt", []byte("hello"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				db := &MockDB{}
-				stor := &MockStorage{}
+				db := dbmocks.NewMockDatabase(t)
+				stor := stmocks.NewMockStorage(t)
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("", errors.New("storage failure"))
 				return req, db, stor
@@ -311,12 +266,12 @@ func Test_Upload(t *testing.T) {
 		},
 		{
 			name: "OnFileUpload error is non-fatal",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				body, ct := multipartBody(t, "file.txt", []byte("hello"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				db := &MockDB{}
-				stor := &MockStorage{}
+				db := dbmocks.NewMockDatabase(t)
+				stor := stmocks.NewMockStorage(t)
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/file.txt", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -328,12 +283,12 @@ func Test_Upload(t *testing.T) {
 		},
 		{
 			name: "happy path returns 200 with URL",
-			setup: func(t *testing.T) (*http.Request, *MockDB, *MockStorage) {
+			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				body, ct := multipartBody(t, "photo.png", []byte("image data"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				db := &MockDB{}
-				stor := &MockStorage{}
+				db := dbmocks.NewMockDatabase(t)
+				stor := stmocks.NewMockStorage(t)
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/photo.png", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -360,9 +315,6 @@ func Test_Upload(t *testing.T) {
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			assert.Contains(t, w.Body.String(), tt.expectedBody)
-
-			db.AssertExpectations(t)
-			stor.AssertExpectations(t)
 		})
 	}
 }
