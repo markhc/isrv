@@ -1,5 +1,7 @@
 package storage
 
+//go:generate go tool mockery
+
 import (
 	"context"
 	"mime/multipart"

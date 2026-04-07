@@ -1,5 +1,7 @@
 package database
 
+//go:generate go tool mockery
+
 import (
 	"embed"
 	"mime/multipart"
