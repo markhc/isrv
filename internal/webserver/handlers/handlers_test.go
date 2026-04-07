@@ -236,7 +236,7 @@ func Test_Upload(t *testing.T) {
 				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   "file' field is missing",
+			expectedBody:   "missing multipart form 'file' field",
 		},
 		{
 			name: "file too large returns 413",
@@ -247,7 +247,7 @@ func Test_Upload(t *testing.T) {
 				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
 			},
 			expectedStatus: http.StatusRequestEntityTooLarge,
-			expectedBody:   "file size exceeds the maximum allowed limit",
+			expectedBody:   "file too large",
 		},
 		{
 			name: "SaveFileUpload error returns 500",

@@ -19,19 +19,21 @@ import (
 // Upload returns a handler that accepts file uploads and stores them.
 func Upload(config *models.Configuration, db database.Database, stor storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		file, header, err := validateUploadRequest(r)
+		file, header, err := validateUploadRequest(w, r, config)
 		if err != nil {
-			utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+			if err.Error() == "file too large" {
+				logging.LogInfo(
+					"file upload rejected: file too large",
+					logging.Int("max_size_bytes", config.MaxFileSizeMB*1024*1024))
+				utils.RespondWithError(w, http.StatusRequestEntityTooLarge, "file too large")
+			} else {
+				logging.LogInfo("file upload rejected: invalid request", logging.Error(err))
+				utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+			}
 
 			return
 		}
 		defer file.Close()
-
-		if err := validateFileSize(header, config.MaxFileSizeMB); err != nil {
-			utils.RespondWithError(w, http.StatusRequestEntityTooLarge, err.Error())
-
-			return
-		}
 
 		ipAddress := utils.GetIPAddress(r, config.TrustedProxies)
 		expiration := utils.CalculateExpirationTime(r, header.Size, config)
@@ -63,22 +65,26 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 	}
 }
 
-func validateUploadRequest(r *http.Request) (multipart.File, *multipart.FileHeader, error) {
+func validateUploadRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	config *models.Configuration,
+) (multipart.File, *multipart.FileHeader, error) {
+	// validate file size first
+	maxSizeBytes := int64(config.MaxFileSizeMB * 1024 * 1024)
+	r.Body = http.MaxBytesReader(w, r.Body, maxSizeBytes)
+
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		return nil, nil, errors.New("multipart form 'file' field is missing")
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return nil, nil, errors.New("file too large")
+		}
+
+		return nil, nil, errors.New("missing multipart form 'file' field")
 	}
 
 	return file, header, nil
-}
-
-func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int) error {
-	maxSizeBytes := int64(maxFileSizeMB * 1024 * 1024)
-	if header.Size > maxSizeBytes {
-		return fmt.Errorf("file size exceeds the maximum allowed limit of %d MB", maxFileSizeMB)
-	}
-
-	return nil
 }
 
 func processUpload(
@@ -91,9 +97,11 @@ func processUpload(
 	expiration time.Time,
 	ipAddress string,
 ) (string, error) {
-	logging.LogInfo("processing uploaded file: " + header.Filename)
+	logging.LogInfo("processing upload", logging.String("filename", header.Filename))
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
+
+	logging.LogDebug("generated file ID", logging.String("file_id", fileID))
 
 	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
 	if err != nil {
