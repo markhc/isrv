@@ -55,7 +55,7 @@ func NewApplication(
 		NotFoundHandler: handlers.NotFound(tmpl, config),
 
 		Middleware: AppMiddleware{
-			RequireToken: middleware.RequireToken(config),
+			RequireToken: middleware.RequireToken(db),
 			RateLimit:    middleware.RateLimit(ctx, config.RateLimit),
 		},
 	}
