@@ -1,36 +1,36 @@
 package handlers_test
 
 import (
-"bytes"
-"context"
-"embed"
-"errors"
-"io/fs"
-"mime/multipart"
-"net/http"
-"net/http/httptest"
-"os"
-"strings"
-"testing"
-"text/template"
+	"bytes"
+	"context"
+	"embed"
+	"errors"
+	"io/fs"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+	"text/template"
 
-"github.com/go-chi/chi/v5"
-dbmocks "github.com/markhc/isrv/internal/database/mocks"
-"github.com/markhc/isrv/internal/app/handlers"
-"github.com/markhc/isrv/internal/logging"
-"github.com/markhc/isrv/internal/models"
-stmocks "github.com/markhc/isrv/internal/storage/mocks"
-"github.com/stretchr/testify/assert"
-"github.com/stretchr/testify/mock"
-"github.com/stretchr/testify/require"
+	"github.com/go-chi/chi/v5"
+	"github.com/markhc/isrv/internal/app/handlers"
+	dbmocks "github.com/markhc/isrv/internal/database/mocks"
+	"github.com/markhc/isrv/internal/logging"
+	"github.com/markhc/isrv/internal/models"
+	stmocks "github.com/markhc/isrv/internal/storage/mocks"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 //go:embed testdata/templates
 var testTemplatesFS embed.FS
 
 func TestMain(m *testing.M) {
-logging.InitializeNop()
-os.Exit(m.Run())
+	logging.InitializeNop()
+	os.Exit(m.Run())
 }
 
 // ---------------------------------------------------------------------------
@@ -38,21 +38,21 @@ os.Exit(m.Run())
 // ---------------------------------------------------------------------------
 
 func loadTemplates(t *testing.T) *template.Template {
-t.Helper()
-tmpl, err := template.New("").ParseFS(testTemplatesFS, "testdata/templates/*.tmpl")
-require.NoError(t, err)
-return tmpl
+	t.Helper()
+	tmpl, err := template.New("").ParseFS(testTemplatesFS, "testdata/templates/*.tmpl")
+	require.NoError(t, err)
+	return tmpl
 }
 
 func defaultConfig() *models.Configuration {
-return &models.Configuration{
-ServerURL:      "http://localhost:8080",
-MaxFileSizeMB:  100,
-MinAgeDays:     30,
-MaxAgeDays:     365,
-RandomIDLength: 8,
-FaviconFormat:  "png",
-}
+	return &models.Configuration{
+		ServerURL:      "http://localhost:8080",
+		MaxFileSizeMB:  100,
+		MinAgeDays:     30,
+		MaxAgeDays:     365,
+		RandomIDLength: 8,
+		FaviconFormat:  "png",
+	}
 }
 
 // chiRequest injects chi URL params into a request's context.
@@ -139,15 +139,15 @@ func Test_Static(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-staticDir, err := fs.Sub(testTemplatesFS, "testdata")
-require.NoError(t, err)
+			staticDir, err := fs.Sub(testTemplatesFS, "testdata")
+			require.NoError(t, err)
 
-h := handlers.Static(staticDir)
-req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-req = chiRequest(req, map[string]string{
-"file": strings.TrimPrefix(tt.path, "/static/"),
-})
-w := httptest.NewRecorder()
+			h := handlers.Static(staticDir)
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req = chiRequest(req, map[string]string{
+				"file": strings.TrimPrefix(tt.path, "/static/"),
+			})
+			w := httptest.NewRecorder()
 
 			h.ServeHTTP(w, req)
 
@@ -191,12 +191,12 @@ func Test_Download(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-db := dbmocks.NewMockDatabase(t)
-stor := stmocks.NewMockStorage(t)
+			db := dbmocks.NewMockDatabase(t)
+			stor := stmocks.NewMockStorage(t)
 
-db.On("OnFileDownload", tt.fileID).Return(tt.downloadErr)
-db.On("GetFileMetadata", tt.fileID).Return(tt.metadata, tt.metadataErr)
-stor.On("ServeFile", mock.Anything, mock.Anything, tt.fileID, tt.fileName, tt.metadata, true, true).Return()
+			db.On("OnFileDownload", tt.fileID).Return(tt.downloadErr)
+			db.On("GetFileMetadata", tt.fileID).Return(tt.metadata, tt.metadataErr)
+			stor.On("ServeFile", mock.Anything, mock.Anything, tt.fileID, tt.fileName, tt.metadata, true, true).Return()
 
 			h := handlers.Download(db, stor)
 
@@ -312,7 +312,7 @@ func Test_Upload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-cfg := defaultConfig()
+			cfg := defaultConfig()
 			if tt.name == "file too large returns 413" {
 				cfg.MaxFileSizeMB = 0
 			}
