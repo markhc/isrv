@@ -368,7 +368,7 @@ func Test_uploadHandler(t *testing.T) {
 			srv := newTestServer(t, cfg, db, stor)
 
 			w := httptest.NewRecorder()
-			srv.uploadHandler().ServeHTTP(w, req)
+			srv.uploadHandler(cfg.TrustedProxies).ServeHTTP(w, req)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			assert.Contains(t, w.Body.String(), tt.expectedBody)

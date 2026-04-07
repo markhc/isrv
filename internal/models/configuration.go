@@ -49,25 +49,46 @@ type CleanupConfiguration struct {
 	Interval time.Duration `yaml:"interval"`
 }
 
+type RateLimitExceededAction string
+
+const (
+	RateLimitActionThrottle RateLimitExceededAction = "throttle"
+	RateLimitActionBlock    RateLimitExceededAction = "block"
+	RateLimitActionNone     RateLimitExceededAction = "none"
+)
+
+type RateLimitConfiguration struct {
+	Enabled           bool                    `yaml:"enabled"`
+	RequestsPerMinute int                     `yaml:"requestsPerMinute"`
+	BurstSize         int                     `yaml:"burstSize"`
+	WhitelistIPs      []string                `yaml:"whitelistIps"`
+	OnLimitExceeded   RateLimitExceededAction `yaml:"onLimitExceeded"`
+	BlockDuration     time.Duration           `yaml:"blockDuration,omitempty"` // Only used if action is "block"
+
+	TrustedProxies []string `yaml:"-"` // Populated from top-level trustedProxies for use in middleware
+}
+
 // Configuration is the top-level application configuration.
 type Configuration struct {
-	ServerName        string                `yaml:"serverName"`
-	ServerURL         string                `yaml:"serverUrl"`
-	ServerHost        string                `yaml:"serverHost"`
-	ServerPort        int                   `yaml:"serverPort"`
-	MaxFileSizeMB     int                   `yaml:"maxFileSizeMb"`
-	MinAgeDays        int                   `yaml:"minAgeDays"`
-	MaxAgeDays        int                   `yaml:"maxAgeDays"`
-	RandomIDLength    int                   `yaml:"randomIdLength"`
-	DisableIndexPage  bool                  `yaml:"disableIndexPage"`
-	DisableUploadPage bool                  `yaml:"disableUploadPage"`
-	FaviconURL        string                `yaml:"faviconUrl"`
-	FaviconFormat     string                `yaml:"faviconFormat"`
-	Storage           StorageConfiguration  `yaml:"storage"`
-	Database          DatabaseConfiguration `yaml:"database"`
-	Logging           LoggingConfiguration  `yaml:"logging"`
-	Cleanup           CleanupConfiguration  `yaml:"cleanup"`
-	DebugMode         bool                  `yaml:"debug"`
+	ServerName        string                 `yaml:"serverName"`
+	ServerURL         string                 `yaml:"serverUrl"`
+	ServerHost        string                 `yaml:"serverHost"`
+	ServerPort        int                    `yaml:"serverPort"`
+	TrustedProxies    []string               `yaml:"trustedProxies"`
+	MaxFileSizeMB     int                    `yaml:"maxFileSizeMb"`
+	MinAgeDays        int                    `yaml:"minAgeDays"`
+	MaxAgeDays        int                    `yaml:"maxAgeDays"`
+	RandomIDLength    int                    `yaml:"randomIdLength"`
+	DisableIndexPage  bool                   `yaml:"disableIndexPage"`
+	DisableUploadPage bool                   `yaml:"disableUploadPage"`
+	FaviconURL        string                 `yaml:"faviconUrl"`
+	FaviconFormat     string                 `yaml:"faviconFormat"`
+	Storage           StorageConfiguration   `yaml:"storage"`
+	Database          DatabaseConfiguration  `yaml:"database"`
+	RateLimit         RateLimitConfiguration `yaml:"rateLimit"`
+	Logging           LoggingConfiguration   `yaml:"logging"`
+	Cleanup           CleanupConfiguration   `yaml:"cleanup"`
+	DebugMode         bool                   `yaml:"debug"`
 }
 
 // ToYaml returns an indented Yaml representation.
