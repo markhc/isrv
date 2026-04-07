@@ -4,7 +4,7 @@
 
 Simple anonymous and temporary file sharing service.
 
-Visit https://isrv.nl to see it in action.
+Visit https://isrv.it.com to see it in action.
 
 ## Description
 
