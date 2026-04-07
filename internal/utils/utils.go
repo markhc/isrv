@@ -20,7 +20,7 @@ const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 // GenerateFileToken generates a cryptographically secure random token for file identification and management.
 func GenerateFileToken() (string, error) {
-	const length = 32
+	const length = 16
 
 	b := make([]byte, length)
 	if _, err := cryptoRand.Read(b); err != nil {

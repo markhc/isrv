@@ -181,6 +181,17 @@ func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
 	return metadata, nil
 }
 
+// GetFileToken returns the token associated with the given file ID.
+func (db *SQLiteDB) GetFileToken(fileID string) (string, error) {
+	var token string
+	err := db.sqldb.Get(&token, "SELECT token FROM files WHERE id = ?", fileID)
+	if err != nil {
+		return "", fmt.Errorf("failed to query file token: %w", err)
+	}
+
+	return token, nil
+}
+
 // GetExpiredFiles returns the IDs of all files whose expiration time is in the past.
 func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 	rows, err := db.sqldb.Query("SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP")
@@ -204,20 +215,4 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 	}
 
 	return expiredFiles, nil
-}
-
-func (db *SQLiteDB) GetFileByToken(token string) (string, error) {
-	// An empty token is not valid and should return an error immediately
-	if token == "" {
-		return "", fmt.Errorf("token cannot be empty")
-	}
-
-	var fileID string
-
-	err := db.sqldb.Get(&fileID, "SELECT id FROM files WHERE token = ?", token)
-	if err != nil {
-		return "", fmt.Errorf("failed to query file by token: %w", err)
-	}
-
-	return fileID, nil
 }

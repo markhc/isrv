@@ -1,3 +1,4 @@
+//nolint:all
 package mocks
 
 import (
@@ -34,16 +35,16 @@ func (m *MockDB) GetFileMetadata(fileID string) (map[string]string, error) {
 	return metadata, args.Error(1)
 }
 
+func (m *MockDB) GetFileToken(fileID string) (string, error) {
+	args := m.Called(fileID)
+	token, _ := args.Get(0).(string)
+	return token, args.Error(1)
+}
+
 func (m *MockDB) GetExpiredFiles() ([]string, error) {
 	args := m.Called()
 	files, _ := args.Get(0).([]string)
 	return files, args.Error(1)
-}
-
-func (m *MockDB) GetFileByToken(token string) (string, error) {
-	args := m.Called(token)
-	fileID, _ := args.Get(0).(string)
-	return fileID, args.Error(1)
 }
 
 // MockStorage implements storage.Storage using testify/mock.

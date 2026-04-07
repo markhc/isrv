@@ -171,6 +171,15 @@ func createRouter(srv *server, config *models.Configuration, staticFilesDir fs.F
 	).Methods(http.MethodGet)
 
 	router.Handle(
+		"/{fileID}",
+		middleware.WithRequestLogging(
+			config.TrustedProxies,
+			middleware.WithRateLimit(
+				config.RateLimit,
+				srv.deleteHandler())),
+	).Methods(http.MethodDelete)
+
+	router.Handle(
 		"/",
 		middleware.WithRequestLogging(
 			config.TrustedProxies,
@@ -326,6 +335,62 @@ func (s *server) downloadHandler() http.HandlerFunc {
 		metadata, _ := s.db.GetFileMetadata(fileID) // Fetch metadata to set appropriate headers
 
 		s.storage.ServeFile(w, r, fileID, fileName, metadata, true, true)
+	}
+}
+
+func (s *server) deleteHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		fileID := vars["fileID"]
+
+		// Extract token from query parameters for authentication
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			utils.RespondWithError(w, http.StatusBadRequest, "missing token")
+
+			return
+		}
+
+		// Verify the token matches the one associated with the file
+		storedToken, err := s.db.GetFileToken(fileID)
+		if err != nil {
+			logging.LogError("failed to retrieve file token", logging.Error(err))
+			utils.RespondWithError(w, http.StatusInternalServerError, "failed to retrieve file information")
+
+			return
+		}
+
+		if token != storedToken {
+			utils.RespondWithError(w, http.StatusForbidden, "invalid token")
+
+			return
+		}
+
+		logging.LogDebug(
+			"deleting file",
+			logging.String("file_id", fileID),
+			logging.String("path", r.URL.Path))
+
+		err = s.storage.DeleteFile(r.Context(), fileID)
+		if err != nil {
+			logging.LogError("failed to delete file from storage", logging.Error(err))
+			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete file")
+
+			return
+		}
+
+		err = s.db.OnFileDelete(fileID)
+		if err != nil {
+			// File was successfully deleted from storage, but failed to update database.
+			// Log the error but don't fail the request since the file data is already gone.
+			logging.LogError("failed to update database after file deletion", logging.Error(err))
+		}
+
+		utils.RespondWithSuccess(w, struct {
+			Status string `json:"status"`
+		}{
+			Status: "success",
+		})
 	}
 }
 
