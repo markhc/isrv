@@ -145,77 +145,146 @@ func Test_ParseExpiresForm_invalid(t *testing.T) {
 	}
 }
 
-func Test_GetIPAddress_xForwardedFor(t *testing.T) {
-	tests := []struct {
-		name         string
-		forwardedFor string
-		expectedIP   string
-	}{
-		{"single IP", "192.168.1.1", "192.168.1.1"},
-		{"multiple IPs", "192.168.1.1, 10.0.0.1, 172.16.0.1", "192.168.1.1"},
-		{"single IP with spaces", "  203.0.113.1  ", "  203.0.113.1  "}, // preserves original behavior
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/", nil)
-			req.Header.Set("X-Forwarded-For", tt.forwardedFor)
-
-			result := GetIPAddress(req)
-			assert.Equal(t, tt.expectedIP, result)
-		})
-	}
-}
-
-func Test_GetIPAddress_xRealIP(t *testing.T) {
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("X-Real-IP", "198.51.100.1")
-	req.RemoteAddr = "127.0.0.1:12345"
-
-	result := GetIPAddress(req)
-	assert.Equal(t, "198.51.100.1", result)
-}
-
-func Test_GetIPAddress_remoteAddr(t *testing.T) {
+func Test_GetIPAddress_noTrustedProxies(t *testing.T) {
+	// With no trusted proxies, proxy headers must be ignored regardless of their value.
 	tests := []struct {
 		name       string
 		remoteAddr string
-		expectedIP string
+		xff        string
+		xRealIP    string
+		expected   string
 	}{
-		{"IPv4 with port", "192.168.1.100:54321", "192.168.1.100"},
-		{"IPv4 without port", "10.0.0.5", "10.0.0.5"},
-		{"IPv6 with port", "[::1]:8080", "::1"},
-		{"IPv6 without port", "2001:db8::1", "2001:db8::1"},
-		{"localhost with port", "127.0.0.1:9000", "127.0.0.1"},
+		{"XFF ignored, RemoteAddr used", "5.6.7.8:1234", "1.2.3.4", "", "5.6.7.8"},
+		{"X-Real-IP ignored, RemoteAddr used", "5.6.7.8:1234", "", "1.2.3.4", "5.6.7.8"},
+		{"both headers ignored", "5.6.7.8:1234", "9.9.9.9", "1.2.3.4", "5.6.7.8"},
+		{"no headers, RemoteAddr used", "5.6.7.8:1234", "", "", "5.6.7.8"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/", nil)
 			req.RemoteAddr = tt.remoteAddr
+			if tt.xff != "" {
+				req.Header.Set("X-Forwarded-For", tt.xff)
+			}
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
 
-			result := GetIPAddress(req)
-			assert.Equal(t, tt.expectedIP, result)
+			result := GetIPAddress(req, nil)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func Test_GetIPAddress_precedence(t *testing.T) {
-	// X-Forwarded-For should take precedence over X-Real-IP and RemoteAddr
+func Test_GetIPAddress_exactIPTrusted(t *testing.T) {
+	trusted := []string{"10.0.0.1"}
+
+	tests := []struct {
+		name       string
+		remoteAddr string
+		xff        string
+		xRealIP    string
+		expected   string
+	}{
+		{"trusted proxy with XFF", "10.0.0.1:4567", "203.0.113.5", "", "203.0.113.5"},
+		{"trusted proxy with X-Real-IP", "10.0.0.1:4567", "", "203.0.113.5", "203.0.113.5"},
+		{"trusted proxy with XFF takes precedence over X-Real-IP", "10.0.0.1:4567", "203.0.113.1", "203.0.113.2", "203.0.113.1"},
+		{"trusted proxy with no headers falls back to RemoteAddr", "10.0.0.1:4567", "", "", "10.0.0.1"},
+		{"untrusted RemoteAddr ignores XFF", "10.0.0.2:4567", "203.0.113.5", "", "10.0.0.2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			req.RemoteAddr = tt.remoteAddr
+			if tt.xff != "" {
+				req.Header.Set("X-Forwarded-For", tt.xff)
+			}
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
+
+			result := GetIPAddress(req, trusted)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_GetIPAddress_cidrTrusted(t *testing.T) {
+	trusted := []string{"10.0.0.0/8"}
+
+	tests := []struct {
+		name       string
+		remoteAddr string
+		xff        string
+		expected   string
+	}{
+		{"within CIDR trusts XFF", "10.1.2.3:80", "203.0.113.5", "203.0.113.5"},
+		{"edge of CIDR trusts XFF", "10.255.255.255:80", "203.0.113.5", "203.0.113.5"},
+		{"outside CIDR ignores XFF", "11.0.0.1:80", "203.0.113.5", "11.0.0.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			req.RemoteAddr = tt.remoteAddr
+			req.Header.Set("X-Forwarded-For", tt.xff)
+
+			result := GetIPAddress(req, trusted)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_GetIPAddress_xffFirstEntry(t *testing.T) {
+	// When XFF contains multiple entries (client, proxy1, proxy2), the leftmost
+	// (original client) must be returned.
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("X-Forwarded-For", "203.0.113.5")
-	req.Header.Set("X-Real-IP", "198.51.100.10")
-	req.RemoteAddr = "127.0.0.1:8080"
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.99, 10.0.0.1")
 
-	result := GetIPAddress(req)
+	result := GetIPAddress(req, []string{"10.0.0.1"})
 	assert.Equal(t, "203.0.113.5", result)
+}
 
-	req2 := httptest.NewRequest("GET", "/", nil)
-	req2.Header.Set("X-Real-IP", "198.51.100.20")
-	req2.RemoteAddr = "127.0.0.1:9090"
+func Test_GetIPAddress_mixedTrustedList(t *testing.T) {
+	// Trusted list may contain a mix of exact IPs and CIDRs.
+	trusted := []string{"192.168.1.5", "10.0.0.0/24"}
 
-	result2 := GetIPAddress(req2)
-	assert.Equal(t, "198.51.100.20", result2)
+	cases := []struct {
+		remoteIP string
+		xff      string
+		want     string
+	}{
+		{"192.168.1.5", "1.1.1.1", "1.1.1.1"},     // exact match
+		{"10.0.0.100", "2.2.2.2", "2.2.2.2"},      // CIDR match
+		{"192.168.1.6", "3.3.3.3", "192.168.1.6"}, // neither, XFF ignored
+	}
+
+	for _, c := range cases {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = c.remoteIP + ":9000"
+		req.Header.Set("X-Forwarded-For", c.xff)
+		assert.Equal(t, c.want, GetIPAddress(req, trusted), "remoteIP=%s", c.remoteIP)
+	}
+}
+
+// Test_GetIPAddress_ipv4MappedIPv6ExactMatch tests that an IPv4-mapped IPv6 address
+// (e.g. "::ffff:10.0.0.1") is recognised as matching a plain IPv4 trusted proxy entry
+// ("10.0.0.1"). Without normalisation the exact-match string comparison fails and the
+// proxy header is incorrectly ignored.
+func Test_GetIPAddress_ipv4MappedIPv6ExactMatch(t *testing.T) {
+	trusted := []string{"10.0.0.1"}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "[::ffff:10.0.0.1]:4567"
+	req.Header.Set("X-Forwarded-For", "203.0.113.5")
+
+	result := GetIPAddress(req, trusted)
+
+	assert.Equal(t, "203.0.113.5", result,
+		"IPv4-mapped IPv6 address ::ffff:10.0.0.1 should match trusted proxy entry 10.0.0.1 and honour XFF")
 }
 
 func Test_CalculateExpirationTime(t *testing.T) {
