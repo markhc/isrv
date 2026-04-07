@@ -270,6 +270,23 @@ func Test_GetIPAddress_mixedTrustedList(t *testing.T) {
 	}
 }
 
+// Test_GetIPAddress_ipv4MappedIPv6ExactMatch tests that an IPv4-mapped IPv6 address
+// (e.g. "::ffff:10.0.0.1") is recognised as matching a plain IPv4 trusted proxy entry
+// ("10.0.0.1"). Without normalisation the exact-match string comparison fails and the
+// proxy header is incorrectly ignored.
+func Test_GetIPAddress_ipv4MappedIPv6ExactMatch(t *testing.T) {
+	trusted := []string{"10.0.0.1"}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "[::ffff:10.0.0.1]:4567"
+	req.Header.Set("X-Forwarded-For", "203.0.113.5")
+
+	result := GetIPAddress(req, trusted)
+
+	assert.Equal(t, "203.0.113.5", result,
+		"IPv4-mapped IPv6 address ::ffff:10.0.0.1 should match trusted proxy entry 10.0.0.1 and honour XFF")
+}
+
 func Test_CalculateExpirationTime(t *testing.T) {
 	cfg := &models.Configuration{
 		MaxFileSizeMB: 100,

@@ -95,8 +95,11 @@ func isInTrustedProxies(ip string, trustedProxies []string) bool {
 			if err == nil && network.Contains(parsed) {
 				return true
 			}
-		} else if ip == proxy {
-			return true
+		} else {
+			proxyIP := net.ParseIP(proxy)
+			if proxyIP != nil && proxyIP.Equal(parsed) {
+				return true
+			}
 		}
 	}
 
