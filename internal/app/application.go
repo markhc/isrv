@@ -1,4 +1,4 @@
-package webserver
+package app
 
 import (
 	"context"
@@ -14,17 +14,39 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/markhc/isrv/internal/app/handlers"
+	"github.com/markhc/isrv/internal/app/middleware"
 	"github.com/markhc/isrv/internal/cleanup"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/database"
+	"github.com/markhc/isrv/internal/favicon"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
-	"github.com/markhc/isrv/internal/webserver/favicon"
-	"github.com/markhc/isrv/internal/webserver/handlers"
-	"github.com/markhc/isrv/internal/webserver/router"
 )
+
+// AppMiddleware holds the middleware functions used by the application.
+// Each field wraps an http.Handler and returns a new one.
+type AppMiddleware struct {
+	RequireToken func(http.Handler) http.Handler
+	RateLimit    func(http.Handler) http.Handler
+}
+
+// Application is the central type that holds all HTTP handler fields and
+// middleware. It is constructed once by New and passed to routes.SetupRoutes.
+type Application struct {
+	IndexHandler    http.HandlerFunc
+	FaviconHandler  http.HandlerFunc
+	DownloadHandler http.HandlerFunc
+	UploadHandler   http.HandlerFunc
+	DeleteHandler   http.HandlerFunc
+	ExpireHandler   http.HandlerFunc
+	NotFoundHandler http.HandlerFunc
+
+	Middleware  AppMiddleware
+	StaticFiles http.FileSystem
+	Debug       bool
+}
 
 //go:embed templates
 var templatesFolderEmbedded embed.FS
@@ -32,11 +54,53 @@ var templatesFolderEmbedded embed.FS
 //go:embed static
 var staticFilesEmbedded embed.FS
 
-// Start initialises all dependencies, registers routes, and runs the HTTP server
+// NewApplication constructs an Application by wiring handler maker funcs and middleware
+// constructors. All fallible initialization (DB, storage, templates, favicon)
+// must be completed by the caller before invoking NewApplication.
+func NewApplication(
+	ctx context.Context,
+	config *models.Configuration,
+	db database.Database,
+	stor storage.Storage,
+	tmpl *template.Template,
+	faviconData []byte,
+	staticFilesDir fs.FS,
+) *Application {
+	a := &Application{
+		DownloadHandler: handlers.Download(db, stor),
+		UploadHandler:   handlers.Upload(config, db, stor),
+		DeleteHandler:   handlers.Delete(db, stor),
+		ExpireHandler:   handlers.Expire(db),
+		NotFoundHandler: handlers.NotFound(tmpl, config),
+
+		Middleware: AppMiddleware{
+			RequireToken: middleware.RequireToken(db),
+			RateLimit:    middleware.RateLimit(ctx, config.RateLimit),
+		},
+	}
+
+	a.Debug = config.DebugMode
+
+	if !config.DisableIndexPage {
+		a.IndexHandler = handlers.Index(tmpl, config)
+	}
+
+	if config.FaviconURL != "" && faviconData != nil {
+		a.FaviconHandler = handlers.Favicon(faviconData, config.FaviconFormat)
+	}
+
+	if !config.DisableUploadPage {
+		a.StaticFiles = http.FS(staticFilesDir)
+	}
+
+	return a
+}
+
+// StartApp initialises all dependencies, registers routes, and runs the HTTP server
 // until an interrupt or termination signal is received.
 //
 //nolint:funlen
-func Start(ctx context.Context) {
+func StartApp(ctx context.Context) {
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
 	config := configuration.Get()
@@ -62,17 +126,16 @@ func Start(ctx context.Context) {
 		logging.LogError("failed to fetch favicon", logging.String("url", config.FaviconURL), logging.Error(err))
 	}
 
-	muxRouter := createRouter(config, dbInstance, storageClient, tmpl, staticFilesDir, faviconData)
+	application := NewApplication(ctx, config, dbInstance, storageClient, tmpl, faviconData, staticFilesDir)
 
 	logging.LogInfo(
 		"starting webserver", logging.String("host", config.ServerHost), logging.Int("port", config.ServerPort))
 
-	// Create the http server
 	httpSrv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
-		Handler:      muxRouter,
+		Handler:      SetupRoutes(application),
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},
@@ -81,11 +144,10 @@ func Start(ctx context.Context) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start the server in a separate goroutine so that it doesn't block the main thread
-	// so we can listen for shutdown signals and gracefully shut down the server when needed.
 	go func() {
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logging.LogFatal("failed to start server", logging.Error(err))
+			logging.LogError("failed to start server", logging.Error(err))
+			quit <- syscall.SIGTERM
 		}
 	}()
 
@@ -105,52 +167,6 @@ func Start(ctx context.Context) {
 	if err := httpSrv.Shutdown(ctx); err != nil {
 		logging.LogError("server forced to shutdown", logging.Error(err))
 	}
-}
-
-func createRouter(
-	config *models.Configuration,
-	db database.Database,
-	stor storage.Storage,
-	tmpl *template.Template,
-	staticFilesDir fs.FS,
-	faviconData []byte,
-) *mux.Router {
-	muxRouter := mux.NewRouter()
-	muxRouter.NotFoundHandler = handlers.NotFound(tmpl, config)
-
-	r := router.NewRouter(muxRouter, config)
-
-	if !config.DisableIndexPage {
-		r.Handle("/", handlers.Index(tmpl, config)).
-			Methods(http.MethodGet)
-	}
-
-	if !config.DisableUploadPage {
-		r.Handle("/static/{file}", handlers.Static(staticFilesDir)).
-			Methods(http.MethodGet)
-	}
-
-	if config.FaviconURL != "" && faviconData != nil {
-		r.Handle("/favicon."+config.FaviconFormat, handlers.Favicon(faviconData, config.FaviconFormat)).
-			Methods(http.MethodGet)
-	}
-
-	r.Handle("/d/{fileID}", handlers.Download(db, stor)).
-		Methods(http.MethodGet).
-		WithLogging()
-
-	r.Handle("/d/{fileID}/{fileName}", handlers.Download(db, stor)).
-		Methods(http.MethodGet).
-		WithLogging()
-
-	r.Handle("/", handlers.Upload(config, db, stor)).
-		Methods(http.MethodPost).
-		WithLogging().
-		WithRateLimit()
-
-	r.Build()
-
-	return muxRouter
 }
 
 //nolint:ireturn

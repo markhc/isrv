@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"errors"
 	"io/fs"
@@ -13,12 +14,12 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/markhc/isrv/internal/app/handlers"
 	dbmocks "github.com/markhc/isrv/internal/database/mocks"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	stmocks "github.com/markhc/isrv/internal/storage/mocks"
-	"github.com/markhc/isrv/internal/webserver/handlers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,15 @@ func defaultConfig() *models.Configuration {
 		RandomIDLength: 8,
 		FaviconFormat:  "png",
 	}
+}
+
+// chiRequest injects chi URL params into a request's context.
+func chiRequest(r *http.Request, params map[string]string) *http.Request {
+	rctx := chi.NewRouteContext()
+	for k, v := range params {
+		rctx.URLParams.Add(k, v)
+	}
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +144,7 @@ func Test_Static(t *testing.T) {
 
 			h := handlers.Static(staticDir)
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-			req = mux.SetURLVars(req, map[string]string{
+			req = chiRequest(req, map[string]string{
 				"file": strings.TrimPrefix(tt.path, "/static/"),
 			})
 			w := httptest.NewRecorder()
@@ -191,14 +201,14 @@ func Test_Download(t *testing.T) {
 			h := handlers.Download(db, stor)
 
 			path := "/d/" + tt.fileID
-			vars := map[string]string{"fileID": tt.fileID}
+			params := map[string]string{"id": tt.fileID}
 			if tt.fileName != "" {
 				path += "/" + tt.fileName
-				vars["fileName"] = tt.fileName
+				params["filename"] = tt.fileName
 			}
 
 			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req = mux.SetURLVars(req, vars)
+			req = chiRequest(req, params)
 			w := httptest.NewRecorder()
 
 			h.ServeHTTP(w, req)
@@ -236,7 +246,7 @@ func Test_Upload(t *testing.T) {
 				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   "missing multipart form 'file' field",
+			expectedBody:   "file' field is missing",
 		},
 		{
 			name: "file too large returns 413",
@@ -247,7 +257,7 @@ func Test_Upload(t *testing.T) {
 				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
 			},
 			expectedStatus: http.StatusRequestEntityTooLarge,
-			expectedBody:   "file too large",
+			expectedBody:   "file size exceeds the maximum allowed limit",
 		},
 		{
 			name: "SaveFileUpload error returns 500",
