@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"path/filepath"
 
+	"github.com/markhc/isrv/internal/app"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/logging"
-	"github.com/markhc/isrv/internal/webserver"
 	"github.com/spf13/cobra"
 	"github.com/thejerf/suture/v4"
 )
@@ -32,7 +32,7 @@ func (s *iSrvService) Serve(ctx context.Context) error {
 
 			return nil
 		default:
-			webserver.Start(ctx)
+			app.StartApp(ctx)
 
 			return nil
 		}
@@ -73,7 +73,7 @@ var rootCmd = &cobra.Command{
 				logging.LogInfo("supervisor is disabled")
 			}
 
-			webserver.Start(context.Background())
+			app.StartApp(context.Background())
 		} else {
 			supervisor := suture.NewSimple("iSrv")
 			service := &iSrvService{}
