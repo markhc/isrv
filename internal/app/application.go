@@ -146,7 +146,8 @@ func StartApp(ctx context.Context) {
 
 	go func() {
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logging.LogFatal("failed to start server", logging.Error(err))
+			logging.LogError("failed to start server", logging.Error(err))
+			quit <- syscall.SIGTERM
 		}
 	}()
 
