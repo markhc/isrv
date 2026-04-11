@@ -2,14 +2,22 @@ package logging
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/markhc/isrv/internal/configuration"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+type RequestLoggerOptions struct {
+	LogLevel     zapcore.Level
+	RecoverPanic bool
+	SkipFunc     func(req *http.Request, respStatus int) bool
+}
 
 var logger *zap.Logger
 
@@ -74,6 +82,107 @@ func Initialize() {
 
 func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
+}
+
+// RequestLogger returns a middleware that logs HTTP requests and responses using the global zap.Logger instance.
+// based on chi-httplog but simplified and customized for this application.
+func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			zapFields := make([]zap.Field, 0)
+
+			// Early skip if the SkipFunc returns true
+			if options.SkipFunc != nil && options.SkipFunc(r, 0) {
+				next.ServeHTTP(w, r)
+
+				return
+			}
+
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+			start := time.Now()
+
+			defer func() {
+				zapFields = attemptRecover(ww, r, zapFields, options.RecoverPanic)
+
+				duration := time.Since(start)
+				statusCode := ww.Status()
+				if statusCode == 0 {
+					statusCode = 200
+				}
+
+				// Skip logging if the request is filtered by the Skip function.
+				if options.SkipFunc != nil && options.SkipFunc(r, statusCode) {
+					return
+				}
+
+				lvl := getLogLevel(statusCode)
+				if lvl < options.LogLevel {
+					return
+				}
+
+				zapFields = append(zapFields,
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+					zap.String("remote_addr", r.RemoteAddr),
+					zap.String("host", r.Host),
+					zap.String("scheme", scheme(r)),
+					zap.String("proto", r.Proto),
+					zap.Int64("length", r.ContentLength),
+					zap.String("user_agent", r.UserAgent()),
+					zap.Int("status", statusCode),
+					zap.Duration("duration", duration),
+					zap.Int("response_bytes", ww.BytesWritten()),
+				)
+
+				msg := fmt.Sprintf("%s %s => HTTP %v (%v)", r.Method, r.URL, statusCode, duration)
+				logger.Log(lvl, msg, zapFields...)
+			}()
+
+			// Now call the next handler in the chain, all the logic is handled in the deferred function above
+			next.ServeHTTP(ww, r)
+		})
+	}
+}
+
+func attemptRecover(ww http.ResponseWriter, r *http.Request, fields []zap.Field, recoverPanic bool) []zap.Field {
+	if rec := recover(); rec != nil {
+		if recoverPanic && r.Header.Get("Connection") != "Upgrade" {
+			ww.WriteHeader(http.StatusInternalServerError)
+		}
+
+		// Re-panic if it's a client abort or we're not recovering panics
+		//
+		//nolint:errorlint
+		if rec == http.ErrAbortHandler || !recoverPanic {
+			defer panic(rec)
+		}
+
+		fields = append(fields, zap.String("panic", fmt.Sprintf("%v", rec)))
+	}
+
+	return fields
+}
+
+func getLogLevel(statusCode int) zapcore.Level {
+	switch {
+	case statusCode >= 500:
+		return zapcore.ErrorLevel
+	case statusCode == 429:
+		return zapcore.InfoLevel
+	case statusCode >= 400:
+		return zapcore.WarnLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+func scheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+
+	return "http"
 }
 
 // GetLogger returns the global zap.Logger instance.

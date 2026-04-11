@@ -1,4 +1,4 @@
-package routes
+package app
 
 import (
 	"net/http"
@@ -6,16 +6,27 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/markhc/isrv/internal/app"
+	"github.com/markhc/isrv/internal/logging"
+	"go.uber.org/zap/zapcore"
 )
 
 // SetupRoutes registers all application routes and their associated handlers and middleware.
 // It returns a configured chi.Mux instance ready to be used as an HTTP handler.
-func SetupRoutes(a *app.Application) *chi.Mux {
+func SetupRoutes(a *Application) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
+	// r.Use(middleware.Logger)
+
+	// Request logger
+	r.Use(logging.RequestLogger(&logging.RequestLoggerOptions{
+		LogLevel:     zapcore.InfoLevel,
+		RecoverPanic: true,
+		SkipFunc: func(req *http.Request, respStatus int) bool {
+			return respStatus == 404
+		},
+	}))
+
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 
@@ -23,10 +34,18 @@ func SetupRoutes(a *app.Application) *chi.Mux {
 
 	if a.IndexHandler != nil {
 		r.Get("/", a.IndexHandler)
+	} else {
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
 	}
 
 	if a.FaviconHandler != nil {
 		r.Get("/favicon.{format}", a.FaviconHandler)
+	} else {
+		r.Get("/favicon.{format}", func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
 	}
 
 	r.Get("/d/{id}", a.DownloadHandler)
