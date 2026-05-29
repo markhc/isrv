@@ -120,6 +120,10 @@ func StartApp(ctx context.Context) {
 		}
 	}()
 
+	// Rebuild the logger now that the OTel global log provider is registered,
+	// so the otelzap bridge core forwards log records to the OTLP backend.
+	logging.Initialize()
+
 	storageClient := createStorage(ctx, config)
 	dbInstance := createDb(config)
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/markhc/isrv/internal/configuration"
+	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -66,6 +67,7 @@ func Initialize() {
 			zapcore.NewCore(encoder, fileSyncer, zapcore.DebugLevel),
 			zapcore.NewCore(encoder, consoleErrors, highPriority),
 			zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+			otelzap.NewCore("github.com/markhc/isrv"),
 		)
 
 		logger = zap.New(core)
@@ -74,6 +76,7 @@ func Initialize() {
 		core := zapcore.NewTee(
 			zapcore.NewCore(encoder, consoleErrors, highPriority),
 			zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+			otelzap.NewCore("github.com/markhc/isrv"),
 		)
 
 		logger = zap.New(core)

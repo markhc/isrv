@@ -6,9 +6,12 @@ import (
 
 	"github.com/markhc/isrv/internal/models"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -34,7 +37,7 @@ func Tracer() trace.Tracer {
 // spans and metrics are flushed to the OTLP backend.
 type ShutdownFunc func(context.Context) error
 
-// Setup initialises the global OpenTelemetry tracer and meter providers
+// Setup initialises the global OpenTelemetry tracer, meter, and logger providers
 // and registers them as the OTel global instances.
 //
 // Exporter configuration (endpoint, auth headers, protocol) is read entirely
@@ -54,6 +57,8 @@ type ShutdownFunc func(context.Context) error
 //
 // The caller is responsible for calling the returned ShutdownFunc to flush all
 // buffered telemetry data before the process exits.
+//
+//nolint:funlen
 func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion string) (ShutdownFunc, error) {
 	if !cfg.Enabled {
 		return func(context.Context) error { return nil }, nil
@@ -93,8 +98,22 @@ func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion 
 		sdkmetric.WithResource(res),
 	)
 
+	logExporter, err := otlploghttp.New(ctx)
+	if err != nil {
+		_ = tp.Shutdown(ctx)
+		_ = mp.Shutdown(ctx)
+
+		return nil, fmt.Errorf("create log exporter: %w", err)
+	}
+
+	lp := sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExporter)),
+		sdklog.WithResource(res),
+	)
+
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
+	global.SetLoggerProvider(lp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},
@@ -107,6 +126,9 @@ func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion 
 		}
 		if err := mp.Shutdown(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("meter provider shutdown: %w", err))
+		}
+		if err := lp.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("log provider shutdown: %w", err))
 		}
 		if len(errs) > 0 {
 			return fmt.Errorf("telemetry shutdown errors: %v", errs)
