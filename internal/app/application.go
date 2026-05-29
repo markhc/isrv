@@ -28,8 +28,9 @@ import (
 // AppMiddleware holds the middleware functions used by the application.
 // Each field wraps an http.Handler and returns a new one.
 type AppMiddleware struct {
-	RequireToken func(http.Handler) http.Handler
-	RateLimit    func(http.Handler) http.Handler
+	RequireValidFileID func(http.Handler) http.Handler
+	RequireToken       func(http.Handler) http.Handler
+	RateLimit          func(http.Handler) http.Handler
 }
 
 // Application is the central type that holds all HTTP handler fields and
@@ -70,12 +71,13 @@ func NewApplication(
 		DownloadHandler: handlers.Download(db, stor),
 		UploadHandler:   handlers.Upload(config, db, stor),
 		DeleteHandler:   handlers.Delete(db, stor),
-		ExpireHandler:   handlers.Expire(db),
+		ExpireHandler:   handlers.Expire(config, db),
 		NotFoundHandler: handlers.NotFound(tmpl, config),
 
 		Middleware: AppMiddleware{
-			RequireToken: middleware.RequireToken(db),
-			RateLimit:    middleware.RateLimit(ctx, config.RateLimit),
+			RequireValidFileID: middleware.RequireValidFileID(db),
+			RequireToken:       middleware.RequireToken(db),
+			RateLimit:          middleware.RateLimit(ctx, config.RateLimit),
 		},
 	}
 

@@ -124,7 +124,7 @@ func Test_SQLiteDB_OnFileDownload(t *testing.T) {
 	assert.Equal(t, 3, downloadCount)
 
 	err = db.OnFileDownload("non-existing")
-	assert.NoError(t, err, "OnFileDownload() for non-existing file should not error")
+	assert.Error(t, err, "expected error when downloading non-existing file")
 }
 
 func Test_SQLiteDB_OnFileDelete(t *testing.T) {
@@ -153,7 +153,7 @@ func Test_SQLiteDB_OnFileDelete(t *testing.T) {
 	assert.NoError(t, err, "other file should still exist")
 
 	err = db.OnFileDelete("non-existing")
-	assert.NoError(t, err, "OnFileDelete() for non-existing file should not error")
+	assert.Error(t, err, "expected error when deleting non-existing file")
 }
 
 func Test_SQLiteDB_GetExpiredFiles(t *testing.T) {

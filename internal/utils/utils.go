@@ -127,12 +127,7 @@ func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 	//
 	// If a **shorter** time than the default is specified in the "expires" form field,
 	// that time is used instead.
-	maxSizeBytes := int64(config.MaxFileSizeMB * 1024 * 1024)
-	minAge := int64(config.MinAgeDays * 24 * 3600 * 1000) // in milliseconds
-	maxAge := int64(config.MaxAgeDays * 24 * 3600 * 1000) // in milliseconds
-
-	defaultExpires := minAge + int64(float64(minAge-maxAge)*Pow3(float64(fileSize)/float64(maxSizeBytes)-1))
-	defaultExpiresTime := time.Now().Add(time.Duration(defaultExpires) * time.Millisecond)
+	defaultExpiresTime := MaxExpirationTime(fileSize, config)
 
 	if expiresStr := r.FormValue("expires"); expiresStr != "" {
 		if expiresTime, err := ParseExpiresForm(expiresStr); err == nil {
@@ -143,6 +138,18 @@ func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 	}
 
 	return defaultExpiresTime
+}
+
+// MaxExpirationTime returns the maximum allowed expiration time for a file of the given size.
+// It is computed using the same formula as the default upload expiry.
+func MaxExpirationTime(fileSize int64, config *models.Configuration) time.Time {
+	maxSizeBytes := int64(config.MaxFileSizeMB * 1024 * 1024)
+	minAge := int64(config.MinAgeDays * 24 * 3600 * 1000) // in milliseconds
+	maxAge := int64(config.MaxAgeDays * 24 * 3600 * 1000) // in milliseconds
+
+	defaultExpires := minAge + int64(float64(minAge-maxAge)*Pow3(float64(fileSize)/float64(maxSizeBytes)-1))
+
+	return time.Now().Add(time.Duration(defaultExpires) * time.Millisecond)
 }
 
 // RespondWithError sends a JSON error response and logs any write failures.

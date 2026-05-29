@@ -48,40 +48,6 @@ func newRateLimiter(ctx context.Context, config models.RateLimitConfiguration) *
 	return rl
 }
 
-func (rl *rateLimiter) cleanupLoop(ctx context.Context) {
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			rl.cleanup()
-		}
-	}
-}
-
-func (rl *rateLimiter) cleanup() {
-	now := time.Now()
-
-	rl.visitorsMu.Lock()
-	for ip, entry := range rl.visitors {
-		if now.Sub(entry.lastSeen) > visitorTTL {
-			delete(rl.visitors, ip)
-		}
-	}
-	rl.visitorsMu.Unlock()
-
-	rl.blockMu.Lock()
-	for ip, entry := range rl.blockList {
-		if now.After(entry.until) {
-			delete(rl.blockList, ip)
-		}
-	}
-	rl.blockMu.Unlock()
-}
-
 // RateLimit returns a middleware that enforces per-IP rate limiting based on config.
 func RateLimit(ctx context.Context, config models.RateLimitConfiguration) func(http.Handler) http.Handler {
 	rl := newRateLimiter(ctx, config)
@@ -178,4 +144,38 @@ func (rl *rateLimiter) blockIP(ip string, baseDuration time.Duration) {
 	entry.until = time.Now().Add(baseDuration * time.Duration(factor))
 
 	rl.blockList[ip] = entry
+}
+
+func (rl *rateLimiter) cleanupLoop(ctx context.Context) {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rl.cleanup()
+		}
+	}
+}
+
+func (rl *rateLimiter) cleanup() {
+	now := time.Now()
+
+	rl.visitorsMu.Lock()
+	for ip, entry := range rl.visitors {
+		if now.Sub(entry.lastSeen) > visitorTTL {
+			delete(rl.visitors, ip)
+		}
+	}
+	rl.visitorsMu.Unlock()
+
+	rl.blockMu.Lock()
+	for ip, entry := range rl.blockList {
+		if now.After(entry.until) {
+			delete(rl.blockList, ip)
+		}
+	}
+	rl.blockMu.Unlock()
 }

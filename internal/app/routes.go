@@ -23,7 +23,7 @@ func SetupRoutes(a *Application) *chi.Mux {
 		LogLevel:     zapcore.InfoLevel,
 		RecoverPanic: true,
 		SkipFunc: func(req *http.Request, respStatus int) bool {
-			return respStatus == 404
+			return req.Method == http.MethodOptions || respStatus == 404 || respStatus == 405
 		},
 	}))
 
@@ -51,13 +51,19 @@ func SetupRoutes(a *Application) *chi.Mux {
 	r.Get("/d/{id}", a.DownloadHandler)
 	r.Get("/d/{id}/{filename}", a.DownloadHandler)
 
+	// Rate limited and protected routes
 	r.Group(func(r chi.Router) {
-		r.Use(a.Middleware.RequireToken)
 		r.Use(a.Middleware.RateLimit)
 
 		r.Post("/", a.UploadHandler)
-		r.Delete("/{id}", a.DeleteHandler)
-		r.Patch("/{id}/expire", a.ExpireHandler)
+
+		r.Group(func(r chi.Router) {
+			r.Use(a.Middleware.RequireValidFileID)
+			r.Use(a.Middleware.RequireToken)
+
+			r.Delete("/{id}", a.DeleteHandler)
+			r.Patch("/{id}/expire", a.ExpireHandler)
+		})
 	})
 
 	if a.StaticFiles != nil {
