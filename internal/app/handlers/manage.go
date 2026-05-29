@@ -36,6 +36,9 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
+			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete file record")
+
+			return
 		}
 
 		w.WriteHeader(http.StatusNoContent)

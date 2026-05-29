@@ -363,13 +363,14 @@ func Test_Delete(t *testing.T) {
 			expectedBody:   "failed to delete file",
 		},
 		{
-			name:   "database error after storage deletion is non-fatal",
+			name:   "database error after storage deletion returns 500",
 			fileID: "abc123",
 			setup: func(db *dbmocks.MockDatabase, st *stmocks.MockStorage) {
 				st.On("DeleteFile", mock.Anything, "abc123").Return(nil)
 				db.On("OnFileDelete", "abc123").Return(errors.New("db error"))
 			},
-			expectedStatus: http.StatusNoContent,
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to delete file record",
 		},
 	}
 
