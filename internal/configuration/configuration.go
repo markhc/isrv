@@ -70,6 +70,7 @@ func applyEnvOverrides() {
 		"ISRV_RATE_LIMIT_BURST":          "RateLimit.BurstSize",
 		"ISRV_RATE_LIMIT_ACTION":         "RateLimit.OnLimitExceeded",
 		"ISRV_RATE_LIMIT_BLOCK_DURATION": "RateLimit.BlockDuration",
+		"ISRV_TELEMETRY_ENABLED":         "Telemetry.Enabled",
 	}
 
 	for envVar, configField := range mapEnv {

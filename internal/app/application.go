@@ -23,6 +23,7 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
+	"github.com/markhc/isrv/internal/telemetry"
 )
 
 // AppMiddleware holds the middleware functions used by the application.
@@ -106,6 +107,19 @@ func StartApp(ctx context.Context) {
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
 	config := configuration.Get()
+
+	shutdownTelemetry, err := telemetry.Setup(ctx, config.Telemetry, configuration.BuildVersion)
+	if err != nil {
+		logging.LogFatal("failed to initialise telemetry", logging.Error(err))
+	}
+	defer func() { //nolint:contextcheck
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(shutdownCtx); err != nil {
+			logging.LogError("failed to flush telemetry", logging.Error(err))
+		}
+	}()
+
 	storageClient := createStorage(ctx, config)
 	dbInstance := createDb(config)
 

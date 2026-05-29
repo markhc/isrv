@@ -8,6 +8,10 @@ import (
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/storage"
+	"github.com/markhc/isrv/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Download returns a handler that serves a stored file by its ID.
@@ -23,7 +27,12 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			logging.String("file_name", fileName),
 			logging.String("path", r.URL.Path))
 
-		metadata, err := db.GetFileMetadata(r.Context(), fileID)
+		ctx, span := telemetry.Tracer().Start(r.Context(), "db.get_file_metadata",
+			trace.WithAttributes(attribute.String("file.id", fileID)),
+		)
+		metadata, err := db.GetFileMetadata(ctx, fileID)
+		span.End()
+
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
 				http.NotFound(w, r)
@@ -31,6 +40,8 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 				return
 			}
 
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to get file metadata")
 			logging.LogError("failed to get file metadata", logging.Error(err))
 		}
 
@@ -38,6 +49,13 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			logging.LogError("failed to update file metrics", logging.Error(err))
 		}
 
+		_, storSpan := telemetry.Tracer().Start(r.Context(), "storage.serve_file",
+			trace.WithAttributes(
+				attribute.String("file.id", fileID),
+				attribute.String("file.name", fileName),
+			),
+		)
 		stor.ServeFile(w, r, fileID, fileName, metadata, true, true)
+		storSpan.End()
 	}
 }

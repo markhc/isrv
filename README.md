@@ -114,6 +114,16 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
 | `ISRV_CLEANUP_ENABLED` | `true` | Enable the job that removes expired files |
 | `ISRV_CLEANUP_INTERVAL` | `1m` | The interval at which the cleanup job runs |
+| `ISRV_TELEMETRY_ENABLED` | `false` | Enable OpenTelemetry traces and metrics export |
+
+When telemetry is enabled, configure the exporter using the standard [OTEL environment variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/):
+
+| Variable | Description |
+|----------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL of the OTLP receiver (e.g. `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` auth headers (e.g. `Authorization=Basic <base64(id:token)>`) |
+| `OTEL_SERVICE_NAME` | Overrides the `service.name` resource attribute |
+| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes (e.g. `deployment.environment=production`) |
 
 ## Development
 

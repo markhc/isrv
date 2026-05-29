@@ -105,3 +105,19 @@ cleanup:
 
 # enable debug mode for more verbose logging and additional information in responses
 debug: false
+
+# OpenTelemetry observability configuration
+# When enabled, RED metrics (rate, errors, duration) and APM traces are exported
+# via OTLP to any compatible backend (Grafana Cloud, Datadog, Dynatrace, New Relic, etc.).
+#
+# All exporter and resource settings are controlled through the standard OTEL_*
+# environment variables rather than this config file:
+#
+#   OTEL_EXPORTER_OTLP_ENDPOINT     Base URL of the OTLP receiver
+#                                    e.g. https://otlp-gateway-prod-us-east-0.grafana.net/otlp
+#   OTEL_EXPORTER_OTLP_HEADERS      Comma-separated key=value auth headers
+#                                    e.g. Authorization=Basic <base64(id:token)>
+#   OTEL_SERVICE_NAME                Overrides the service.name resource attribute (default: isrv)
+#   OTEL_RESOURCE_ATTRIBUTES         Additional resource attributes, e.g. deployment.environment=production
+telemetry:
+  enabled: false

@@ -19,6 +19,11 @@ services:
       - ISRV_CLEANUP_ENABLED=true                 # Enable automatic cleanup of old uploads
       - ISRV_CLEANUP_INTERVAL=1m                  # Set the cleanup interval (e.g., 1m for 1 minute)
       - ISRV_STORAGE_PATH=/data/upload_data       # Set the data directory for uploads
+      # - OTEL_SERVICE_NAME=isrv
+      # - OTEL_RESOURCE_ATTRIBUTES=environment=development
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-sa-east-1.grafana.net/otlp
+      # - OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic ...
+      # - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
     volumes:
       # Mount the configuration file
       - ./config.yaml:/config/config.yaml

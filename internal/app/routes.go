@@ -7,12 +7,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/markhc/isrv/internal/logging"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 )
 
 // SetupRoutes registers all application routes and their associated handlers and middleware.
 // It returns a configured chi.Mux instance ready to be used as an HTTP handler.
-func SetupRoutes(a *Application) *chi.Mux {
+// The returned mux is wrapped with OpenTelemetry HTTP instrumentation that emits
+// per-request traces and RED metrics (rate, errors, duration) to the configured backend.
+//
+//nolint:funlen
+func SetupRoutes(a *Application) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -29,6 +36,25 @@ func SetupRoutes(a *Application) *chi.Mux {
 
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
+
+	// After chi has resolved the route, update the active otelhttp span name and
+	// http.route metric label to the matched route pattern (e.g. "GET /d/{id}").
+	// Without this the outer otelhttp wrapper only sees the raw URL path.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if routeCtx := chi.RouteContext(r.Context()); routeCtx != nil {
+				if pattern := routeCtx.RoutePattern(); pattern != "" {
+					spanName := r.Method + " " + pattern
+					trace.SpanFromContext(r.Context()).SetName(spanName)
+
+					if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
+						labeler.Add(attribute.String("http.route", pattern))
+					}
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	r.NotFound(a.NotFoundHandler)
 
@@ -71,5 +97,10 @@ func SetupRoutes(a *Application) *chi.Mux {
 		r.Get("/static/*", http.StripPrefix("/static/", staticFS).ServeHTTP)
 	}
 
-	return r
+	// Wrap the entire mux with OTel HTTP instrumentation.
+	// This emits a trace span and HTTP server metrics for every request,
+	// providing RED metrics (rate, errors, duration) out of the box.
+	return otelhttp.NewHandler(r, "isrv",
+		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+	)
 }
