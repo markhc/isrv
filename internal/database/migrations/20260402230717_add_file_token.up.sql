@@ -3,4 +3,4 @@
 
 ALTER TABLE files ADD COLUMN token TEXT NULL DEFAULT NULL;
 
-CREATE INDEX idx_files_token ON files(token);
+CREATE UNIQUE INDEX idx_files_token ON files(token);
