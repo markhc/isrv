@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -38,7 +37,7 @@ func RequireToken(db database.Database) func(http.Handler) http.Handler {
 				if errors.Is(err, database.ErrFileNotFound) {
 					utils.RespondWithError(w, http.StatusUnauthorized, "invalid token")
 				} else {
-					utils.RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Internal Server Error: %v", err))
+					utils.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 				}
 
 				return
