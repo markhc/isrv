@@ -120,8 +120,6 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 		trace.WithAttributes(attribute.String("file.id", fileID)),
 	)
 	record, err := db.GetFileData(ctx, fileID)
-	getSpan.End()
-
 	if err != nil {
 		if errors.Is(err, database.ErrFileNotFound) {
 			utils.RespondWithError(w, http.StatusNotFound, "file not found")
@@ -135,8 +133,12 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 			utils.RespondWithError(w, http.StatusInternalServerError, "internal server error")
 		}
 
+		getSpan.End()
+
 		return
 	}
+
+	getSpan.End()
 
 	maxExpiry := utils.MaxExpirationTime(record.FileSize, config)
 	if newExpiry.After(maxExpiry) {
@@ -154,8 +156,6 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 		),
 	)
 	err = db.SetExpiration(ctx, fileID, newExpiry)
-	setSpan.End()
-
 	if err != nil {
 		setSpan.RecordError(err)
 		setSpan.SetStatus(codes.Error, "failed to update expiration")
@@ -165,8 +165,12 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 		)
 		utils.RespondWithError(w, http.StatusInternalServerError, "failed to update expiration")
 
+		setSpan.End()
+
 		return
 	}
+
+	setSpan.End()
 
 	utils.RespondWithSuccess(w, struct {
 		FileID     string `json:"fileId"`

@@ -64,10 +64,11 @@ func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion 
 		return func(context.Context) error { return nil }, nil
 	}
 
-	// Set build version as the lowest-priority default; OTEL_RESOURCE_ATTRIBUTES
-	// or OTEL_SERVICE_NAME in the environment will override it.
 	res, err := resource.New(ctx,
-		resource.WithAttributes(semconv.ServiceVersion(buildVersion)),
+		resource.WithAttributes(
+			semconv.ServiceName("isrv"),
+			semconv.ServiceVersion(buildVersion),
+		),
 		resource.WithFromEnv(),
 		resource.WithTelemetrySDK(),
 		resource.WithProcess(),
