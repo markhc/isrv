@@ -25,10 +25,10 @@ func Test_Service_performCleanup_expiredFiles(t *testing.T) {
 	stor := stmocks.NewMockStorage(t)
 	expectedFiles := []string{"file1", "file2", "file3"}
 
-	db.On("GetExpiredFiles").Return(expectedFiles, nil)
+	db.On("GetExpiredFiles", mock.Anything).Return(expectedFiles, nil)
 	for _, f := range expectedFiles {
 		stor.On("DeleteFile", mock.Anything, f).Return(nil)
-		db.On("OnFileDelete", f).Return(nil)
+		db.On("OnFileDelete", mock.Anything, f).Return(nil)
 	}
 
 	service := NewService(db, stor, true, time.Minute)
@@ -39,7 +39,7 @@ func Test_Service_performCleanup_noExpiredFiles(t *testing.T) {
 	db := dbmocks.NewMockDatabase(t)
 	stor := stmocks.NewMockStorage(t)
 
-	db.On("GetExpiredFiles").Return([]string{}, nil)
+	db.On("GetExpiredFiles", mock.Anything).Return([]string{}, nil)
 
 	service := NewService(db, stor, true, time.Minute)
 	service.performCleanup(context.Background())
@@ -52,7 +52,7 @@ func Test_Service_performCleanup_dbError(t *testing.T) {
 	db := dbmocks.NewMockDatabase(t)
 	stor := stmocks.NewMockStorage(t)
 
-	db.On("GetExpiredFiles").Return(nil, errors.New("database error"))
+	db.On("GetExpiredFiles", mock.Anything).Return(nil, errors.New("database error"))
 
 	service := NewService(db, stor, true, time.Minute)
 	service.performCleanup(context.Background())
@@ -65,9 +65,9 @@ func Test_Service_performCleanup_storageError(t *testing.T) {
 	db := dbmocks.NewMockDatabase(t)
 	stor := stmocks.NewMockStorage(t)
 
-	db.On("GetExpiredFiles").Return([]string{"file1"}, nil)
+	db.On("GetExpiredFiles", mock.Anything).Return([]string{"file1"}, nil)
 	stor.On("DeleteFile", mock.Anything, "file1").Return(errors.New("storage error"))
-	db.On("OnFileDelete", "file1").Return(nil)
+	db.On("OnFileDelete", mock.Anything, "file1").Return(nil)
 
 	service := NewService(db, stor, true, time.Minute)
 	service.performCleanup(context.Background())
@@ -77,9 +77,9 @@ func Test_Service_performCleanup_databaseDeleteError(t *testing.T) {
 	db := dbmocks.NewMockDatabase(t)
 	stor := stmocks.NewMockStorage(t)
 
-	db.On("GetExpiredFiles").Return([]string{"file1"}, nil)
+	db.On("GetExpiredFiles", mock.Anything).Return([]string{"file1"}, nil)
 	stor.On("DeleteFile", mock.Anything, "file1").Return(nil)
-	db.On("OnFileDelete", "file1").Return(errors.New("database delete error"))
+	db.On("OnFileDelete", mock.Anything, "file1").Return(errors.New("database delete error"))
 
 	service := NewService(db, stor, true, time.Minute)
 	service.performCleanup(context.Background())
@@ -105,7 +105,7 @@ func Test_Service_Start_enabled(t *testing.T) {
 	stor := stmocks.NewMockStorage(t)
 
 	// GetExpiredFiles may or may not be called depending on timing.
-	db.On("GetExpiredFiles").Return([]string{}, nil).Maybe()
+	db.On("GetExpiredFiles", mock.Anything).Return([]string{}, nil).Maybe()
 
 	service := NewService(db, stor, true, time.Millisecond*10)
 
@@ -124,7 +124,7 @@ func Test_Service_cleanupFile_success(t *testing.T) {
 	stor := stmocks.NewMockStorage(t)
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(nil)
-	db.On("OnFileDelete", "test-file").Return(nil)
+	db.On("OnFileDelete", mock.Anything, "test-file").Return(nil)
 
 	service := NewService(db, stor, true, time.Minute)
 
@@ -138,7 +138,7 @@ func Test_Service_cleanupFile_storageErrorOnly(t *testing.T) {
 	stor := stmocks.NewMockStorage(t)
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(errors.New("storage failed"))
-	db.On("OnFileDelete", "test-file").Return(nil)
+	db.On("OnFileDelete", mock.Anything, "test-file").Return(nil)
 
 	service := NewService(db, stor, true, time.Minute)
 
@@ -152,7 +152,7 @@ func Test_Service_cleanupFile_databaseErrorOnly(t *testing.T) {
 	stor := stmocks.NewMockStorage(t)
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(nil)
-	db.On("OnFileDelete", "test-file").Return(errors.New("database failed"))
+	db.On("OnFileDelete", mock.Anything, "test-file").Return(errors.New("database failed"))
 
 	service := NewService(db, stor, true, time.Minute)
 
@@ -166,7 +166,7 @@ func Test_Service_cleanupFile_bothErrors(t *testing.T) {
 	stor := stmocks.NewMockStorage(t)
 
 	stor.On("DeleteFile", mock.Anything, "test-file").Return(errors.New("storage failed"))
-	db.On("OnFileDelete", "test-file").Return(errors.New("database failed"))
+	db.On("OnFileDelete", mock.Anything, "test-file").Return(errors.New("database failed"))
 
 	service := NewService(db, stor, true, time.Minute)
 

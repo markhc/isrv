@@ -150,6 +150,7 @@ func (db *SQLiteDB) Migrate() error {
 
 // OnFileUpload inserts a new file record with the given metadata and expiration time.
 func (db *SQLiteDB) OnFileUpload(
+	ctx context.Context,
 	fileID string,
 	fileHeader *multipart.FileHeader,
 	token string,
@@ -167,7 +168,7 @@ func (db *SQLiteDB) OnFileUpload(
 	}
 
 	_, err = db.sqldb.ExecContext(
-		context.Background(),
+		ctx,
 		QUERY_INSERT_FILE,
 		fileID,
 		fileHeader.Filename,
@@ -184,8 +185,8 @@ func (db *SQLiteDB) OnFileUpload(
 }
 
 // OnFileDownload increments the download counter for the given file ID.
-func (db *SQLiteDB) OnFileDownload(fileID string) error {
-	result, err := db.sqldb.ExecContext(context.Background(), QUERY_UPDATE_DOWNLOAD_COUNT, fileID)
+func (db *SQLiteDB) OnFileDownload(ctx context.Context, fileID string) error {
+	result, err := db.sqldb.ExecContext(ctx, QUERY_UPDATE_DOWNLOAD_COUNT, fileID)
 	if err != nil {
 		return fmt.Errorf("failed to update download count: %w", err)
 	}
@@ -203,8 +204,8 @@ func (db *SQLiteDB) OnFileDownload(fileID string) error {
 }
 
 // OnFileDelete removes the record for the given file ID from the database.
-func (db *SQLiteDB) OnFileDelete(fileID string) error {
-	result, err := db.sqldb.ExecContext(context.Background(), QUERY_DELETE_FILE, fileID)
+func (db *SQLiteDB) OnFileDelete(ctx context.Context, fileID string) error {
+	result, err := db.sqldb.ExecContext(ctx, QUERY_DELETE_FILE, fileID)
 	if err != nil {
 		return fmt.Errorf("failed to delete file record: %w", err)
 	}
@@ -222,9 +223,9 @@ func (db *SQLiteDB) OnFileDelete(fileID string) error {
 }
 
 // GetFileMetadata returns the metadata map for the given file ID.
-func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
+func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error) {
 	var metadataStr string
-	err := db.sqldb.Get(&metadataStr, QUERY_SELECT_METADATA, fileID)
+	err := db.sqldb.GetContext(ctx, &metadataStr, QUERY_SELECT_METADATA, fileID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFileNotFound
@@ -243,9 +244,9 @@ func (db *SQLiteDB) GetFileMetadata(fileID string) (map[string]string, error) {
 }
 
 // GetFileToken returns the token associated with the given file ID.
-func (db *SQLiteDB) GetFileToken(fileID string) (string, error) {
+func (db *SQLiteDB) GetFileToken(ctx context.Context, fileID string) (string, error) {
 	var token string
-	err := db.sqldb.Get(&token, QUERY_SELECT_TOKEN, fileID)
+	err := db.sqldb.GetContext(ctx, &token, QUERY_SELECT_TOKEN, fileID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrFileNotFound
@@ -258,9 +259,9 @@ func (db *SQLiteDB) GetFileToken(fileID string) (string, error) {
 }
 
 // GetFileByToken returns the file ID associated with the given token.
-func (db *SQLiteDB) GetFileByToken(token string) (string, error) {
+func (db *SQLiteDB) GetFileByToken(ctx context.Context, token string) (string, error) {
 	var fileID string
-	err := db.sqldb.Get(&fileID, QUERY_SELECT_FILE_BY_TOKEN, token)
+	err := db.sqldb.GetContext(ctx, &fileID, QUERY_SELECT_FILE_BY_TOKEN, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrFileNotFound
@@ -273,8 +274,8 @@ func (db *SQLiteDB) GetFileByToken(token string) (string, error) {
 }
 
 // GetExpiredFiles returns the IDs of all files whose expiration time is in the past.
-func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
-	rows, err := db.sqldb.QueryContext(context.Background(), QUERY_SELECT_EXPIRED_FILES)
+func (db *SQLiteDB) GetExpiredFiles(ctx context.Context) ([]string, error) {
+	rows, err := db.sqldb.QueryContext(ctx, QUERY_SELECT_EXPIRED_FILES)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query expired files: %w", err)
 	}
@@ -298,13 +299,13 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 }
 
 // GetFileData returns the file record for the given file ID.
-func (db *SQLiteDB) GetFileData(id string) (*FileRecord, error) {
+func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, error) {
 	var (
 		record      FileRecord
 		metadataStr string
 	)
 
-	row := db.sqldb.QueryRowContext(context.Background(), QUERY_SELECT_FILE_DATA, id)
+	row := db.sqldb.QueryRowContext(ctx, QUERY_SELECT_FILE_DATA, id)
 	err := row.Scan(&record.ID, &record.Token, &record.FileSize, &metadataStr, &record.ExpirationTime, &record.IPAddress)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -326,8 +327,8 @@ func (db *SQLiteDB) GetFileData(id string) (*FileRecord, error) {
 }
 
 // SetExpiration updates the expiration time for the given file ID.
-func (db *SQLiteDB) SetExpiration(fileID string, expiration time.Time) error {
-	result, err := db.sqldb.ExecContext(context.Background(), QUERY_UPDATE_EXPIRATION, expiration, fileID)
+func (db *SQLiteDB) SetExpiration(ctx context.Context, fileID string, expiration time.Time) error {
+	result, err := db.sqldb.ExecContext(ctx, QUERY_UPDATE_EXPIRATION, expiration, fileID)
 	if err != nil {
 		return fmt.Errorf("failed to update expiration: %w", err)
 	}

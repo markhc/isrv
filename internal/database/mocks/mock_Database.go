@@ -5,6 +5,7 @@
 package mocks
 
 import (
+	"context"
 	"mime/multipart"
 	"time"
 
@@ -128,8 +129,8 @@ func (_c *MockDatabase_Connect_Call) RunAndReturn(run func() error) *MockDatabas
 }
 
 // GetExpiredFiles provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) GetExpiredFiles() ([]string, error) {
-	ret := _mock.Called()
+func (_mock *MockDatabase) GetExpiredFiles(ctx context.Context) ([]string, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExpiredFiles")
@@ -137,18 +138,18 @@ func (_mock *MockDatabase) GetExpiredFiles() ([]string, error) {
 
 	var r0 []string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() ([]string, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]string, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() []string); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []string); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -161,13 +162,20 @@ type MockDatabase_GetExpiredFiles_Call struct {
 }
 
 // GetExpiredFiles is a helper method to define mock.On call
-func (_e *MockDatabase_Expecter) GetExpiredFiles() *MockDatabase_GetExpiredFiles_Call {
-	return &MockDatabase_GetExpiredFiles_Call{Call: _e.mock.On("GetExpiredFiles")}
+//   - ctx context.Context
+func (_e *MockDatabase_Expecter) GetExpiredFiles(ctx interface{}) *MockDatabase_GetExpiredFiles_Call {
+	return &MockDatabase_GetExpiredFiles_Call{Call: _e.mock.On("GetExpiredFiles", ctx)}
 }
 
-func (_c *MockDatabase_GetExpiredFiles_Call) Run(run func()) *MockDatabase_GetExpiredFiles_Call {
+func (_c *MockDatabase_GetExpiredFiles_Call) Run(run func(ctx context.Context)) *MockDatabase_GetExpiredFiles_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -177,14 +185,14 @@ func (_c *MockDatabase_GetExpiredFiles_Call) Return(strings []string, err error)
 	return _c
 }
 
-func (_c *MockDatabase_GetExpiredFiles_Call) RunAndReturn(run func() ([]string, error)) *MockDatabase_GetExpiredFiles_Call {
+func (_c *MockDatabase_GetExpiredFiles_Call) RunAndReturn(run func(ctx context.Context) ([]string, error)) *MockDatabase_GetExpiredFiles_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetFileByToken provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) GetFileByToken(token string) (string, error) {
-	ret := _mock.Called(token)
+func (_mock *MockDatabase) GetFileByToken(ctx context.Context, token string) (string, error) {
+	ret := _mock.Called(ctx, token)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFileByToken")
@@ -192,16 +200,16 @@ func (_mock *MockDatabase) GetFileByToken(token string) (string, error) {
 
 	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (string, error)); ok {
-		return returnFunc(token)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return returnFunc(ctx, token)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
-		r0 = returnFunc(token)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, token)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(token)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, token)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -214,19 +222,25 @@ type MockDatabase_GetFileByToken_Call struct {
 }
 
 // GetFileByToken is a helper method to define mock.On call
+//   - ctx context.Context
 //   - token string
-func (_e *MockDatabase_Expecter) GetFileByToken(token interface{}) *MockDatabase_GetFileByToken_Call {
-	return &MockDatabase_GetFileByToken_Call{Call: _e.mock.On("GetFileByToken", token)}
+func (_e *MockDatabase_Expecter) GetFileByToken(ctx interface{}, token interface{}) *MockDatabase_GetFileByToken_Call {
+	return &MockDatabase_GetFileByToken_Call{Call: _e.mock.On("GetFileByToken", ctx, token)}
 }
 
-func (_c *MockDatabase_GetFileByToken_Call) Run(run func(token string)) *MockDatabase_GetFileByToken_Call {
+func (_c *MockDatabase_GetFileByToken_Call) Run(run func(ctx context.Context, token string)) *MockDatabase_GetFileByToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -237,14 +251,14 @@ func (_c *MockDatabase_GetFileByToken_Call) Return(s string, err error) *MockDat
 	return _c
 }
 
-func (_c *MockDatabase_GetFileByToken_Call) RunAndReturn(run func(token string) (string, error)) *MockDatabase_GetFileByToken_Call {
+func (_c *MockDatabase_GetFileByToken_Call) RunAndReturn(run func(ctx context.Context, token string) (string, error)) *MockDatabase_GetFileByToken_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetFileData provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) GetFileData(fileID string) (*database.FileRecord, error) {
-	ret := _mock.Called(fileID)
+func (_mock *MockDatabase) GetFileData(ctx context.Context, fileID string) (*database.FileRecord, error) {
+	ret := _mock.Called(ctx, fileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFileData")
@@ -252,18 +266,18 @@ func (_mock *MockDatabase) GetFileData(fileID string) (*database.FileRecord, err
 
 	var r0 *database.FileRecord
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (*database.FileRecord, error)); ok {
-		return returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*database.FileRecord, error)); ok {
+		return returnFunc(ctx, fileID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *database.FileRecord); ok {
-		r0 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *database.FileRecord); ok {
+		r0 = returnFunc(ctx, fileID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*database.FileRecord)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, fileID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -276,19 +290,25 @@ type MockDatabase_GetFileData_Call struct {
 }
 
 // GetFileData is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) GetFileData(fileID interface{}) *MockDatabase_GetFileData_Call {
-	return &MockDatabase_GetFileData_Call{Call: _e.mock.On("GetFileData", fileID)}
+func (_e *MockDatabase_Expecter) GetFileData(ctx interface{}, fileID interface{}) *MockDatabase_GetFileData_Call {
+	return &MockDatabase_GetFileData_Call{Call: _e.mock.On("GetFileData", ctx, fileID)}
 }
 
-func (_c *MockDatabase_GetFileData_Call) Run(run func(fileID string)) *MockDatabase_GetFileData_Call {
+func (_c *MockDatabase_GetFileData_Call) Run(run func(ctx context.Context, fileID string)) *MockDatabase_GetFileData_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -299,14 +319,14 @@ func (_c *MockDatabase_GetFileData_Call) Return(fileRecord *database.FileRecord,
 	return _c
 }
 
-func (_c *MockDatabase_GetFileData_Call) RunAndReturn(run func(fileID string) (*database.FileRecord, error)) *MockDatabase_GetFileData_Call {
+func (_c *MockDatabase_GetFileData_Call) RunAndReturn(run func(ctx context.Context, fileID string) (*database.FileRecord, error)) *MockDatabase_GetFileData_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetFileMetadata provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) GetFileMetadata(fileID string) (map[string]string, error) {
-	ret := _mock.Called(fileID)
+func (_mock *MockDatabase) GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error) {
+	ret := _mock.Called(ctx, fileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFileMetadata")
@@ -314,18 +334,18 @@ func (_mock *MockDatabase) GetFileMetadata(fileID string) (map[string]string, er
 
 	var r0 map[string]string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (map[string]string, error)); ok {
-		return returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (map[string]string, error)); ok {
+		return returnFunc(ctx, fileID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) map[string]string); ok {
-		r0 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) map[string]string); ok {
+		r0 = returnFunc(ctx, fileID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, fileID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -338,19 +358,25 @@ type MockDatabase_GetFileMetadata_Call struct {
 }
 
 // GetFileMetadata is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) GetFileMetadata(fileID interface{}) *MockDatabase_GetFileMetadata_Call {
-	return &MockDatabase_GetFileMetadata_Call{Call: _e.mock.On("GetFileMetadata", fileID)}
+func (_e *MockDatabase_Expecter) GetFileMetadata(ctx interface{}, fileID interface{}) *MockDatabase_GetFileMetadata_Call {
+	return &MockDatabase_GetFileMetadata_Call{Call: _e.mock.On("GetFileMetadata", ctx, fileID)}
 }
 
-func (_c *MockDatabase_GetFileMetadata_Call) Run(run func(fileID string)) *MockDatabase_GetFileMetadata_Call {
+func (_c *MockDatabase_GetFileMetadata_Call) Run(run func(ctx context.Context, fileID string)) *MockDatabase_GetFileMetadata_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -361,14 +387,14 @@ func (_c *MockDatabase_GetFileMetadata_Call) Return(stringToString map[string]st
 	return _c
 }
 
-func (_c *MockDatabase_GetFileMetadata_Call) RunAndReturn(run func(fileID string) (map[string]string, error)) *MockDatabase_GetFileMetadata_Call {
+func (_c *MockDatabase_GetFileMetadata_Call) RunAndReturn(run func(ctx context.Context, fileID string) (map[string]string, error)) *MockDatabase_GetFileMetadata_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetFileToken provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) GetFileToken(fileID string) (string, error) {
-	ret := _mock.Called(fileID)
+func (_mock *MockDatabase) GetFileToken(ctx context.Context, fileID string) (string, error) {
+	ret := _mock.Called(ctx, fileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFileToken")
@@ -376,16 +402,16 @@ func (_mock *MockDatabase) GetFileToken(fileID string) (string, error) {
 
 	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (string, error)); ok {
-		return returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return returnFunc(ctx, fileID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) string); ok {
-		r0 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, fileID)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, fileID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -398,19 +424,25 @@ type MockDatabase_GetFileToken_Call struct {
 }
 
 // GetFileToken is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) GetFileToken(fileID interface{}) *MockDatabase_GetFileToken_Call {
-	return &MockDatabase_GetFileToken_Call{Call: _e.mock.On("GetFileToken", fileID)}
+func (_e *MockDatabase_Expecter) GetFileToken(ctx interface{}, fileID interface{}) *MockDatabase_GetFileToken_Call {
+	return &MockDatabase_GetFileToken_Call{Call: _e.mock.On("GetFileToken", ctx, fileID)}
 }
 
-func (_c *MockDatabase_GetFileToken_Call) Run(run func(fileID string)) *MockDatabase_GetFileToken_Call {
+func (_c *MockDatabase_GetFileToken_Call) Run(run func(ctx context.Context, fileID string)) *MockDatabase_GetFileToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -421,7 +453,7 @@ func (_c *MockDatabase_GetFileToken_Call) Return(s string, err error) *MockDatab
 	return _c
 }
 
-func (_c *MockDatabase_GetFileToken_Call) RunAndReturn(run func(fileID string) (string, error)) *MockDatabase_GetFileToken_Call {
+func (_c *MockDatabase_GetFileToken_Call) RunAndReturn(run func(ctx context.Context, fileID string) (string, error)) *MockDatabase_GetFileToken_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -471,16 +503,16 @@ func (_c *MockDatabase_Migrate_Call) RunAndReturn(run func() error) *MockDatabas
 }
 
 // OnFileDelete provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) OnFileDelete(fileID string) error {
-	ret := _mock.Called(fileID)
+func (_mock *MockDatabase) OnFileDelete(ctx context.Context, fileID string) error {
+	ret := _mock.Called(ctx, fileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OnFileDelete")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, fileID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -493,19 +525,25 @@ type MockDatabase_OnFileDelete_Call struct {
 }
 
 // OnFileDelete is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) OnFileDelete(fileID interface{}) *MockDatabase_OnFileDelete_Call {
-	return &MockDatabase_OnFileDelete_Call{Call: _e.mock.On("OnFileDelete", fileID)}
+func (_e *MockDatabase_Expecter) OnFileDelete(ctx interface{}, fileID interface{}) *MockDatabase_OnFileDelete_Call {
+	return &MockDatabase_OnFileDelete_Call{Call: _e.mock.On("OnFileDelete", ctx, fileID)}
 }
 
-func (_c *MockDatabase_OnFileDelete_Call) Run(run func(fileID string)) *MockDatabase_OnFileDelete_Call {
+func (_c *MockDatabase_OnFileDelete_Call) Run(run func(ctx context.Context, fileID string)) *MockDatabase_OnFileDelete_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -516,22 +554,22 @@ func (_c *MockDatabase_OnFileDelete_Call) Return(err error) *MockDatabase_OnFile
 	return _c
 }
 
-func (_c *MockDatabase_OnFileDelete_Call) RunAndReturn(run func(fileID string) error) *MockDatabase_OnFileDelete_Call {
+func (_c *MockDatabase_OnFileDelete_Call) RunAndReturn(run func(ctx context.Context, fileID string) error) *MockDatabase_OnFileDelete_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // OnFileDownload provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) OnFileDownload(fileID string) error {
-	ret := _mock.Called(fileID)
+func (_mock *MockDatabase) OnFileDownload(ctx context.Context, fileID string) error {
+	ret := _mock.Called(ctx, fileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OnFileDownload")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(fileID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, fileID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -544,19 +582,25 @@ type MockDatabase_OnFileDownload_Call struct {
 }
 
 // OnFileDownload is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) OnFileDownload(fileID interface{}) *MockDatabase_OnFileDownload_Call {
-	return &MockDatabase_OnFileDownload_Call{Call: _e.mock.On("OnFileDownload", fileID)}
+func (_e *MockDatabase_Expecter) OnFileDownload(ctx interface{}, fileID interface{}) *MockDatabase_OnFileDownload_Call {
+	return &MockDatabase_OnFileDownload_Call{Call: _e.mock.On("OnFileDownload", ctx, fileID)}
 }
 
-func (_c *MockDatabase_OnFileDownload_Call) Run(run func(fileID string)) *MockDatabase_OnFileDownload_Call {
+func (_c *MockDatabase_OnFileDownload_Call) Run(run func(ctx context.Context, fileID string)) *MockDatabase_OnFileDownload_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -567,22 +611,22 @@ func (_c *MockDatabase_OnFileDownload_Call) Return(err error) *MockDatabase_OnFi
 	return _c
 }
 
-func (_c *MockDatabase_OnFileDownload_Call) RunAndReturn(run func(fileID string) error) *MockDatabase_OnFileDownload_Call {
+func (_c *MockDatabase_OnFileDownload_Call) RunAndReturn(run func(ctx context.Context, fileID string) error) *MockDatabase_OnFileDownload_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // OnFileUpload provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) OnFileUpload(fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error {
-	ret := _mock.Called(fileID, fileHeader, token, expirationTime, ipAddress)
+func (_mock *MockDatabase) OnFileUpload(ctx context.Context, fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error {
+	ret := _mock.Called(ctx, fileID, fileHeader, token, expirationTime, ipAddress)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OnFileUpload")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, *multipart.FileHeader, string, time.Time, string) error); ok {
-		r0 = returnFunc(fileID, fileHeader, token, expirationTime, ipAddress)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *multipart.FileHeader, string, time.Time, string) error); ok {
+		r0 = returnFunc(ctx, fileID, fileHeader, token, expirationTime, ipAddress)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -595,36 +639,41 @@ type MockDatabase_OnFileUpload_Call struct {
 }
 
 // OnFileUpload is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
 //   - fileHeader *multipart.FileHeader
 //   - token string
 //   - expirationTime time.Time
 //   - ipAddress string
-func (_e *MockDatabase_Expecter) OnFileUpload(fileID interface{}, fileHeader interface{}, token interface{}, expirationTime interface{}, ipAddress interface{}) *MockDatabase_OnFileUpload_Call {
-	return &MockDatabase_OnFileUpload_Call{Call: _e.mock.On("OnFileUpload", fileID, fileHeader, token, expirationTime, ipAddress)}
+func (_e *MockDatabase_Expecter) OnFileUpload(ctx interface{}, fileID interface{}, fileHeader interface{}, token interface{}, expirationTime interface{}, ipAddress interface{}) *MockDatabase_OnFileUpload_Call {
+	return &MockDatabase_OnFileUpload_Call{Call: _e.mock.On("OnFileUpload", ctx, fileID, fileHeader, token, expirationTime, ipAddress)}
 }
 
-func (_c *MockDatabase_OnFileUpload_Call) Run(run func(fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string)) *MockDatabase_OnFileUpload_Call {
+func (_c *MockDatabase_OnFileUpload_Call) Run(run func(ctx context.Context, fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string)) *MockDatabase_OnFileUpload_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 *multipart.FileHeader
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(*multipart.FileHeader)
+			arg1 = args[1].(string)
 		}
-		var arg2 string
+		var arg2 *multipart.FileHeader
 		if args[2] != nil {
-			arg2 = args[2].(string)
+			arg2 = args[2].(*multipart.FileHeader)
 		}
-		var arg3 time.Time
+		var arg3 string
 		if args[3] != nil {
-			arg3 = args[3].(time.Time)
+			arg3 = args[3].(string)
 		}
-		var arg4 string
+		var arg4 time.Time
 		if args[4] != nil {
-			arg4 = args[4].(string)
+			arg4 = args[4].(time.Time)
+		}
+		var arg5 string
+		if args[5] != nil {
+			arg5 = args[5].(string)
 		}
 		run(
 			arg0,
@@ -632,6 +681,7 @@ func (_c *MockDatabase_OnFileUpload_Call) Run(run func(fileID string, fileHeader
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
@@ -642,22 +692,22 @@ func (_c *MockDatabase_OnFileUpload_Call) Return(err error) *MockDatabase_OnFile
 	return _c
 }
 
-func (_c *MockDatabase_OnFileUpload_Call) RunAndReturn(run func(fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error) *MockDatabase_OnFileUpload_Call {
+func (_c *MockDatabase_OnFileUpload_Call) RunAndReturn(run func(ctx context.Context, fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error) *MockDatabase_OnFileUpload_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetExpiration provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) SetExpiration(fileID string, expiration time.Time) error {
-	ret := _mock.Called(fileID, expiration)
+func (_mock *MockDatabase) SetExpiration(ctx context.Context, fileID string, expiration time.Time) error {
+	ret := _mock.Called(ctx, fileID, expiration)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetExpiration")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, time.Time) error); ok {
-		r0 = returnFunc(fileID, expiration)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) error); ok {
+		r0 = returnFunc(ctx, fileID, expiration)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -670,25 +720,31 @@ type MockDatabase_SetExpiration_Call struct {
 }
 
 // SetExpiration is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fileID string
 //   - expiration time.Time
-func (_e *MockDatabase_Expecter) SetExpiration(fileID interface{}, expiration interface{}) *MockDatabase_SetExpiration_Call {
-	return &MockDatabase_SetExpiration_Call{Call: _e.mock.On("SetExpiration", fileID, expiration)}
+func (_e *MockDatabase_Expecter) SetExpiration(ctx interface{}, fileID interface{}, expiration interface{}) *MockDatabase_SetExpiration_Call {
+	return &MockDatabase_SetExpiration_Call{Call: _e.mock.On("SetExpiration", ctx, fileID, expiration)}
 }
 
-func (_c *MockDatabase_SetExpiration_Call) Run(run func(fileID string, expiration time.Time)) *MockDatabase_SetExpiration_Call {
+func (_c *MockDatabase_SetExpiration_Call) Run(run func(ctx context.Context, fileID string, expiration time.Time)) *MockDatabase_SetExpiration_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 time.Time
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(time.Time)
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -699,7 +755,7 @@ func (_c *MockDatabase_SetExpiration_Call) Return(err error) *MockDatabase_SetEx
 	return _c
 }
 
-func (_c *MockDatabase_SetExpiration_Call) RunAndReturn(run func(fileID string, expiration time.Time) error) *MockDatabase_SetExpiration_Call {
+func (_c *MockDatabase_SetExpiration_Call) RunAndReturn(run func(ctx context.Context, fileID string, expiration time.Time) error) *MockDatabase_SetExpiration_Call {
 	_c.Call.Return(run)
 	return _c
 }

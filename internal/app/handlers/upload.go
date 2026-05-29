@@ -115,7 +115,7 @@ func processUpload(
 
 	logging.LogInfo("file uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
-	if err := db.OnFileUpload(fileID, header, token, expiration, ipAddress); err != nil {
+	if err := db.OnFileUpload(ctx, fileID, header, token, expiration, ipAddress); err != nil {
 		logging.LogError("failed to record file upload in database",
 			logging.String("file_id", fileID),
 			logging.Error(err),
