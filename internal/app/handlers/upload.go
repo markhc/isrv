@@ -116,7 +116,19 @@ func processUpload(
 	logging.LogInfo("file uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
 	if err := db.OnFileUpload(fileID, header, token, expiration, ipAddress); err != nil {
-		logging.LogError("failed to update file metrics", logging.Error(err))
+		logging.LogError("failed to record file upload in database",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+
+		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
+			logging.LogError("failed to roll back stored file after db error",
+				logging.String("file_id", fileID),
+				logging.Error(rollbackErr),
+			)
+		}
+
+		return "", fmt.Errorf("failed to record file upload: %w", err)
 	}
 
 	safeFilename := url.PathEscape(header.Filename)

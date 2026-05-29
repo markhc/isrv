@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/utils"
 )
@@ -31,14 +32,20 @@ func RequireToken(db database.Database) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Find the file associated with the token
-			_, err := db.GetFileByToken(token)
+			// Verify the token belongs to the file being acted on.
+			tokenFileID, err := db.GetFileByToken(token)
 			if err != nil {
 				if errors.Is(err, database.ErrFileNotFound) {
 					utils.RespondWithError(w, http.StatusUnauthorized, "invalid token")
 				} else {
 					utils.RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Internal Server Error: %v", err))
 				}
+
+				return
+			}
+
+			if tokenFileID != chi.URLParam(r, "id") {
+				utils.RespondWithError(w, http.StatusUnauthorized, "invalid token")
 
 				return
 			}

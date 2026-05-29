@@ -1,14 +1,24 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/database/mocks"
 	"github.com/stretchr/testify/assert"
 )
+
+// withFileID injects a chi route context carrying the given file ID.
+func withFileID(r *http.Request, fileID string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", fileID)
+
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
 
 func TestRequireToken_NoToken_ReturnsUnauthorized(t *testing.T) {
 	handler := RequireToken(mocks.NewMockDatabase(t))(okHandler())
@@ -26,7 +36,7 @@ func TestRequireToken_ValidToken_QueryParam_Allows(t *testing.T) {
 
 	handler := RequireToken(db)(okHandler())
 
-	req := httptest.NewRequest(http.MethodGet, "/?token=secret", nil)
+	req := withFileID(httptest.NewRequest(http.MethodGet, "/?token=secret", nil), "file-id")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -39,7 +49,7 @@ func TestRequireToken_ValidToken_BearerHeader_Allows(t *testing.T) {
 
 	handler := RequireToken(db)(okHandler())
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := withFileID(httptest.NewRequest(http.MethodGet, "/", nil), "file-id")
 	req.Header.Set("Authorization", "Bearer secret")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -58,6 +68,20 @@ func TestRequireToken_InvalidToken_ReturnsUnauthorized(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRequireToken_TokenFileIDMismatch_ReturnsUnauthorized(t *testing.T) {
+	db := mocks.NewMockDatabase(t)
+	db.EXPECT().GetFileByToken("token-for-other-file").Return("other-file-id", nil)
+
+	handler := RequireToken(db)(okHandler())
+
+	req := withFileID(httptest.NewRequest(http.MethodGet, "/?token=token-for-other-file", nil), "requested-file-id")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid token")
 }
 
 func TestRequireToken_DatabaseError_ReturnsInternalServerError(t *testing.T) {
@@ -103,7 +127,7 @@ func TestRequireToken_QueryParamTakesPrecedenceOverHeader(t *testing.T) {
 
 	handler := RequireToken(db)(okHandler())
 
-	req := httptest.NewRequest(http.MethodGet, "/?token=fromquery", nil)
+	req := withFileID(httptest.NewRequest(http.MethodGet, "/?token=fromquery", nil), "file-id")
 	req.Header.Set("Authorization", "Bearer fromheader")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

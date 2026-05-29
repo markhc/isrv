@@ -278,7 +278,7 @@ func Test_Upload(t *testing.T) {
 			expectedBody:   "failed to process upload",
 		},
 		{
-			name: "OnFileUpload error is non-fatal",
+			name: "OnFileUpload error rolls back storage and returns 500",
 			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				body, ct := multipartBody(t, "file.txt", []byte("hello"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
@@ -289,10 +289,11 @@ func Test_Upload(t *testing.T) {
 					Return("/path/file.txt", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return(errors.New("db error"))
+				stor.On("DeleteFile", mock.Anything, mock.Anything).Return(nil)
 				return req, db, stor
 			},
-			expectedStatus: http.StatusOK,
-			expectedBody:   `"status":"success"`,
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to process upload",
 		},
 		{
 			name: "happy path returns 200 with URL",
