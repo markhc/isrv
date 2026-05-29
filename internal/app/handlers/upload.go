@@ -13,7 +13,11 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
+	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/markhc/isrv/internal/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Upload returns a handler that accepts file uploads and stores them.
@@ -91,6 +95,16 @@ func processUpload(
 	expiration time.Time,
 	ipAddress string,
 ) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "upload.process_file",
+		trace.WithAttributes(
+			attribute.String("file.name", header.Filename),
+			attribute.String("request.ip_address", ipAddress),
+			attribute.Int64("file.size_bytes", header.Size),
+		),
+	)
+
+	defer span.End()
+
 	logging.LogInfo("processing uploaded file: " + header.Filename)
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
@@ -101,26 +115,22 @@ func processUpload(
 	if err != nil {
 		logging.LogError("failed to generate file token", logging.Error(err))
 
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to generate file token")
+
 		return "", fmt.Errorf("failed to generate file token: %w", err)
 	}
 
 	logging.LogDebug("generated file token", logging.String("token", token))
 
-	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
+	path, err := saveToStorage(ctx, stor, fileID, file, header)
 	if err != nil {
-		logging.LogError("failed to save uploaded file", logging.Error(err))
-
-		return "", fmt.Errorf("failed to save uploaded file: %w", err)
+		return "", err
 	}
 
 	logging.LogInfo("file uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
-	if err := db.OnFileUpload(ctx, fileID, header, token, expiration, ipAddress); err != nil {
-		logging.LogError("failed to record file upload in database",
-			logging.String("file_id", fileID),
-			logging.Error(err),
-		)
-
+	if err := recordInDatabase(ctx, db, fileID, header, token, expiration, ipAddress); err != nil {
 		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
 			logging.LogError("failed to roll back stored file after db error",
 				logging.String("file_id", fileID),
@@ -128,10 +138,70 @@ func processUpload(
 			)
 		}
 
-		return "", fmt.Errorf("failed to record file upload: %w", err)
+		return "", err
 	}
 
 	safeFilename := url.PathEscape(header.Filename)
 
 	return config.ServerURL + "/d/" + fileID + "/" + safeFilename, nil
+}
+
+func saveToStorage(
+	ctx context.Context,
+	stor storage.Storage,
+	fileID string,
+	file multipart.File,
+	header *multipart.FileHeader,
+) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.save_file",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+			attribute.String("file.name", header.Filename),
+			attribute.Int64("file.size_bytes", header.Size),
+		),
+	)
+	defer span.End()
+
+	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to save uploaded file")
+		logging.LogError("failed to save uploaded file", logging.Error(err))
+
+		return "", fmt.Errorf("failed to save uploaded file: %w", err)
+	}
+
+	return path, nil
+}
+
+func recordInDatabase(
+	ctx context.Context,
+	db database.Database,
+	fileID string,
+	header *multipart.FileHeader,
+	token string,
+	expiration time.Time,
+	ipAddress string,
+) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.record_upload",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+			attribute.String("file.name", header.Filename),
+			attribute.Int64("file.size_bytes", header.Size),
+		),
+	)
+	defer span.End()
+
+	if err := db.OnFileUpload(ctx, fileID, header, token, expiration, ipAddress); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to record file upload in database")
+		logging.LogError("failed to record file upload in database",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+
+		return fmt.Errorf("failed to record file upload: %w", err)
+	}
+
+	return nil
 }

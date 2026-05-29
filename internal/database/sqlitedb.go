@@ -17,6 +17,13 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
 	"github.com/markhc/isrv/internal/models"
+	"github.com/markhc/isrv/internal/telemetry"
+	"github.com/uptrace/opentelemetry-go-extra/otelsql"
+	"github.com/uptrace/opentelemetry-go-extra/otelsqlx"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
+	"go.opentelemetry.io/otel/trace"
 	_ "modernc.org/sqlite"
 )
 
@@ -84,9 +91,15 @@ func (db *SQLiteDB) Connect() error {
 
 	var err error
 	if db.pathIsDSN {
-		db.sqldb, err = sqlx.Connect("sqlite", db.filePath)
+		// db.sqldb, err = sqlx.Connect("sqlite", db.filePath)
+		db.sqldb, err = otelsqlx.Open("sqlite", db.filePath,
+			otelsql.WithAttributes(semconv.DBSystemSqlite),
+		)
 	} else {
-		db.sqldb, err = sqlx.Connect("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc")
+		// db.sqldb, err = sqlx.Connect("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc")
+		db.sqldb, err = otelsqlx.Open("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc",
+			otelsql.WithAttributes(semconv.DBSystemSqlite),
+		)
 	}
 
 	if err != nil {
@@ -157,6 +170,17 @@ func (db *SQLiteDB) OnFileUpload(
 	expirationTime time.Time,
 	ipAddress string,
 ) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileUpload",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+			attribute.String("file.name", fileHeader.Filename),
+			attribute.Int64("file.size_bytes", fileHeader.Size),
+			attribute.String("file.ip_address", ipAddress),
+		),
+	)
+
+	defer span.End()
+
 	metadata := make(map[string]string)
 	if fileHeader.Header.Get("Content-Type") != "" {
 		metadata["Content-Type"] = fileHeader.Header.Get("Content-Type")
@@ -178,6 +202,9 @@ func (db *SQLiteDB) OnFileUpload(
 		ipAddress,
 		string(jsonMetadata))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to insert file record")
+
 		return fmt.Errorf("failed to insert file record: %w", err)
 	}
 
@@ -186,13 +213,27 @@ func (db *SQLiteDB) OnFileUpload(
 
 // OnFileDownload increments the download counter for the given file ID.
 func (db *SQLiteDB) OnFileDownload(ctx context.Context, fileID string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDownload",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+		),
+	)
+
+	defer span.End()
+
 	result, err := db.sqldb.ExecContext(ctx, QUERY_UPDATE_DOWNLOAD_COUNT, fileID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to update download count")
+
 		return fmt.Errorf("failed to update download count: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to get rows affected for download count update")
+
 		return fmt.Errorf("failed to get rows affected for download count update: %w", err)
 	}
 
@@ -205,13 +246,27 @@ func (db *SQLiteDB) OnFileDownload(ctx context.Context, fileID string) error {
 
 // OnFileDelete removes the record for the given file ID from the database.
 func (db *SQLiteDB) OnFileDelete(ctx context.Context, fileID string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDelete",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+		),
+	)
+
+	defer span.End()
+
 	result, err := db.sqldb.ExecContext(ctx, QUERY_DELETE_FILE, fileID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to delete file record")
+
 		return fmt.Errorf("failed to delete file record: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to get rows affected for file delete")
+
 		return fmt.Errorf("failed to get rows affected for file delete: %w", err)
 	}
 
@@ -224,6 +279,14 @@ func (db *SQLiteDB) OnFileDelete(ctx context.Context, fileID string) error {
 
 // GetFileMetadata returns the metadata map for the given file ID.
 func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileMetadata",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+		),
+	)
+
+	defer span.End()
+
 	var metadataStr string
 	err := db.sqldb.GetContext(ctx, &metadataStr, QUERY_SELECT_METADATA, fileID)
 	if err != nil {
@@ -231,12 +294,18 @@ func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[str
 			return nil, ErrFileNotFound
 		}
 
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to query file metadata")
+
 		return nil, fmt.Errorf("failed to query file metadata: %w", err)
 	}
 
 	var metadata map[string]string
 	err = json.Unmarshal([]byte(metadataStr), &metadata)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to parse file metadata")
+
 		return nil, fmt.Errorf("failed to parse file metadata: %w", err)
 	}
 
@@ -245,12 +314,23 @@ func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[str
 
 // GetFileToken returns the token associated with the given file ID.
 func (db *SQLiteDB) GetFileToken(ctx context.Context, fileID string) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileToken",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+		),
+	)
+
+	defer span.End()
+
 	var token string
 	err := db.sqldb.GetContext(ctx, &token, QUERY_SELECT_TOKEN, fileID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrFileNotFound
 		}
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to query file token")
 
 		return "", fmt.Errorf("failed to query file token: %w", err)
 	}
@@ -260,12 +340,23 @@ func (db *SQLiteDB) GetFileToken(ctx context.Context, fileID string) (string, er
 
 // GetFileByToken returns the file ID associated with the given token.
 func (db *SQLiteDB) GetFileByToken(ctx context.Context, token string) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileByToken",
+		trace.WithAttributes(
+			attribute.String("file.token", token),
+		),
+	)
+
+	defer span.End()
+
 	var fileID string
 	err := db.sqldb.GetContext(ctx, &fileID, QUERY_SELECT_FILE_BY_TOKEN, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrFileNotFound
 		}
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to query file by token")
 
 		return "", fmt.Errorf("failed to query file by token: %w", err)
 	}
@@ -275,8 +366,14 @@ func (db *SQLiteDB) GetFileByToken(ctx context.Context, token string) (string, e
 
 // GetExpiredFiles returns the IDs of all files whose expiration time is in the past.
 func (db *SQLiteDB) GetExpiredFiles(ctx context.Context) ([]string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetExpiredFiles")
+	defer span.End()
+
 	rows, err := db.sqldb.QueryContext(ctx, QUERY_SELECT_EXPIRED_FILES)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to query expired files")
+
 		return nil, fmt.Errorf("failed to query expired files: %w", err)
 	}
 	defer rows.Close()
@@ -286,12 +383,18 @@ func (db *SQLiteDB) GetExpiredFiles(ctx context.Context) ([]string, error) {
 		var fileID string
 		err := rows.Scan(&fileID)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to scan expired file row")
+
 			return nil, fmt.Errorf("failed to scan expired file row: %w", err)
 		}
 		expiredFiles = append(expiredFiles, fileID)
 	}
 
 	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to iterate expired file rows")
+
 		return nil, fmt.Errorf("failed to iterate expired file rows: %w", err)
 	}
 
@@ -300,6 +403,13 @@ func (db *SQLiteDB) GetExpiredFiles(ctx context.Context) ([]string, error) {
 
 // GetFileData returns the file record for the given file ID.
 func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileData",
+		trace.WithAttributes(
+			attribute.String("file.id", id),
+		),
+	)
+	defer span.End()
+
 	var (
 		record      FileRecord
 		metadataStr string
@@ -312,11 +422,17 @@ func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, er
 			return nil, ErrFileNotFound
 		}
 
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to query file data")
+
 		return nil, fmt.Errorf("failed to query file data: %w", err)
 	}
 
 	if metadataStr != "" {
 		if err := json.Unmarshal([]byte(metadataStr), &record.Metadata); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to parse file metadata")
+
 			return nil, fmt.Errorf("failed to parse file metadata: %w", err)
 		}
 	} else {
@@ -328,13 +444,27 @@ func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, er
 
 // SetExpiration updates the expiration time for the given file ID.
 func (db *SQLiteDB) SetExpiration(ctx context.Context, fileID string, expiration time.Time) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.SetExpiration",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+			attribute.String("file.new_expiration", expiration.Format(time.RFC3339)),
+		),
+	)
+	defer span.End()
+
 	result, err := db.sqldb.ExecContext(ctx, QUERY_UPDATE_EXPIRATION, expiration, fileID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to update expiration")
+
 		return fmt.Errorf("failed to update expiration: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to check rows affected")
+
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 

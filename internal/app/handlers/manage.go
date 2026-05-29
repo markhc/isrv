@@ -12,7 +12,11 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
+	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/markhc/isrv/internal/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Delete returns a handler that deletes a stored file by its ID.
@@ -21,7 +25,15 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fileID := chi.URLParam(r, "id")
 
-		if err := st.DeleteFile(r.Context(), fileID); err != nil {
+		ctx, storSpan := telemetry.Tracer().Start(r.Context(), "storage.delete_file",
+			trace.WithAttributes(attribute.String("file.id", fileID)),
+		)
+		err := st.DeleteFile(ctx, fileID)
+		storSpan.End()
+
+		if err != nil {
+			storSpan.RecordError(err)
+			storSpan.SetStatus(codes.Error, "failed to delete file from storage")
 			logging.LogError("failed to delete file from storage",
 				logging.String("file_id", fileID),
 				logging.Error(err),
@@ -31,7 +43,15 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 			return
 		}
 
-		if err := db.OnFileDelete(r.Context(), fileID); err != nil {
+		ctx, dbSpan := telemetry.Tracer().Start(r.Context(), "db.delete_record",
+			trace.WithAttributes(attribute.String("file.id", fileID)),
+		)
+		err = db.OnFileDelete(ctx, fileID)
+		dbSpan.End()
+
+		if err != nil {
+			dbSpan.RecordError(err)
+			dbSpan.SetStatus(codes.Error, "failed to remove file record from database")
 			logging.LogError("failed to remove file record from database",
 				logging.String("file_id", fileID),
 				logging.Error(err),
@@ -83,53 +103,80 @@ func parseExpireRequest(w http.ResponseWriter, r *http.Request) (time.Time, bool
 // from the file's size and the configured min/max age settings.
 func Expire(config *models.Configuration, db database.Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fileID := chi.URLParam(r, "id")
+		applyExpire(w, r, config, db)
+	}
+}
 
-		newExpiry, ok := parseExpireRequest(w, r)
-		if !ok {
-			return
-		}
+//nolint:funlen
+func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configuration, db database.Database) {
+	fileID := chi.URLParam(r, "id")
 
-		record, err := db.GetFileData(r.Context(), fileID)
-		if err != nil {
-			if errors.Is(err, database.ErrFileNotFound) {
-				utils.RespondWithError(w, http.StatusNotFound, "file not found")
-			} else {
-				logging.LogError("failed to get file data",
-					logging.String("file_id", fileID),
-					logging.Error(err),
-				)
-				utils.RespondWithError(w, http.StatusInternalServerError, "internal server error")
-			}
+	newExpiry, ok := parseExpireRequest(w, r)
+	if !ok {
+		return
+	}
 
-			return
-		}
-
-		maxExpiry := utils.MaxExpirationTime(record.FileSize, config)
-		if newExpiry.After(maxExpiry) {
-			utils.RespondWithError(w, http.StatusUnprocessableEntity,
-				"expiration exceeds the maximum allowed time of "+maxExpiry.Format(time.RFC3339),
-			)
-
-			return
-		}
-
-		if err := db.SetExpiration(r.Context(), fileID, newExpiry); err != nil {
-			logging.LogError("failed to update expiration",
+	ctx, getSpan := telemetry.Tracer().Start(r.Context(), "db.get_file_data",
+		trace.WithAttributes(attribute.String("file.id", fileID)),
+	)
+	record, err := db.GetFileData(ctx, fileID)
+	if err != nil {
+		if errors.Is(err, database.ErrFileNotFound) {
+			utils.RespondWithError(w, http.StatusNotFound, "file not found")
+		} else {
+			getSpan.RecordError(err)
+			getSpan.SetStatus(codes.Error, "failed to get file data")
+			logging.LogError("failed to get file data",
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
-			utils.RespondWithError(w, http.StatusInternalServerError, "failed to update expiration")
-
-			return
+			utils.RespondWithError(w, http.StatusInternalServerError, "internal server error")
 		}
 
-		utils.RespondWithSuccess(w, struct {
-			FileID     string `json:"fileId"`
-			Expiration string `json:"expiration"`
-		}{
-			FileID:     fileID,
-			Expiration: newExpiry.Format(time.RFC3339),
-		})
+		getSpan.End()
+
+		return
 	}
+
+	getSpan.End()
+
+	maxExpiry := utils.MaxExpirationTime(record.FileSize, config)
+	if newExpiry.After(maxExpiry) {
+		utils.RespondWithError(w, http.StatusUnprocessableEntity,
+			"expiration exceeds the maximum allowed time of "+maxExpiry.Format(time.RFC3339),
+		)
+
+		return
+	}
+
+	ctx, setSpan := telemetry.Tracer().Start(r.Context(), "db.set_expiration",
+		trace.WithAttributes(
+			attribute.String("file.id", fileID),
+			attribute.String("file.new_expiry", newExpiry.Format(time.RFC3339)),
+		),
+	)
+	err = db.SetExpiration(ctx, fileID, newExpiry)
+	if err != nil {
+		setSpan.RecordError(err)
+		setSpan.SetStatus(codes.Error, "failed to update expiration")
+		logging.LogError("failed to update expiration",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+		utils.RespondWithError(w, http.StatusInternalServerError, "failed to update expiration")
+
+		setSpan.End()
+
+		return
+	}
+
+	setSpan.End()
+
+	utils.RespondWithSuccess(w, struct {
+		FileID     string `json:"fileId"`
+		Expiration string `json:"expiration"`
+	}{
+		FileID:     fileID,
+		Expiration: newExpiry.Format(time.RFC3339),
+	})
 }

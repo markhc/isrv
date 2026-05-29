@@ -49,6 +49,14 @@ type CleanupConfiguration struct {
 	Interval time.Duration `yaml:"interval"`
 }
 
+// TelemetryConfiguration holds settings for OpenTelemetry observability.
+// Exporter endpoint, authentication headers, service name, and other resource
+// attributes are configured via the standard OTEL_* environment variables
+// (e.g. OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS, OTEL_SERVICE_NAME).
+type TelemetryConfiguration struct {
+	Enabled bool `yaml:"enabled"`
+}
+
 type RateLimitExceededAction string
 
 const (
@@ -88,6 +96,7 @@ type Configuration struct {
 	RateLimit         RateLimitConfiguration `yaml:"rateLimit"`
 	Logging           LoggingConfiguration   `yaml:"logging"`
 	Cleanup           CleanupConfiguration   `yaml:"cleanup"`
+	Telemetry         TelemetryConfiguration `yaml:"telemetry"`
 	DebugMode         bool                   `yaml:"debug"`
 }
 
