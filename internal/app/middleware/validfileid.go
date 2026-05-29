@@ -23,7 +23,7 @@ func RequireValidFileID(db database.Database) func(http.Handler) http.Handler {
 				return
 			}
 
-			_, err := db.GetFileData(fileID)
+			_, err := db.GetFileData(r.Context(), fileID)
 			if err != nil {
 				if errors.Is(err, database.ErrFileNotFound) {
 					utils.RespondWithError(w, http.StatusNotFound, "file not found")

@@ -10,6 +10,7 @@ import (
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/database/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // withFileID injects a chi route context carrying the given file ID.
@@ -32,7 +33,7 @@ func TestRequireToken_NoToken_ReturnsUnauthorized(t *testing.T) {
 
 func TestRequireToken_ValidToken_QueryParam_Allows(t *testing.T) {
 	db := mocks.NewMockDatabase(t)
-	db.EXPECT().GetFileByToken("secret").Return("file-id", nil)
+	db.EXPECT().GetFileByToken(mock.Anything, "secret").Return("file-id", nil)
 
 	handler := RequireToken(db)(okHandler())
 
@@ -45,7 +46,7 @@ func TestRequireToken_ValidToken_QueryParam_Allows(t *testing.T) {
 
 func TestRequireToken_ValidToken_BearerHeader_Allows(t *testing.T) {
 	db := mocks.NewMockDatabase(t)
-	db.EXPECT().GetFileByToken("secret").Return("file-id", nil)
+	db.EXPECT().GetFileByToken(mock.Anything, "secret").Return("file-id", nil)
 
 	handler := RequireToken(db)(okHandler())
 
@@ -59,7 +60,7 @@ func TestRequireToken_ValidToken_BearerHeader_Allows(t *testing.T) {
 
 func TestRequireToken_InvalidToken_ReturnsUnauthorized(t *testing.T) {
 	db := mocks.NewMockDatabase(t)
-	db.EXPECT().GetFileByToken("badtoken").Return("", database.ErrFileNotFound)
+	db.EXPECT().GetFileByToken(mock.Anything, "badtoken").Return("", database.ErrFileNotFound)
 
 	handler := RequireToken(db)(okHandler())
 
@@ -72,7 +73,7 @@ func TestRequireToken_InvalidToken_ReturnsUnauthorized(t *testing.T) {
 
 func TestRequireToken_TokenFileIDMismatch_ReturnsUnauthorized(t *testing.T) {
 	db := mocks.NewMockDatabase(t)
-	db.EXPECT().GetFileByToken("token-for-other-file").Return("other-file-id", nil)
+	db.EXPECT().GetFileByToken(mock.Anything, "token-for-other-file").Return("other-file-id", nil)
 
 	handler := RequireToken(db)(okHandler())
 
@@ -86,7 +87,7 @@ func TestRequireToken_TokenFileIDMismatch_ReturnsUnauthorized(t *testing.T) {
 
 func TestRequireToken_DatabaseError_ReturnsInternalServerError(t *testing.T) {
 	db := mocks.NewMockDatabase(t)
-	db.EXPECT().GetFileByToken("sometoken").Return("", database.ErrDatabase)
+	db.EXPECT().GetFileByToken(mock.Anything, "sometoken").Return("", database.ErrDatabase)
 
 	handler := RequireToken(db)(okHandler())
 
@@ -123,7 +124,7 @@ func TestRequireToken_MalformedAuthorizationHeader_ReturnsUnauthorized(t *testin
 
 func TestRequireToken_QueryParamTakesPrecedenceOverHeader(t *testing.T) {
 	db := mocks.NewMockDatabase(t)
-	db.EXPECT().GetFileByToken("fromquery").Return("file-id", nil)
+	db.EXPECT().GetFileByToken(mock.Anything, "fromquery").Return("file-id", nil)
 
 	handler := RequireToken(db)(okHandler())
 

@@ -24,7 +24,6 @@ This project is a work in progress, here's a list of things I am working on in n
 
 - More remote storage options (GCS, FTP)
 - Support PostgreSQL database
-- Allow users to manage their uploads (return a token on upload that can be used to delete/manage the file)
 - Compress files at rest to save storage when convenient (text and other highly compressible formats)
 - Optional file encryption at rest
 - Optional archival strategies (e.g Move older files to another storage location)

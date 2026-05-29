@@ -23,7 +23,7 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			logging.String("file_name", fileName),
 			logging.String("path", r.URL.Path))
 
-		metadata, err := db.GetFileMetadata(fileID)
+		metadata, err := db.GetFileMetadata(r.Context(), fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
 				http.NotFound(w, r)
@@ -34,7 +34,7 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			logging.LogError("failed to get file metadata", logging.Error(err))
 		}
 
-		if err := db.OnFileDownload(fileID); err != nil {
+		if err := db.OnFileDownload(r.Context(), fileID); err != nil {
 			logging.LogError("failed to update file metrics", logging.Error(err))
 		}
 

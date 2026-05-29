@@ -80,7 +80,7 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 func (s *Service) performCleanup(ctx context.Context) {
 	logging.LogDebug("starting cleanup cycle")
 
-	expiredFiles, err := s.db.GetExpiredFiles()
+	expiredFiles, err := s.db.GetExpiredFiles(ctx)
 	if err != nil {
 		logging.LogError("failed to get expired files", logging.Error(err))
 
@@ -129,7 +129,7 @@ func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
 	}
 
 	// Delete from database
-	dbErr := s.db.OnFileDelete(fileID)
+	dbErr := s.db.OnFileDelete(ctx, fileID)
 	if dbErr != nil {
 		logging.LogError("failed to delete file from database",
 			logging.String("file_id", fileID),

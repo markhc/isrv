@@ -32,7 +32,7 @@ func RequireToken(db database.Database) func(http.Handler) http.Handler {
 			}
 
 			// Verify the token belongs to the file being acted on.
-			tokenFileID, err := db.GetFileByToken(token)
+			tokenFileID, err := db.GetFileByToken(r.Context(), token)
 			if err != nil {
 				if errors.Is(err, database.ErrFileNotFound) {
 					utils.RespondWithError(w, http.StatusUnauthorized, "invalid token")

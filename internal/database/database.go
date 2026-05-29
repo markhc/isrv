@@ -3,6 +3,7 @@ package database
 //go:generate go tool mockery
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"mime/multipart"
@@ -36,28 +37,29 @@ type Database interface { //nolint:interfacebloat
 
 	// OnFileUpload records a new file upload in the database.
 	OnFileUpload(
+		ctx context.Context,
 		fileID string,
 		fileHeader *multipart.FileHeader,
 		token string,
 		expirationTime time.Time,
 		ipAddress string) error
 	// OnFileDownload increments the download counter for the given file.
-	OnFileDownload(fileID string) error
+	OnFileDownload(ctx context.Context, fileID string) error
 	// OnFileDelete removes the record for the given file from the database.
-	OnFileDelete(fileID string) error
+	OnFileDelete(ctx context.Context, fileID string) error
 
 	// GetFileMetadata returns the metadata map stored for the given file.
-	GetFileMetadata(fileID string) (map[string]string, error)
+	GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error)
 	// GetFileToken returns the token associated with the given file ID.
-	GetFileToken(fileID string) (string, error)
+	GetFileToken(ctx context.Context, fileID string) (string, error)
 	// GetFileByToken returns the file ID associated with the given token.
-	GetFileByToken(token string) (string, error)
+	GetFileByToken(ctx context.Context, token string) (string, error)
 	// GetExpiredFiles returns the IDs of all files whose expiration time has passed.
-	GetExpiredFiles() ([]string, error)
+	GetExpiredFiles(ctx context.Context) ([]string, error)
 	// GetFileData returns the file record for the given file ID.
-	GetFileData(fileID string) (*FileRecord, error)
+	GetFileData(ctx context.Context, fileID string) (*FileRecord, error)
 	// SetExpiration updates the expiration time of the given file.
-	SetExpiration(fileID string, expiration time.Time) error
+	SetExpiration(ctx context.Context, fileID string, expiration time.Time) error
 }
 
 //go:embed migrations

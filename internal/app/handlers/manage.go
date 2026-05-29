@@ -31,7 +31,7 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 			return
 		}
 
-		if err := db.OnFileDelete(fileID); err != nil {
+		if err := db.OnFileDelete(r.Context(), fileID); err != nil {
 			logging.LogError("failed to remove file record from database",
 				logging.String("file_id", fileID),
 				logging.Error(err),
@@ -90,7 +90,7 @@ func Expire(config *models.Configuration, db database.Database) http.HandlerFunc
 			return
 		}
 
-		record, err := db.GetFileData(fileID)
+		record, err := db.GetFileData(r.Context(), fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
 				utils.RespondWithError(w, http.StatusNotFound, "file not found")
@@ -114,7 +114,7 @@ func Expire(config *models.Configuration, db database.Database) http.HandlerFunc
 			return
 		}
 
-		if err := db.SetExpiration(fileID, newExpiry); err != nil {
+		if err := db.SetExpiration(r.Context(), fileID, newExpiry); err != nil {
 			logging.LogError("failed to update expiration",
 				logging.String("file_id", fileID),
 				logging.Error(err),
