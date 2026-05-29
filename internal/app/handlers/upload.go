@@ -95,6 +95,17 @@ func processUpload(
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
 
+	logging.LogDebug("generated file ID", logging.String("file_id", fileID))
+
+	token, err := utils.GenerateFileToken()
+	if err != nil {
+		logging.LogError("failed to generate file token", logging.Error(err))
+
+		return "", fmt.Errorf("failed to generate file token: %w", err)
+	}
+
+	logging.LogDebug("generated file token", logging.String("token", token))
+
 	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
 	if err != nil {
 		logging.LogError("failed to save uploaded file", logging.Error(err))
@@ -104,8 +115,20 @@ func processUpload(
 
 	logging.LogInfo("file uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
 
-	if err := db.OnFileUpload(fileID, header, expiration, ipAddress); err != nil {
-		logging.LogError("failed to update file metrics", logging.Error(err))
+	if err := db.OnFileUpload(fileID, header, token, expiration, ipAddress); err != nil {
+		logging.LogError("failed to record file upload in database",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+
+		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
+			logging.LogError("failed to roll back stored file after db error",
+				logging.String("file_id", fileID),
+				logging.Error(rollbackErr),
+			)
+		}
+
+		return "", fmt.Errorf("failed to record file upload: %w", err)
 	}
 
 	safeFilename := url.PathEscape(header.Filename)

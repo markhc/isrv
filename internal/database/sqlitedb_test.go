@@ -84,7 +84,7 @@ func Test_SQLiteDB_OnFileUpload(t *testing.T) {
 				header.Header.Set("Content-Type", tt.contentType)
 			}
 
-			err := db.OnFileUpload(tt.fileID, header, tt.expirationTime, tt.ipAddress)
+			err := db.OnFileUpload(tt.fileID, header, tt.fileID, tt.expirationTime, tt.ipAddress)
 			require.NoError(t, err)
 
 			metadata, err := db.GetFileMetadata(tt.fileID)
@@ -110,7 +110,7 @@ func Test_SQLiteDB_OnFileDownload(t *testing.T) {
 		Size:     100,
 		Header:   make(textproto.MIMEHeader),
 	}
-	err := db.OnFileUpload(fileID, header, time.Now().Add(24*time.Hour), "192.168.1.1")
+	err := db.OnFileUpload(fileID, header, fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
 	require.NoError(t, err, "setup failed")
 
 	for i := 1; i <= 3; i++ {
@@ -124,7 +124,7 @@ func Test_SQLiteDB_OnFileDownload(t *testing.T) {
 	assert.Equal(t, 3, downloadCount)
 
 	err = db.OnFileDownload("non-existing")
-	assert.NoError(t, err, "OnFileDownload() for non-existing file should not error")
+	assert.Error(t, err, "expected error when downloading non-existing file")
 }
 
 func Test_SQLiteDB_OnFileDelete(t *testing.T) {
@@ -139,7 +139,7 @@ func Test_SQLiteDB_OnFileDelete(t *testing.T) {
 			Size:     100,
 			Header:   make(textproto.MIMEHeader),
 		}
-		err := db.OnFileUpload(fileID, header, time.Now().Add(24*time.Hour), "192.168.1.1")
+		err := db.OnFileUpload(fileID, header, fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
 		require.NoError(t, err, "setup failed for %s", fileID)
 	}
 
@@ -153,7 +153,7 @@ func Test_SQLiteDB_OnFileDelete(t *testing.T) {
 	assert.NoError(t, err, "other file should still exist")
 
 	err = db.OnFileDelete("non-existing")
-	assert.NoError(t, err, "OnFileDelete() for non-existing file should not error")
+	assert.Error(t, err, "expected error when deleting non-existing file")
 }
 
 func Test_SQLiteDB_GetExpiredFiles(t *testing.T) {
@@ -180,7 +180,7 @@ func Test_SQLiteDB_GetExpiredFiles(t *testing.T) {
 			Size:     100,
 			Header:   make(textproto.MIMEHeader),
 		}
-		err := db.OnFileUpload(tc.fileID, header, tc.expirationTime, "192.168.1.1")
+		err := db.OnFileUpload(tc.fileID, header, tc.fileID, tc.expirationTime, "192.168.1.1")
 		if err != nil {
 			t.Fatalf("Setup failed for %s: %v", tc.fileID, err)
 		}
@@ -237,7 +237,7 @@ func Test_SQLiteDB_GetFileMetadata(t *testing.T) {
 				header.Header.Set("Content-Type", tt.contentType)
 			}
 
-			err := db.OnFileUpload(tt.fileID, header, time.Now().Add(24*time.Hour), "192.168.1.1")
+			err := db.OnFileUpload(tt.fileID, header, tt.fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
 			require.NoError(t, err, "setup failed")
 
 			metadata, err := db.GetFileMetadata(tt.fileID)
@@ -274,6 +274,6 @@ func Test_SQLiteDB_Connect_and_Migrate(t *testing.T) {
 		Size:     100,
 		Header:   make(textproto.MIMEHeader),
 	}
-	assert.NoError(t, db.OnFileUpload("connect-test", header, time.Now().Add(24*time.Hour), "192.168.1.1"))
+	assert.NoError(t, db.OnFileUpload("connect-test", header, "", time.Now().Add(24*time.Hour), "192.168.1.1"))
 	assert.NoError(t, db.Close())
 }
