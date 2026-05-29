@@ -299,8 +299,13 @@ func (db *SQLiteDB) GetExpiredFiles() ([]string, error) {
 
 // GetFileData returns the file record for the given file ID.
 func (db *SQLiteDB) GetFileData(id string) (*FileRecord, error) {
-	var fileRecord FileRecord
-	err := db.sqldb.Get(&fileRecord, QUERY_SELECT_FILE_DATA, id)
+	var (
+		record      FileRecord
+		metadataStr string
+	)
+
+	row := db.sqldb.QueryRowContext(context.Background(), QUERY_SELECT_FILE_DATA, id)
+	err := row.Scan(&record.ID, &record.Token, &record.FileSize, &metadataStr, &record.ExpirationTime, &record.IPAddress)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFileNotFound
@@ -309,7 +314,15 @@ func (db *SQLiteDB) GetFileData(id string) (*FileRecord, error) {
 		return nil, fmt.Errorf("failed to query file data: %w", err)
 	}
 
-	return &fileRecord, nil
+	if metadataStr != "" {
+		if err := json.Unmarshal([]byte(metadataStr), &record.Metadata); err != nil {
+			return nil, fmt.Errorf("failed to parse file metadata: %w", err)
+		}
+	} else {
+		record.Metadata = map[string]string{}
+	}
+
+	return &record, nil
 }
 
 // SetExpiration updates the expiration time for the given file ID.

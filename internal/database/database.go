@@ -17,12 +17,12 @@ var (
 )
 
 type FileRecord struct {
-	ID             string            `db:"id"`
-	Token          string            `db:"token"`
-	FileSize       int64             `db:"file_size"`
-	Metadata       map[string]string `db:"metadata"`
-	ExpirationTime time.Time         `db:"expiration_time"`
-	IPAddress      string            `db:"ip_address"`
+	ID             string    `db:"id"`
+	Token          string    `db:"token"`
+	FileSize       int64     `db:"file_size"`
+	ExpirationTime time.Time `db:"expiration_time"`
+	IPAddress      string    `db:"ip_address"`
+	Metadata       map[string]string
 }
 
 // Database is the interface for all database operations used by the server.
