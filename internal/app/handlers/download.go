@@ -19,9 +19,6 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		telemetry.DownloadsInFlight.Add(r.Context(), 1, metric.WithAttributes(backendAttr))
-		defer telemetry.DownloadsInFlight.Add(r.Context(), -1, metric.WithAttributes(backendAttr))
-
 		fileID := chi.URLParam(r, "id")
 		fileName := chi.URLParam(r, "filename")
 

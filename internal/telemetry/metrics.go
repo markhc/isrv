@@ -32,9 +32,7 @@ const (
 var (
 	Uploads               metric.Int64Counter
 	UploadSize            metric.Int64Histogram
-	UploadsInFlight       metric.Int64UpDownCounter
 	Downloads             metric.Int64Counter
-	DownloadsInFlight     metric.Int64UpDownCounter
 	FilesDeleted          metric.Int64Counter
 	CleanupCycleDuration  metric.Float64Histogram
 	CleanupFilesProcessed metric.Int64Counter
@@ -90,28 +88,12 @@ func registerMetrics(meter metric.Meter) error {
 		return fmt.Errorf("register isrv.upload.size_bytes: %w", err)
 	}
 
-	if UploadsInFlight, err = meter.Int64UpDownCounter(
-		"isrv.uploads.in_flight",
-		metric.WithDescription("Number of uploads currently being processed."),
-		metric.WithUnit("{upload}"),
-	); err != nil {
-		return fmt.Errorf("register isrv.uploads.in_flight: %w", err)
-	}
-
 	if Downloads, err = meter.Int64Counter(
 		"isrv.downloads",
 		metric.WithDescription("Number of download attempts, by result and storage backend."),
 		metric.WithUnit("{download}"),
 	); err != nil {
 		return fmt.Errorf("register isrv.downloads: %w", err)
-	}
-
-	if DownloadsInFlight, err = meter.Int64UpDownCounter(
-		"isrv.downloads.in_flight",
-		metric.WithDescription("Number of downloads currently being served."),
-		metric.WithUnit("{download}"),
-	); err != nil {
-		return fmt.Errorf("register isrv.downloads.in_flight: %w", err)
 	}
 
 	if FilesDeleted, err = meter.Int64Counter(
