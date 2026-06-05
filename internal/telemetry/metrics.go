@@ -68,7 +68,7 @@ func InitMetrics() error {
 	return nil
 }
 
-//nolint:funlen,cyclop // Mechanical instrument registration; splitting would only obscure the metric catalog.
+//nolint:funlen
 func registerMetrics(meter metric.Meter) error {
 	var err error
 

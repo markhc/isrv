@@ -28,9 +28,6 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		telemetry.UploadsInFlight.Add(r.Context(), 1, metric.WithAttributes(backendAttr))
-		defer telemetry.UploadsInFlight.Add(r.Context(), -1, metric.WithAttributes(backendAttr))
-
 		file, header, err := validateUploadRequest(r)
 		if err != nil {
 			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
