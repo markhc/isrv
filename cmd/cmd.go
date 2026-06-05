@@ -6,10 +6,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/markhc/isrv/internal/app"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/logging"
+	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/thejerf/suture/v4"
 )
@@ -25,24 +28,21 @@ var (
 type iSrvService struct{}
 
 func (s *iSrvService) Serve(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			logging.LogInfo("shutting down iSrv service")
+	if err := app.StartApp(ctx); err != nil {
+		logging.LogError("isrv service stopped with error", logging.Error(err))
 
-			return nil
-		default:
-			app.StartApp(ctx)
-
-			return nil
-		}
+		return fmt.Errorf("app start: %w", err)
 	}
+
+	logging.LogInfo("shutting down iSrv service")
+
+	return nil
 }
 
 var rootCmd = &cobra.Command{
 	Use:   "isrv",
 	Short: "isrv is a file sharing web server",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		//nolint:all
 		if versionFlag {
 			fmt.Println("isrv: A file sharing web server")
@@ -53,42 +53,85 @@ var rootCmd = &cobra.Command{
 			fmt.Println("  Golang:   ", configuration.BuildGoVersion)
 			fmt.Println("  Platform: ", configuration.BuildPlatform)
 
-			return
+			return nil
 		}
 
 		if makeConfig {
 			configuration.GenerateDefaultConfig(filepath.Join(os.Getenv("HOME"), ".config", "isrv", "config.yaml"))
 
-			return
+			return nil
 		}
 
-		configuration.Load(configPath, debugFlag)
-		logging.Initialize()
-
-		// If debug mode is enabled or the supervisor is disabled, run the webserver directly
-		if configuration.Get().DebugMode || disableSupervisor {
-			if configuration.Get().DebugMode {
-				logging.LogDebug("debug mode is enabled")
-			} else {
-				logging.LogInfo("supervisor is disabled")
-			}
-
-			app.StartApp(context.Background())
-		} else {
-			supervisor := suture.NewSimple("iSrv")
-			service := &iSrvService{}
-			supervisor.Add(service)
-
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
-			defer stop()
-
-			logging.LogInfo("starting isrv service supervisor")
-			err := supervisor.Serve(ctx)
-			if err != nil {
-				logging.LogError("isrv service supervisor encountered an error", logging.Error(err))
-			}
-		}
+		return runServer(cmd.Context())
 	},
+}
+
+// runServer is the long-running entrypoint invoked by the root command.
+// It is responsible for loading configuration, initialising logging and
+// telemetry exactly once, and supervising the application loop.
+func runServer(parentCtx context.Context) error {
+	configuration.Load(configPath, debugFlag)
+	logging.Initialize()
+	defer func() {
+		if err := logging.Shutdown(); err != nil {
+			fmt.Fprintf(os.Stderr, "logging shutdown: %v\n", err)
+		}
+	}()
+
+	// Install signal handling once for the whole process; the resulting
+	// context is propagated down through the supervisor / StartApp.
+	ctx, stop := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Telemetry is set up once at process start and torn down on exit, so
+	// supervisor-driven restarts of the app loop reuse the same exporters
+	// and provider instances rather than re-creating them on every restart.
+	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.Get().Telemetry, configuration.BuildVersion)
+	if err != nil {
+		logging.LogError("failed to initialise telemetry", logging.Error(err))
+
+		return fmt.Errorf("initialise telemetry: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(shutdownCtx); err != nil {
+			logging.LogError("failed to flush telemetry", logging.Error(err))
+		}
+	}()
+
+	// Now that the OTel logger provider is registered globally, the otelzap
+	// bridge can forward records. AttachOTelBridge swaps the global logger
+	// in place without re-opening any file descriptors.
+	logging.AttachOTelBridge()
+
+	// If debug mode is enabled or the supervisor is disabled, run the webserver directly
+	cfg := configuration.Get()
+	if cfg.DebugMode || disableSupervisor {
+		if cfg.DebugMode {
+			logging.LogDebug("debug mode is enabled")
+		} else {
+			logging.LogInfo("supervisor is disabled")
+		}
+
+		if err := app.StartApp(ctx); err != nil {
+			return fmt.Errorf("run app: %w", err)
+		}
+
+		return nil
+	}
+
+	supervisor := suture.NewSimple("iSrv")
+	supervisor.Add(&iSrvService{})
+
+	logging.LogInfo("starting isrv service supervisor")
+	if err := supervisor.Serve(ctx); err != nil {
+		logging.LogError("isrv service supervisor encountered an error", logging.Error(err))
+
+		return fmt.Errorf("supervisor: %w", err)
+	}
+
+	return nil
 }
 
 func Execute() {
@@ -102,6 +145,11 @@ func Execute() {
 		"disable-supervisor",
 		false,
 		"Disable the supervisor and run the webserver directly")
+
+	// Silence cobra's automatic error/usage output: we already log errors via
+	// the structured logger inside runServer.
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -62,8 +62,8 @@ type S3Storage struct {
 }
 
 // NewS3Storage creates an S3Storage from the provided configuration and verifies
-// bucket access. It panics if the bucket cannot be reached.
-func NewS3Storage(ctx context.Context, config models.StorageConfiguration) *S3Storage {
+// bucket access. It returns an error if the bucket cannot be reached.
+func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3Storage, error) {
 	options := s3.Options{
 		Region: config.Region,
 		Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
@@ -83,7 +83,7 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) *S3St
 		Bucket: aws.String(config.BucketName),
 	})
 	if err != nil {
-		panic("Failed to access S3 bucket: " + err.Error())
+		return nil, fmt.Errorf("access s3 bucket %q: %w", config.BucketName, err)
 	}
 
 	return &S3Storage{
@@ -93,12 +93,18 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) *S3St
 		BasePath:  config.BasePath,
 		client:    awsClient,
 		presigner: s3.NewPresignClient(awsClient),
-	}
+	}, nil
 }
+
+// Backend returns the backend identifier ("s3").
+func (storage *S3Storage) Backend() string { return BackendS3 }
 
 // FileExists reports whether an object with the given ID exists in the S3 bucket.
 func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, error) {
-	_, err := storage.client.HeadObject(ctx, &s3.HeadObjectInput{
+	var err error
+	defer recordOpDuration(ctx, BackendS3, OperationExists, time.Now(), &err)
+
+	_, err = storage.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -110,6 +116,8 @@ func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, 
 	var notFound *types.NotFound
 	if isNotFound := errors.As(err, &notFound); isNotFound {
 		// the object does not exist. Don't propagate this as an error.
+		err = nil
+
 		return false, nil
 	}
 
@@ -123,10 +131,13 @@ func (storage *S3Storage) SaveFileUpload(
 	file multipart.File,
 	fileHeader *multipart.FileHeader,
 ) (string, error) {
+	var err error
+	defer recordOpDuration(ctx, BackendS3, OperationSave, time.Now(), &err)
+
 	sanitizedFileName := url.PathEscape(fileHeader.Filename)
 	contentDisposition := "inline; filename=\"" + sanitizedFileName + "\""
 
-	_, err := storage.client.PutObject(ctx, &s3.PutObjectInput{
+	_, err = storage.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:             aws.String(storage.Bucket),
 		Key:                aws.String(path.Join(storage.BasePath, fileID)),
 		Body:               file,
@@ -142,7 +153,10 @@ func (storage *S3Storage) SaveFileUpload(
 
 // DeleteFile removes the object with the given ID from the S3 bucket.
 func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
-	_, err := storage.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	var err error
+	defer recordOpDuration(ctx, BackendS3, OperationDelete, time.Now(), &err)
+
+	_, err = storage.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})

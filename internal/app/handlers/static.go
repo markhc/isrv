@@ -14,7 +14,7 @@ import (
 // It blocks path traversal attempts.
 func Static(staticFilesDir fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		logging.LogDebug("staticFilesHandler", logging.String("path", r.URL.Path))
+		logging.DebugCtx(r.Context(), "staticFilesHandler", logging.String("path", r.URL.Path))
 
 		file := chi.URLParam(r, "file")
 
@@ -36,7 +36,7 @@ func Favicon(data []byte, format string) http.HandlerFunc {
 		headers.AddCacheHeader(w)
 		headers.SetContentType(w, "image/"+format)
 		if _, err := w.Write(data); err != nil {
-			logging.LogError("failed to write favicon response", logging.Error(err))
+			logging.ErrorCtx(r.Context(), "failed to write favicon response", logging.Error(err))
 		}
 	}
 }

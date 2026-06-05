@@ -1,18 +1,27 @@
 package logging
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/markhc/isrv/internal/configuration"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+// instrumentationName matches telemetry.InstrumentationName. Duplicated here
+// to avoid importing the telemetry package from logging (which would create
+// an import cycle once telemetry starts using the logger).
+const instrumentationName = "github.com/markhc/isrv"
 
 type RequestLoggerOptions struct {
 	LogLevel     zapcore.Level
@@ -20,11 +29,25 @@ type RequestLoggerOptions struct {
 	SkipFunc     func(req *http.Request, respStatus int) bool
 }
 
-var logger *zap.Logger
+var (
+	logger     *zap.Logger
+	baseCore   zapcore.Core // file + console cores, reused when attaching the OTel bridge
+	logFile    *os.File     // open log file handle, retained for clean shutdown
+	initOnce   sync.Once
+	bridgeOnce sync.Once
+)
 
 // Initialize sets up the global logger, writing to both the configured log
 // file and the console (stdout/stderr split by level).
+//
+// It is safe to call multiple times; subsequent calls are no-ops. To enable
+// forwarding of log records to the OpenTelemetry log pipeline, call
+// AttachOTelBridge after the global OTel logger provider has been registered.
 func Initialize() {
+	initOnce.Do(initializeLocked)
+}
+
+func initializeLocked() {
 	config := configuration.Get()
 
 	// Error and above go to stderr, so we need splitting
@@ -47,9 +70,14 @@ func Initialize() {
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
 
+	cores := []zapcore.Core{
+		zapcore.NewCore(encoder, consoleErrors, highPriority),
+		zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+	}
+
 	if config.Logging.LogToFile {
 		if dir := filepath.Dir(config.Logging.Path); dir != "." {
-			if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
+			if err := os.MkdirAll(dir, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
 				panic(err)
 			}
 		}
@@ -60,27 +88,50 @@ func Initialize() {
 			panic(err)
 		}
 
-		fileSyncer := zapcore.AddSync(file)
-
-		// Join the outputs
-		core := zapcore.NewTee(
-			zapcore.NewCore(encoder, fileSyncer, zapcore.DebugLevel),
-			zapcore.NewCore(encoder, consoleErrors, highPriority),
-			zapcore.NewCore(encoder, consoleDebugging, lowPriority),
-			otelzap.NewCore("github.com/markhc/isrv"),
-		)
-
-		logger = zap.New(core)
-	} else {
-		// Only log to console
-		core := zapcore.NewTee(
-			zapcore.NewCore(encoder, consoleErrors, highPriority),
-			zapcore.NewCore(encoder, consoleDebugging, lowPriority),
-			otelzap.NewCore("github.com/markhc/isrv"),
-		)
-
-		logger = zap.New(core)
+		logFile = file
+		cores = append([]zapcore.Core{
+			zapcore.NewCore(encoder, zapcore.AddSync(file), zapcore.DebugLevel),
+		}, cores...)
 	}
+
+	baseCore = zapcore.NewTee(cores...)
+	logger = zap.New(baseCore)
+}
+
+// AttachOTelBridge rewraps the global logger to additionally forward records
+// to the OpenTelemetry log pipeline via the otelzap bridge.
+//
+// Must be called after the global OTel logger provider has been registered.
+// The underlying file/console cores opened by Initialize are reused (no new
+// file descriptors are opened), and subsequent calls are no-ops.
+func AttachOTelBridge() {
+	bridgeOnce.Do(func() {
+		if baseCore == nil {
+			return
+		}
+		logger = zap.New(zapcore.NewTee(baseCore, otelzap.NewCore(instrumentationName)))
+	})
+}
+
+// Shutdown flushes any buffered log records and closes the log file if one
+// was opened. It is safe to call even if Initialize was never called.
+func Shutdown() error {
+	if logger != nil {
+		// Sync errors on stdout/stderr are common and harmless (EBADF, EINVAL
+		// on devices that do not support fsync), so they are intentionally
+		// ignored here. Real I/O failures on the log file would have surfaced
+		// at write time.
+		_ = logger.Sync()
+	}
+
+	if logFile != nil {
+		if err := logFile.Close(); err != nil {
+			return fmt.Errorf("close log file: %w", err)
+		}
+		logFile = nil
+	}
+
+	return nil
 }
 
 func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
@@ -104,6 +155,7 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
 			start := time.Now()
+			ctx := r.Context()
 
 			defer func() {
 				zapFields = attemptRecover(ww, r, zapFields, options.RecoverPanic)
@@ -127,7 +179,7 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 				zapFields = append(zapFields,
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
-					zap.String("remote_addr", r.RemoteAddr),
+					MaybeIP("remote_addr", r.RemoteAddr),
 					zap.String("host", r.Host),
 					zap.String("scheme", scheme(r)),
 					zap.String("proto", r.Proto),
@@ -139,7 +191,7 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 				)
 
 				msg := fmt.Sprintf("%s %s => HTTP %v (%v)", r.Method, r.URL, statusCode, duration)
-				logger.Log(lvl, msg, zapFields...)
+				Ctx(ctx).Log(lvl, msg, zapFields...)
 			}()
 
 			// Now call the next handler in the chain, all the logic is handled in the deferred function above
@@ -219,13 +271,94 @@ func LogError(message string, fields ...zap.Field) {
 }
 
 // LogFatal logs a message at fatal level and then exits the application.
+//
+// Deprecated: prefer returning errors up to main and letting the deferred
+// shutdown code run. Calling Fatal here skips deferred telemetry flush and
+// log-file close. Retained only for genuinely unrecoverable startup paths.
 func LogFatal(message string, fields ...zap.Field) {
 	logger.Fatal(message, fields...)
+}
+
+// Ctx returns a *zap.Logger annotated with the OpenTelemetry trace and span
+// IDs (when the context carries a valid span context) and the chi request
+// ID (when present). Use it inside request handlers, middleware, and any
+// other code path that has a context, so log records can be correlated with
+// distributed traces in the observability backend.
+//
+//	logging.Ctx(r.Context()).Info("upload requested", logging.String("filename", name))
+//
+// When the context is nil or carries neither a span nor a request id, the
+// global logger is returned unchanged.
+func Ctx(ctx context.Context) *zap.Logger {
+	if logger == nil {
+		return logger
+	}
+	if ctx == nil {
+		return logger
+	}
+
+	// Pre-size for the common case: trace_id + span_id + request_id.
+	fields := make([]zap.Field, 0, 3)
+
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		fields = append(fields,
+			zap.String("trace_id", sc.TraceID().String()),
+			zap.String("span_id", sc.SpanID().String()),
+		)
+	}
+
+	if reqID := middleware.GetReqID(ctx); reqID != "" {
+		fields = append(fields, zap.String("request_id", reqID))
+	}
+
+	if len(fields) == 0 {
+		return logger
+	}
+
+	return logger.With(fields...)
+}
+
+// DebugCtx logs a message at debug level with trace/request correlation
+// fields extracted from ctx.
+func DebugCtx(ctx context.Context, message string, fields ...zap.Field) {
+	Ctx(ctx).Debug(message, fields...)
+}
+
+// InfoCtx logs a message at info level with trace/request correlation
+// fields extracted from ctx.
+func InfoCtx(ctx context.Context, message string, fields ...zap.Field) {
+	Ctx(ctx).Info(message, fields...)
+}
+
+// WarnCtx logs a message at warn level with trace/request correlation
+// fields extracted from ctx.
+func WarnCtx(ctx context.Context, message string, fields ...zap.Field) {
+	Ctx(ctx).Warn(message, fields...)
+}
+
+// ErrorCtx logs a message at error level with trace/request correlation
+// fields extracted from ctx.
+func ErrorCtx(ctx context.Context, message string, fields ...zap.Field) {
+	Ctx(ctx).Error(message, fields...)
 }
 
 // String creates a zap string field.
 func String(key, value string) zap.Field {
 	return zap.String(key, value)
+}
+
+// MaybeIP returns a zap field carrying the client IP address only if IP
+// logging is enabled in the configuration. When disabled, it returns
+// zap.Skip() so the field is omitted from the log record entirely.
+//
+// Use this everywhere a remote client address is about to be logged so
+// the LogIps configuration flag is honored consistently.
+func MaybeIP(key, ipAddress string) zap.Field {
+	if !configuration.Get().Logging.LogIps {
+		return zap.Skip()
+	}
+
+	return zap.String(key, ipAddress)
 }
 
 // Int creates a zap int field.

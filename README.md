@@ -26,7 +26,7 @@ This project is a work in progress, here's a list of things I am working on in n
 - Support PostgreSQL database
 - Compress files at rest to save storage when convenient (text and other highly compressible formats)
 - Optional file encryption at rest
-- Optional archival strategies (e.g Move older files to another storage location)
+- Storage tiers (namely "hot" and "cold") to optimize costs and performance based on file access patterns
 
 
 ## Installation

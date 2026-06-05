@@ -9,7 +9,10 @@ import (
 
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
+	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/markhc/isrv/internal/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/time/rate"
 )
 
@@ -17,6 +20,20 @@ const (
 	maxBackoffFactor = 32
 	visitorTTL       = 10 * time.Minute
 	cleanupInterval  = 5 * time.Minute
+
+	// Rate-limit decision attribute values.
+	decisionAllow    = "allow"
+	decisionThrottle = "throttle"
+	decisionBlock    = "block"
+	decisionBlocked  = "blocked"
+)
+
+// Pre-allocated decision attribute sets to avoid per-request allocation.
+var (
+	decisionAllowAttrs    = metric.WithAttributes(attribute.String(telemetry.AttrDecision, decisionAllow))
+	decisionThrottleAttrs = metric.WithAttributes(attribute.String(telemetry.AttrDecision, decisionThrottle))
+	decisionBlockAttrs    = metric.WithAttributes(attribute.String(telemetry.AttrDecision, decisionBlock))
+	decisionBlockedAttrs  = metric.WithAttributes(attribute.String(telemetry.AttrDecision, decisionBlocked))
 )
 
 type visitorEntry struct {
@@ -45,6 +62,10 @@ func newRateLimiter(ctx context.Context, config models.RateLimitConfiguration) *
 	}
 	go rl.cleanupLoop(ctx)
 
+	if err := telemetry.RegisterBlocklistGauge(rl.blockListSize); err != nil {
+		logging.ErrorCtx(ctx, "failed to register rate-limit blocklist gauge", logging.Error(err))
+	}
+
 	return rl
 }
 
@@ -61,13 +82,15 @@ func RateLimit(ctx context.Context, config models.RateLimitConfiguration) func(h
 			ipAddress := utils.GetIPAddress(r, config.TrustedProxies)
 
 			if slices.Contains(config.WhitelistIPs, ipAddress) {
+				telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
 				next.ServeHTTP(w, r)
 
 				return
 			}
 
 			if rl.isBlocked(ipAddress) {
-				logging.LogWarn("blocked request from IP", logging.String("ip_address", ipAddress))
+				telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionBlockedAttrs)
+				logging.WarnCtx(r.Context(), "blocked request from IP", logging.MaybeIP("ip_address", ipAddress))
 				http.Error(w, "Rejected", http.StatusForbidden)
 
 				return
@@ -75,25 +98,31 @@ func RateLimit(ctx context.Context, config models.RateLimitConfiguration) func(h
 
 			limiter := rl.getLimiter(ipAddress)
 			if !limiter.Allow() {
-				logging.LogWarn("rate limit exceeded", logging.String("ip_address", ipAddress))
+				logging.WarnCtx(r.Context(), "rate limit exceeded", logging.MaybeIP("ip_address", ipAddress))
 
 				switch config.OnLimitExceeded {
 				case models.RateLimitActionBlock:
+					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionBlockAttrs)
 					rl.blockIP(ipAddress, config.BlockDuration)
 					http.Error(w, "Rejected", http.StatusForbidden)
 
 					return
 				case models.RateLimitActionThrottle:
+					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionThrottleAttrs)
 					http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 
 					return
 				case models.RateLimitActionNone:
+					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
 					// log only, allow through
 				default:
+					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionThrottleAttrs)
 					http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 
 					return
 				}
+			} else {
+				telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
 			}
 
 			next.ServeHTTP(w, r)
@@ -131,6 +160,16 @@ func (rl *rateLimiter) isBlocked(ip string) bool {
 	}
 
 	return time.Now().Before(entry.until)
+}
+
+// blockListSize returns the current number of IPs in the blocklist.
+// It is exposed as a callback for the OTel observable gauge and is safe
+// for concurrent use.
+func (rl *rateLimiter) blockListSize() int64 {
+	rl.blockMu.Lock()
+	defer rl.blockMu.Unlock()
+
+	return int64(len(rl.blockList))
 }
 
 func (rl *rateLimiter) blockIP(ip string, baseDuration time.Duration) {

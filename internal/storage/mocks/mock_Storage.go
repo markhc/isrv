@@ -39,6 +39,50 @@ func (_m *MockStorage) EXPECT() *MockStorage_Expecter {
 	return &MockStorage_Expecter{mock: &_m.Mock}
 }
 
+// Backend provides a mock function for the type MockStorage
+func (_mock *MockStorage) Backend() string {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Backend")
+	}
+
+	var r0 string
+	if returnFunc, ok := ret.Get(0).(func() string); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
+// MockStorage_Backend_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Backend'
+type MockStorage_Backend_Call struct {
+	*mock.Call
+}
+
+// Backend is a helper method to define mock.On call
+func (_e *MockStorage_Expecter) Backend() *MockStorage_Backend_Call {
+	return &MockStorage_Backend_Call{Call: _e.mock.On("Backend")}
+}
+
+func (_c *MockStorage_Backend_Call) Run(run func()) *MockStorage_Backend_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockStorage_Backend_Call) Return(s string) *MockStorage_Backend_Call {
+	_c.Call.Return(s)
+	return _c
+}
+
+func (_c *MockStorage_Backend_Call) RunAndReturn(run func() string) *MockStorage_Backend_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteFile provides a mock function for the type MockStorage
 func (_mock *MockStorage) DeleteFile(ctx context.Context, fileID string) error {
 	ret := _mock.Called(ctx, fileID)
