@@ -16,10 +16,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/markhc/isrv/internal/models"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 )
 
 // s3api is the subset of *s3.Client operations used by S3Storage.
 type s3api interface {
+	HeadBucket(
+		ctx context.Context,
+		params *s3.HeadBucketInput,
+		optFns ...func(*s3.Options),
+	) (*s3.HeadBucketOutput, error)
 	HeadObject(
 		ctx context.Context,
 		params *s3.HeadObjectInput,
@@ -75,6 +81,10 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3S
 		BaseEndpoint: aws.String(config.Endpoint),
 	}
 
+	// Register the AWS SDK middleware that emits an OTel span per API call
+	// with the standard rpc.system / rpc.service / rpc.method attributes.
+	otelaws.AppendMiddlewares(&options.APIOptions)
+
 	awsClient := s3.New(options)
 
 	// Test bucket access with HeadBucket instead of HeadObject
@@ -98,6 +108,18 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3S
 
 // Backend returns the backend identifier ("s3").
 func (storage *S3Storage) Backend() string { return BackendS3 }
+
+// HealthCheck issues a HeadBucket against the configured S3 bucket to verify
+// connectivity and that the bucket is still accessible.
+func (storage *S3Storage) HealthCheck(ctx context.Context) error {
+	if _, err := storage.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(storage.Bucket),
+	}); err != nil {
+		return fmt.Errorf("head bucket %q: %w", storage.Bucket, err)
+	}
+
+	return nil
+}
 
 // FileExists reports whether an object with the given ID exists in the S3 bucket.
 func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, error) {

@@ -34,6 +34,9 @@ type Database interface { //nolint:interfacebloat
 	Close() error
 	// Migrate applies any pending schema migrations.
 	Migrate() error
+	// Ping verifies the database connection is still alive. Intended for
+	// readiness probes; should be cheap and respect ctx cancellation.
+	Ping(ctx context.Context) error
 
 	// OnFileUpload records a new file upload in the database.
 	OnFileUpload(
