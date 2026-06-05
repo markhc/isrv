@@ -81,14 +81,13 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3S
 		BaseEndpoint: aws.String(config.Endpoint),
 	}
 
-	// Register the AWS SDK middleware that emits an OTel span per API call
-	// with the standard rpc.system / rpc.service / rpc.method attributes.
+	// Register AWS SDK middleware that emits an OTel span per API call with
+	// the standard rpc.system / rpc.service / rpc.method attributes.
 	otelaws.AppendMiddlewares(&options.APIOptions)
 
 	awsClient := s3.New(options)
 
-	// Test bucket access with HeadBucket instead of HeadObject
-	// This verifies connectivity without requiring a specific object to exist
+	// HeadBucket verifies connectivity without requiring any specific object to exist.
 	_, err := awsClient.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(config.BucketName),
 	})
@@ -137,7 +136,7 @@ func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, 
 
 	var notFound *types.NotFound
 	if isNotFound := errors.As(err, &notFound); isNotFound {
-		// the object does not exist. Don't propagate this as an error.
+		// A missing object is not an error for this query.
 		err = nil
 
 		return false, nil
@@ -204,7 +203,7 @@ func (storage *S3Storage) ServeFile(
 
 	cacheControl := "no-cache"
 	if cachingEnabled {
-		cacheControl = "public, max-age=43200" // Cache for 12 hours
+		cacheControl = "public, max-age=43200" // 12 hours
 	}
 
 	contentDisposition := "attachment"
@@ -223,7 +222,7 @@ func (storage *S3Storage) ServeFile(
 		ResponseCacheControl:       aws.String(cacheControl),
 		ResponseContentDisposition: aws.String(contentDisposition + "; filename=\"" + sanitizedFileName + "\""),
 		ResponseContentType:        aws.String(contentType),
-	}, s3.WithPresignExpires(12*time.Hour)) // URL valid for 12 hours
+	}, s3.WithPresignExpires(12*time.Hour))
 	if err != nil {
 		http.Error(w, "Failed to generate file URL", http.StatusInternalServerError)
 

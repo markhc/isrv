@@ -1,16 +1,19 @@
+// Package headers provides small helpers for setting common HTTP response
+// headers used when serving file downloads.
 package headers
 
 import "net/http"
 
-// AddCacheHeader sets long-lived cache-control headers on the response.
+// AddCacheHeader sets long-lived (10h) cache-control headers, including
+// CDN-specific variants understood by Cloudflare.
 func AddCacheHeader(w http.ResponseWriter) {
 	w.Header().Set("cdn-cache-control", "public, max-age=36000")
 	w.Header().Set("Cloudflare-CDN-Cache-Control", "public, max-age=36000")
 	w.Header().Set("cache-control", "public, max-age=36000")
 }
 
-// SetContentDisposition sets the Content-Disposition header, using "inline" when
-// inlineContent is true and "attachment" otherwise.
+// SetContentDisposition sets the Content-Disposition header. It uses
+// "inline" when inlineContent is true and "attachment" otherwise.
 func SetContentDisposition(w http.ResponseWriter, fileName string, inlineContent bool) {
 	dispositionType := "attachment"
 	if inlineContent {
@@ -24,8 +27,8 @@ func SetContentType(w http.ResponseWriter, contentType string) {
 	w.Header().Set("Content-Type", contentType)
 }
 
-// SetHeaders applies caching, content-type, and content-disposition headers
-// based on the provided file metadata and options.
+// SetHeaders applies the cache-control (when enabled), content-type (from
+// fileMetadata), and content-disposition headers in a single call.
 func SetHeaders(
 	w http.ResponseWriter,
 	fileName string,

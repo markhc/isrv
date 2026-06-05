@@ -20,11 +20,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// userDeleteSource labels FilesDeleted observations originating from user-initiated deletes.
+// userDeleteSource labels FilesDeleted observations originating from a user-initiated delete.
 var userDeleteSource = attribute.String(telemetry.AttrSource, "user")
 
-// Delete returns a handler that deletes a stored file by its ID.
-// The file is removed from both storage and the database.
+// Delete returns a handler that removes a stored file by its ID from both
+// storage and the database.
 func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fileID := chi.URLParam(r, "id")
@@ -84,13 +84,14 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 
 // expireRequest is the JSON body accepted by the Expire handler.
 type expireRequest struct {
-	// Expires is a Unix timestamp in milliseconds, or a number of hours from now
-	// (values below 1,000,000 are treated as hours).
+	// Expires is a Unix timestamp in milliseconds, or a number of hours from
+	// now. Values below 1,000,000 are treated as hours.
 	Expires string `json:"expires"`
 }
 
-// parseExpireRequest decodes and validates the Expire request body.
-// Returns the parsed expiry time and true on success, or writes an error response and returns false.
+// parseExpireRequest decodes and validates the Expire request body. It
+// returns the parsed expiry and true on success; otherwise it writes an
+// error response and returns false.
 func parseExpireRequest(w http.ResponseWriter, r *http.Request) (time.Time, bool) {
 	var body expireRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -115,9 +116,9 @@ func parseExpireRequest(w http.ResponseWriter, r *http.Request) (time.Time, bool
 	return newExpiry, true
 }
 
-// Expire returns a handler that updates the expiration time of a stored file.
-// The new expiration must not exceed the maximum allowed expiration derived
-// from the file's size and the configured min/max age settings.
+// Expire returns a handler that updates the expiration time of a stored
+// file. The new expiration must not exceed the maximum derived from the
+// file's size and the configured min/max age settings.
 func Expire(config *models.Configuration, db database.Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		applyExpire(w, r, config, db)

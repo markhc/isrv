@@ -1,3 +1,5 @@
+// Package favicon loads a configured favicon either from a local file or
+// from an HTTP(S) URL, returning the raw bytes for the application to serve.
 package favicon
 
 import (
@@ -13,8 +15,11 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 )
 
-const maxFaviconSize = 1 * 1024 * 1024 // 1MiB
+const maxFaviconSize = 1 * 1024 * 1024 // 1 MiB
 
+// FetchFavicon loads the favicon at the given location. The location may be
+// a local filesystem path, a file:// URL, or an http(s):// URL. It returns
+// (nil, nil) when url is empty.
 func FetchFavicon(ctx context.Context, url string) ([]byte, error) {
 	if url == "" {
 		return nil, nil
@@ -54,7 +59,7 @@ func loadFaviconFromUrl(ctx context.Context, url string, maxFaviconSize int64) (
 	}
 
 	if resp.ContentLength > maxFaviconSize {
-		return nil, errors.New("favicon size exceeds the maximum allowed limit of 4KiB")
+		return nil, errors.New("favicon size exceeds the maximum allowed limit")
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -74,7 +79,7 @@ func loadFaviconFromFile(localPath string, maxFaviconSize int64) ([]byte, error)
 	}
 
 	if fileInfo.Size() > maxFaviconSize {
-		return nil, errors.New("favicon file size exceeds the maximum allowed limit of 4KiB")
+		return nil, errors.New("favicon file size exceeds the maximum allowed limit")
 	}
 
 	data, err := os.ReadFile(localPath) // #nosec G304

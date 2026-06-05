@@ -8,7 +8,8 @@ import (
 	"github.com/markhc/isrv/internal/models"
 )
 
-// NotFound returns a handler that renders the 404 page.
+// NotFound returns a handler that renders the 404 page and responds with
+// HTTP 404.
 func NotFound(tmpl *template.Template, config *models.Configuration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -26,9 +26,9 @@ const (
 	OperationExists = "exists"
 )
 
-// recordOpDuration emits an isrv.storage.operation.duration observation for the
-// operation that started at start. It is intended to be deferred at the top of
-// a storage method:
+// recordOpDuration emits an isrv.storage.operation.duration observation for
+// the operation that started at start. It is intended to be deferred at the
+// top of a storage method:
 //
 //	defer recordOpDuration(ctx, backend, OperationSave, time.Now(), &err)
 func recordOpDuration(ctx context.Context, backend, op string, start time.Time, errPtr *error) {
@@ -51,12 +51,13 @@ type Storage interface {
 	// Backend returns a short, stable identifier for this storage backend
 	// (e.g. "local", "s3") suitable for use as a metric attribute value.
 	Backend() string
-	// HealthCheck verifies the storage backend is reachable. Intended for
-	// readiness probes; should be cheap and respect ctx cancellation.
+	// HealthCheck verifies the storage backend is reachable. It is intended
+	// for readiness probes and must be cheap and respect ctx cancellation.
 	HealthCheck(ctx context.Context) error
 	// FileExists reports whether a file with the given ID exists in storage.
 	FileExists(ctx context.Context, fileID string) (bool, error)
-	// SaveFileUpload writes an uploaded file to storage and returns its storage path.
+	// SaveFileUpload writes an uploaded file to storage and returns its
+	// backend-specific storage path or key.
 	SaveFileUpload(
 		ctx context.Context,
 		fileID string,
@@ -64,7 +65,8 @@ type Storage interface {
 		fileHeader *multipart.FileHeader) (string, error)
 	// DeleteFile removes the file with the given ID from storage.
 	DeleteFile(ctx context.Context, fileID string) error
-	// ServeFile writes the file to the HTTP response, applying appropriate headers.
+	// ServeFile writes the file to the HTTP response, applying the
+	// appropriate headers based on metadata and the inline/caching flags.
 	ServeFile(
 		w http.ResponseWriter,
 		r *http.Request,

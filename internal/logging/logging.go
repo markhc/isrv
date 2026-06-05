@@ -20,11 +20,11 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// instrumentationName matches telemetry.InstrumentationName. Duplicated here
-// to avoid importing the telemetry package from logging (which would create
-// an import cycle once telemetry starts using the logger).
+// instrumentationName mirrors telemetry.InstrumentationName. It is duplicated
+// here to avoid an import cycle once telemetry starts using the logger.
 const instrumentationName = "github.com/markhc/isrv"
 
+// RequestLoggerOptions configures the per-request logger middleware.
 type RequestLoggerOptions struct {
 	LogLevel zapcore.Level
 	SkipFunc func(req *http.Request, respStatus int) bool
@@ -51,7 +51,7 @@ func Initialize() {
 func initializeLocked() {
 	config := configuration.Get()
 
-	// Error and above go to stderr, so we need splitting
+	// Error and above go to stderr; everything else goes to stdout.
 	highPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 		return lvl >= zapcore.ErrorLevel
 	})
@@ -83,9 +83,9 @@ func initializeLocked() {
 			}
 		}
 
-		// Rotate the file sink so long-running servers do not blow up the disk.
-		// Zero values in LoggingConfiguration use lumberjack's own defaults
-		// (100 MiB / unlimited backups / no expiration / no compression).
+		// Rotate the file sink so long-running servers do not fill the disk.
+		// Zero values fall back to lumberjack defaults (100 MiB / unlimited
+		// backups / no expiration / no compression).
 		rotator := &lumberjack.Logger{
 			Filename:   config.Logging.Path,
 			MaxSize:    config.Logging.MaxSizeMB,
@@ -95,9 +95,9 @@ func initializeLocked() {
 		}
 		logSink = rotator
 
-		// Use a JSON encoder for the file sink so log records are
-		// machine-parseable by aggregators (Loki, Elasticsearch, etc.); the
-		// console encoder remains for stdout/stderr where humans read.
+		// The file sink uses JSON encoding so records are machine-parseable
+		// by aggregators (Loki, Elasticsearch, etc.); the console sinks stay
+		// human-readable.
 		fileEncoderConfig := zap.NewProductionEncoderConfig()
 		fileEncoderConfig.TimeKey = "ts"
 		fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -129,14 +129,13 @@ func AttachOTelBridge() {
 	})
 }
 
-// Shutdown flushes any buffered log records and closes the log file if one
-// was opened. It is safe to call even if Initialize was never called.
+// Shutdown flushes buffered log records and closes the rotating log file if
+// one was opened. It is safe to call even if Initialize was never invoked.
 func Shutdown() error {
 	if logger != nil {
-		// Sync errors on stdout/stderr are common and harmless (EBADF, EINVAL
-		// on devices that do not support fsync), so they are intentionally
-		// ignored here. Real I/O failures on the log file would have surfaced
-		// at write time.
+		// Sync errors on stdout/stderr (EBADF, EINVAL on devices that do not
+		// support fsync) are common and harmless. Real I/O failures on the
+		// log file would have surfaced at write time.
 		_ = logger.Sync()
 	}
 
@@ -154,8 +153,9 @@ func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
 }
 
-// RequestLogger returns a middleware that logs HTTP requests and responses using the global zap.Logger instance.
-// based on chi-httplog but simplified and customized for this application.
+// RequestLogger returns a middleware that logs each HTTP request/response
+// pair through the global zap logger. It is loosely based on chi-httplog,
+// simplified for this application.
 //
 // Panic recovery is intentionally NOT handled here; install a dedicated
 // recoverer middleware upstream so panics are recorded on the active
@@ -163,7 +163,6 @@ func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Early skip if the SkipFunc returns true
 			if options.SkipFunc != nil && options.SkipFunc(r, 0) {
 				next.ServeHTTP(w, r)
 
@@ -182,7 +181,6 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 					statusCode = 200
 				}
 
-				// Skip logging if the request is filtered by the Skip function.
 				if options.SkipFunc != nil && options.SkipFunc(r, statusCode) {
 					return
 				}
@@ -210,7 +208,6 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 				Ctx(ctx).Log(lvl, msg, zapFields...)
 			}()
 
-			// Now call the next handler in the chain, all the logic is handled in the deferred function above
 			next.ServeHTTP(ww, r)
 		})
 	}
@@ -222,7 +219,8 @@ func getLogLevel(statusCode int) zapcore.Level {
 		return zapcore.ErrorLevel
 	case statusCode == 404, statusCode == 405:
 		// 404/405 are typically scanner/probe noise. Keep them recorded but
-		// only emit when the operator has the file/console sink at debug.
+		// only surface them when the operator sets the file/console sink to
+		// debug.
 		return zapcore.DebugLevel
 	case statusCode == 429:
 		return zapcore.InfoLevel
@@ -246,7 +244,8 @@ func GetLogger() *zap.Logger {
 	return logger
 }
 
-// InitializeNop sets the global logger to a no-op logger. Intended for use in tests.
+// InitializeNop replaces the global logger with a no-op logger. Intended for
+// use in tests.
 func InitializeNop() {
 	logger = zap.NewNop()
 }
@@ -273,23 +272,23 @@ func LogError(message string, fields ...zap.Field) {
 
 // LogFatal logs a message at fatal level and then exits the application.
 //
-// Deprecated: prefer returning errors up to main and letting the deferred
-// shutdown code run. Calling Fatal here skips deferred telemetry flush and
-// log-file close. Retained only for genuinely unrecoverable startup paths.
+// Deprecated: prefer returning errors up to main and letting deferred
+// shutdown code run. LogFatal skips deferred telemetry flush and log-file
+// close. Retained only for genuinely unrecoverable startup paths.
 func LogFatal(message string, fields ...zap.Field) {
 	logger.Fatal(message, fields...)
 }
 
 // Ctx returns a *zap.Logger annotated with the OpenTelemetry trace and span
-// IDs (when the context carries a valid span context) and the chi request
-// ID (when present). Use it inside request handlers, middleware, and any
-// other code path that has a context, so log records can be correlated with
-// distributed traces in the observability backend.
+// IDs (when ctx carries a valid span context) and the chi request ID (when
+// present). Use it inside request handlers, middleware, and any other code
+// path that has a context, so log records can be correlated with distributed
+// traces in the observability backend.
 //
 //	logging.Ctx(r.Context()).Info("upload requested", logging.String("filename", name))
 //
-// When the context is nil or carries neither a span nor a request id, the
-// global logger is returned unchanged.
+// When ctx is nil or carries neither a span nor a request ID, the global
+// logger is returned unchanged.
 func Ctx(ctx context.Context) *zap.Logger {
 	if logger == nil {
 		return logger
@@ -348,12 +347,12 @@ func String(key, value string) zap.Field {
 	return zap.String(key, value)
 }
 
-// MaybeIP returns a zap field carrying the client IP address only if IP
-// logging is enabled in the configuration. When disabled, it returns
-// zap.Skip() so the field is omitted from the log record entirely.
+// MaybeIP returns a zap field carrying the client IP address only when IP
+// logging is enabled in the configuration. When disabled it returns
+// zap.Skip() so the field is omitted from the record entirely.
 //
-// Use this everywhere a remote client address is about to be logged so
-// the LogIps configuration flag is honored consistently.
+// Use this wherever a remote client address is about to be logged so the
+// LogIps configuration flag is honored consistently.
 func MaybeIP(key, ipAddress string) zap.Field {
 	if !configuration.Get().Logging.LogIps {
 		return zap.Skip()

@@ -13,8 +13,9 @@ import (
 // has been installed. Once Setup installs the real MeterProvider, InitMetrics
 // rebinds these vars to instruments backed by that provider.
 //
-// All instruments are safe for concurrent use; recording on a no-op instrument
-// is a side-effect-free no-op (useful for unit tests that do not call Setup).
+// All instruments are safe for concurrent use; recording on a no-op
+// instrument is a side-effect-free no-op, useful for unit tests that do not
+// call Setup.
 var (
 	Uploads               metric.Int64Counter
 	UploadSize            metric.Int64Histogram
@@ -33,12 +34,9 @@ var (
 //
 //nolint:gochecknoinits // Required to keep package-level instrument vars non-nil before Setup runs.
 func init() {
-	// Bind to the no-op meter so that the package vars are never nil. This
-	// keeps unit tests that exercise instrumented code paths from panicking
-	// when Setup has not been called.
 	if err := registerMetrics(otel.Meter(InstrumentationName)); err != nil {
-		// The no-op meter never returns an error; panic here would mask
-		// a future regression but is otherwise unreachable.
+		// The no-op meter never returns an error; the panic guards against a
+		// future regression but is otherwise unreachable.
 		panic(fmt.Sprintf("telemetry: bind no-op metric instruments: %v", err))
 	}
 }

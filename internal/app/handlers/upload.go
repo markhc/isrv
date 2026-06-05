@@ -21,9 +21,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Upload returns a handler that accepts file uploads and stores them.
+// Upload returns a handler that accepts a multipart file upload and persists
+// it to storage along with a database record.
 //
-//nolint:funlen // Handler body is mostly inline error-path branches that emit metrics; splitting harms readability.
+//nolint:funlen // Linear request handling with inline metric emission per branch.
 func Upload(config *models.Configuration, db database.Database, stor storage.Storage) http.HandlerFunc {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
@@ -146,10 +147,8 @@ func processUpload(
 		return "", fmt.Errorf("failed to generate file token: %w", err)
 	}
 
-	// Storage sub-operations carry their own telemetry (storage operation
-	// histogram + S3 client middleware spans); the per-file db.OnFileUpload
-	// call creates its own span. Wrapping them here in extra spans only adds
-	// duplicate attributes and noise to the trace tree.
+	// Storage and database calls emit their own spans and metrics; wrapping
+	// them here would only duplicate attributes in the trace tree.
 	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
 	if err != nil {
 		span.RecordError(err)

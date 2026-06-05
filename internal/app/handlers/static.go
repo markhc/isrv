@@ -10,8 +10,8 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 )
 
-// Static returns a handler that serves embedded static files.
-// It blocks path traversal attempts.
+// Static returns a handler that serves embedded static files and rejects
+// path-traversal attempts.
 func Static(staticFilesDir fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logging.DebugCtx(r.Context(), "staticFilesHandler", logging.String("path", r.URL.Path))

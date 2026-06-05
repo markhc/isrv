@@ -16,7 +16,7 @@ import (
 )
 
 // Download returns a handler that serves a stored file by its ID.
-// It handles both /d/{id} and /d/{id}/{filename} patterns.
+// It is mounted on both /d/{id} and /d/{id}/{filename}.
 func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
@@ -42,9 +42,8 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 		metadata, err := db.GetFileMetadata(ctx, fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
-				// Not-found is an expected outcome; don't pollute trace
-				// error-rate dashboards. The metric still records the result
-				// as an error so 404 rate is observable separately.
+				// Not-found is expected; do not pollute trace error-rate
+				// dashboards. The 404 rate is still observable via the metric.
 				span.SetAttributes(attribute.String(telemetry.AttrResult, telemetry.ResultError))
 				telemetry.Downloads.Add(ctx, 1, metric.WithAttributes(
 					backendAttr,
@@ -69,7 +68,7 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 		}
 
 		if err := db.OnFileDownload(ctx, fileID); err != nil {
-			// Counter update is best-effort; log but still serve the file.
+			// The download counter is best-effort; the file is still served.
 			logging.ErrorCtx(ctx, "failed to update file metrics", logging.Error(err))
 		}
 

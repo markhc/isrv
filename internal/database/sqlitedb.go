@@ -91,12 +91,10 @@ func (db *SQLiteDB) Connect() error {
 
 	var err error
 	if db.pathIsDSN {
-		// db.sqldb, err = sqlx.Connect("sqlite", db.filePath)
 		db.sqldb, err = otelsqlx.Open("sqlite", db.filePath,
 			otelsql.WithAttributes(semconv.DBSystemSqlite),
 		)
 	} else {
-		// db.sqldb, err = sqlx.Connect("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc")
 		db.sqldb, err = otelsqlx.Open("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc",
 			otelsql.WithAttributes(semconv.DBSystemSqlite),
 		)
@@ -109,8 +107,8 @@ func (db *SQLiteDB) Connect() error {
 	return nil
 }
 
-// sqliteDir extracts the parent directory from a file path or SQLite DSN.
-// Returns an empty string if no meaningful directory can be determined.
+// sqliteDir returns the parent directory of a file path or SQLite DSN, or
+// an empty string if no meaningful directory can be determined.
 func sqliteDir(path string, isDSN bool) string {
 	if isDSN {
 		u, err := url.Parse(path)
@@ -226,7 +224,7 @@ func (db *SQLiteDB) OnFileUpload(
 
 // OnFileDownload increments the download counter for the given file ID.
 //
-// ErrFileNotFound is returned for an unknown ID but is treated as an
+// ErrFileNotFound is returned for an unknown ID; it is treated as an
 // expected (info-level) outcome rather than a span error so it does not
 // pollute trace error-rate dashboards. Only real SQL failures set the span
 // status to Error.

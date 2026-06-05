@@ -17,9 +17,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// infraEndpointPrefixes are URL path prefixes for endpoints that should not
-// produce HTTP server spans or RED metrics. They are high-frequency and add
-// no operational value to tracing/metrics output.
+// infraEndpointPrefixes lists URL path prefixes for endpoints that should
+// not produce HTTP server spans or RED metrics. They are high-frequency and
+// add no operational value to tracing/metrics output.
 //
 //nolint:gochecknoglobals // immutable list shared between SetupRoutes and the otelhttp filter.
 var infraEndpointPrefixes = []string{
@@ -30,8 +30,8 @@ var infraEndpointPrefixes = []string{
 	"/static/",
 }
 
-// otelhttpFilter returns true when the request should be traced. We drop spans
-// for the high-volume infra endpoints listed in infraEndpointPrefixes.
+// otelhttpFilter reports whether a request should be traced. Spans are
+// dropped for the high-volume infra endpoints listed in infraEndpointPrefixes.
 func otelhttpFilter(r *http.Request) bool {
 	for _, prefix := range infraEndpointPrefixes {
 		if strings.HasPrefix(r.URL.Path, prefix) {
@@ -42,22 +42,22 @@ func otelhttpFilter(r *http.Request) bool {
 	return true
 }
 
-// SetupRoutes registers all application routes and their associated handlers and middleware.
-// It returns a configured chi.Mux instance ready to be used as an HTTP handler.
-// The returned mux is wrapped with OpenTelemetry HTTP instrumentation that emits
-// per-request traces and RED metrics (rate, errors, duration) to the configured backend.
+// SetupRoutes registers all application routes, handlers, and middleware on
+// a chi.Mux and returns the configured http.Handler. The returned handler is
+// wrapped with OpenTelemetry HTTP instrumentation that emits per-request
+// traces and RED metrics (rate, errors, duration). Infra endpoints listed in
+// infraEndpointPrefixes are filtered out to avoid noise.
 //
 //nolint:funlen,cyclop // linear route registration; splitting hides the mux layout.
 func SetupRoutes(a *Application) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	// r.Use(middleware.Logger)
 
 	// Request logger. Panic recovery lives in the dedicated recoverer below so
-	// panics can be attached to the active OpenTelemetry span. OPTIONS noise is
-	// dropped outright; 404/405 are demoted to debug by getLogLevel so they
-	// remain visible when operators turn the file/console sink to debug.
+	// panics can be attached to the active OpenTelemetry span. OPTIONS noise
+	// is dropped outright; 404/405 are demoted to debug by getLogLevel so
+	// they remain visible only when the operator turns the sink to debug.
 	r.Use(logging.RequestLogger(&logging.RequestLoggerOptions{
 		LogLevel: zapcore.DebugLevel,
 		SkipFunc: func(req *http.Request, _ int) bool {
@@ -68,9 +68,10 @@ func SetupRoutes(a *Application) http.Handler {
 	r.Use(spanAwareRecoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 
-	// After chi has resolved the route, update the active otelhttp span name and
-	// http.route metric label to the matched route pattern (e.g. "GET /d/{id}").
-	// Without this the outer otelhttp wrapper only sees the raw URL path.
+	// Once chi has resolved the route, rewrite the active otelhttp span name
+	// and http.route metric label to use the matched route pattern (e.g.
+	// "GET /d/{id}"). Without this the outer otelhttp wrapper only sees the
+	// raw URL path.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if routeCtx := chi.RouteContext(r.Context()); routeCtx != nil {
@@ -108,7 +109,7 @@ func SetupRoutes(a *Application) http.Handler {
 	r.Get("/d/{id}", a.DownloadHandler)
 	r.Get("/d/{id}/{filename}", a.DownloadHandler)
 
-	// Rate limited and protected routes
+	// Rate-limited and protected routes.
 	r.Group(func(r chi.Router) {
 		r.Use(a.Middleware.RateLimit)
 
@@ -128,7 +129,7 @@ func SetupRoutes(a *Application) http.Handler {
 		r.Get("/static/*", http.StripPrefix("/static/", staticFS).ServeHTTP)
 	}
 
-	// Operational endpoints. These are intentionally registered outside of
+	// Operational endpoints are intentionally registered outside the
 	// authentication and rate-limit groups so orchestrators and scrapers can
 	// always reach them.
 	if a.HealthzHandler != nil {
@@ -142,17 +143,16 @@ func SetupRoutes(a *Application) http.Handler {
 	}
 
 	// pprof is only mounted when DebugMode is enabled. It exposes process
-	// internals (heap, goroutines, mutex traces) and must not be reachable in
-	// untrusted environments without an upstream auth layer.
+	// internals (heap, goroutines, mutex traces) and must not be reachable
+	// in untrusted environments without an upstream auth layer.
 	if a.Debug {
 		r.Mount("/debug", middleware.Profiler())
 	}
 
-	// Wrap the entire mux with OTel HTTP instrumentation.
-	// This emits a trace span and HTTP server metrics for every request,
-	// providing RED metrics (rate, errors, duration) out of the box.
-	// Infra endpoints (/healthz, /readyz, /metrics, /debug, /static) are
-	// filtered out to avoid trace and metric noise.
+	// Wrap the mux with OTel HTTP instrumentation. This emits a trace span
+	// and HTTP server metrics for every request, providing RED metrics
+	// (rate, errors, duration) out of the box. Infra endpoints are filtered
+	// out by otelhttpFilter to avoid trace and metric noise.
 	return otelhttp.NewHandler(r, "isrv",
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
 		otelhttp.WithFilter(otelhttpFilter),
@@ -160,9 +160,9 @@ func SetupRoutes(a *Application) http.Handler {
 }
 
 // spanAwareRecoverer is a panic-recovery middleware that records the panic
-// on the active OpenTelemetry span (so it surfaces in the trace backend) and
-// emits a structured error log before responding with 500. It re-panics on
-// http.ErrAbortHandler so the server can complete its abort handling.
+// on the active OpenTelemetry span (so it surfaces in the trace backend)
+// and emits a structured error log before responding with 500. It re-panics
+// on http.ErrAbortHandler so the server can complete its abort handling.
 func spanAwareRecoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

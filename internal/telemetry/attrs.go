@@ -1,7 +1,7 @@
 package telemetry
 
 // Application-specific attribute keys. Centralized here so handlers, storage
-// backends, the cleanup service and the database layer all use the same
+// backends, the cleanup service, and the database layer all share the same
 // vocabulary on spans and metrics. Keys are namespaced with "isrv." per the
 // OpenTelemetry guidance for custom attributes.
 const (

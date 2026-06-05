@@ -9,13 +9,13 @@ import (
 	"github.com/markhc/isrv/internal/utils"
 )
 
-// RequireValidFileID returns a middleware that enforces the presence of a valid file ID in the request.
-// It verifies that a file ID was provided in the request URL and that it corresponds to an existing
-// file in the database.
+// RequireValidFileID returns a middleware that rejects requests whose {id}
+// path parameter is missing or does not correspond to a known file. It
+// responds with 400 when the parameter is absent, 404 when no matching file
+// exists, and 500 on any other database error.
 func RequireValidFileID(db database.Database) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Find the file associated with the token
 			fileID := chi.URLParam(r, "id")
 			if fileID == "" {
 				utils.RespondWithError(w, http.StatusBadRequest, "file ID required")

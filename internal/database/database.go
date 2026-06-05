@@ -10,13 +10,16 @@ import (
 	"time"
 )
 
-// Define common errors that might be returned by database operations.
+// Errors that may be returned by Database operations.
 var (
 	ErrFileNotFound = errors.New("file not found")
 	ErrDatabase     = errors.New("database error")
 	ErrConnection   = errors.New("database connection error")
 )
 
+// FileRecord represents a stored file's metadata as persisted in the
+// database. The zero value is not useful; instances are produced by the
+// Database implementation.
 type FileRecord struct {
 	ID             string    `db:"id"`
 	Token          string    `db:"token"`
@@ -34,8 +37,8 @@ type Database interface { //nolint:interfacebloat
 	Close() error
 	// Migrate applies any pending schema migrations.
 	Migrate() error
-	// Ping verifies the database connection is still alive. Intended for
-	// readiness probes; should be cheap and respect ctx cancellation.
+	// Ping verifies the database connection is still alive. It is intended
+	// for readiness probes and must be cheap and respect ctx cancellation.
 	Ping(ctx context.Context) error
 
 	// OnFileUpload records a new file upload in the database.
@@ -47,21 +50,28 @@ type Database interface { //nolint:interfacebloat
 		expirationTime time.Time,
 		ipAddress string) error
 	// OnFileDownload increments the download counter for the given file.
+	// It returns ErrFileNotFound if no record exists for the ID.
 	OnFileDownload(ctx context.Context, fileID string) error
 	// OnFileDelete removes the record for the given file from the database.
+	// It returns ErrFileNotFound if no record exists for the ID.
 	OnFileDelete(ctx context.Context, fileID string) error
 
-	// GetFileMetadata returns the metadata map stored for the given file.
+	// GetFileMetadata returns the metadata map stored for the given file,
+	// or ErrFileNotFound if no record exists.
 	GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error)
-	// GetFileToken returns the token associated with the given file ID.
+	// GetFileToken returns the token associated with the given file ID,
+	// or ErrFileNotFound if no record exists.
 	GetFileToken(ctx context.Context, fileID string) (string, error)
-	// GetFileByToken returns the file ID associated with the given token.
+	// GetFileByToken returns the file ID associated with the given token,
+	// or ErrFileNotFound if no record matches.
 	GetFileByToken(ctx context.Context, token string) (string, error)
 	// GetExpiredFiles returns the IDs of all files whose expiration time has passed.
 	GetExpiredFiles(ctx context.Context) ([]string, error)
-	// GetFileData returns the file record for the given file ID.
+	// GetFileData returns the full file record for the given file ID,
+	// or ErrFileNotFound if no record exists.
 	GetFileData(ctx context.Context, fileID string) (*FileRecord, error)
 	// SetExpiration updates the expiration time of the given file.
+	// It returns ErrFileNotFound if no record exists.
 	SetExpiration(ctx context.Context, fileID string, expiration time.Time) error
 }
 

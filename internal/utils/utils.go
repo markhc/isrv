@@ -18,7 +18,8 @@ import (
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-// GenerateFileToken generates a cryptographically secure random token for file identification and management.
+// GenerateFileToken returns a cryptographically random token used to
+// authenticate management operations on an uploaded file.
 func GenerateFileToken() (string, error) {
 	const length = 16
 
@@ -30,11 +31,12 @@ func GenerateFileToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// GenerateRandomString returns a random alphanumeric string of the given length.
+// GenerateRandomString returns a random alphanumeric string of the given
+// length. It is not suitable for security-sensitive use.
 func GenerateRandomString(length int) string {
 	data := make([]byte, length)
 	for i := range data {
-		data[i] = charset[mathRand.Intn(len(charset))] // #nosec G404 -- This is not used for security purposes
+		data[i] = charset[mathRand.Intn(len(charset))] // #nosec G404 -- non-security use
 	}
 
 	return string(data)
@@ -46,8 +48,8 @@ func Pow3(x float64) float64 {
 }
 
 // ParseExpiresForm parses the "expires" form field value into a time.Time.
-// The value may be either a duration in hours (small integers) or a Unix
-// timestamp in milliseconds.
+// Values below 1,000,000 are interpreted as a duration in hours from now;
+// larger values are interpreted as a Unix timestamp in milliseconds.
 func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	var expires int64
 	var err error
@@ -57,9 +59,8 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid expires value: %w", err)
 	}
 
-	// If the value is less than 1,000,000, assume it's in hours
 	if expires < 1000000 {
-		expires = expires * 3600 * 1000 // convert hours to milliseconds
+		expires = expires * 3600 * 1000
 		expiresTime := time.Now().Add(time.Duration(expires) * time.Millisecond)
 
 		return expiresTime, nil
@@ -68,9 +69,9 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	return time.UnixMilli(expires), nil
 }
 
-// GetIPAddress returns the real client IP, but only reads X-Forwarded-For
-// and X-Real-IP headers when the direct connection (RemoteAddr) comes from one of
-// the configured trustedProxies.
+// GetIPAddress returns the resolved client IP for r. X-Forwarded-For and
+// X-Real-IP are consulted only when the immediate peer (RemoteAddr) is
+// contained in trustedProxies; otherwise the peer address is returned.
 func GetIPAddress(r *http.Request, trustedProxies []string) string {
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -120,13 +121,13 @@ func isInTrustedProxies(ip string, trustedProxies []string) bool {
 	return false
 }
 
+// CalculateExpirationTime returns the expiration time for the uploaded file.
+//
+// The default is derived from the file size: larger files expire sooner,
+// following minAge + (minAge - maxAge) * pow(size/maxSize - 1, 3).
+// If the request's "expires" form field requests a sooner expiration, that
+// value is used instead.
 func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Configuration) time.Time {
-	// Calculates the default expiration date for this file.
-	// Expiration is based on file size, with larger files having shorter expiration times.
-	// Expiration formula: min_age + (min_age - max_age) * pow((file_size / max_size - 1), 3)
-	//
-	// If a **shorter** time than the default is specified in the "expires" form field,
-	// that time is used instead.
 	defaultExpiresTime := MaxExpirationTime(fileSize, config)
 
 	if expiresStr := r.FormValue("expires"); expiresStr != "" {
@@ -140,19 +141,20 @@ func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Con
 	return defaultExpiresTime
 }
 
-// MaxExpirationTime returns the maximum allowed expiration time for a file of the given size.
-// It is computed using the same formula as the default upload expiry.
+// MaxExpirationTime returns the maximum allowed expiration time for a file
+// of the given size, computed using the same size-based formula as the
+// default upload expiry.
 func MaxExpirationTime(fileSize int64, config *models.Configuration) time.Time {
 	maxSizeBytes := int64(config.MaxFileSizeMB * 1024 * 1024)
-	minAge := int64(config.MinAgeDays * 24 * 3600 * 1000) // in milliseconds
-	maxAge := int64(config.MaxAgeDays * 24 * 3600 * 1000) // in milliseconds
+	minAge := int64(config.MinAgeDays * 24 * 3600 * 1000)
+	maxAge := int64(config.MaxAgeDays * 24 * 3600 * 1000)
 
 	defaultExpires := minAge + int64(float64(minAge-maxAge)*Pow3(float64(fileSize)/float64(maxSizeBytes)-1))
 
 	return time.Now().Add(time.Duration(defaultExpires) * time.Millisecond)
 }
 
-// RespondWithError sends a JSON error response and logs any write failures.
+// RespondWithError writes a JSON error payload with the given status code.
 func RespondWithError(w http.ResponseWriter, code int, message string) error {
 	errorData := make(map[string]string)
 	errorData["error"] = message
@@ -164,7 +166,7 @@ func RespondWithError(w http.ResponseWriter, code int, message string) error {
 	return nil
 }
 
-// RespondWithSuccess sends a JSON success response and logs any write failures.
+// RespondWithSuccess writes a JSON success payload with HTTP 200.
 func RespondWithSuccess(w http.ResponseWriter, data any) error {
 	if err := setJsonResponse(w, http.StatusOK, data); err != nil {
 		return fmt.Errorf("failed to write success response: %w", err)
@@ -191,10 +193,9 @@ func setJsonResponse(w http.ResponseWriter, statusCode int, data any) error {
 	return nil
 }
 
-// SetStructField sets a field in the struct based on a dot-separated path.
-// uses reflection to navigate the struct and set the value, converting types as needed.
-//
-// WARNING: Ugly function below! I'm sorry!
+// SetStructField assigns value to the field of target identified by the
+// dot-separated fieldPath, using reflection to walk into nested structs and
+// converting from string where needed.
 //
 //nolint:gocognit,cyclop,funlen
 func SetStructField(target any, fieldPath string, value any) error {
@@ -209,8 +210,6 @@ func SetStructField(target any, fieldPath string, value any) error {
 		}
 
 		if i == len(parts)-1 {
-			// Last part, set the value
-			//
 			//nolint:exhaustive
 			switch field.Kind() {
 			case reflect.String:

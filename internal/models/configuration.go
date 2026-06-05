@@ -10,11 +10,10 @@ import (
 // StorageConfiguration holds settings for the storage backend.
 type StorageConfiguration struct {
 	Type string `yaml:"type"` // "local" or "s3"
-	// Base directory for local storage
-	// or base path/prefix for S3 storage
+	// BasePath is the root directory for local storage or the key prefix for S3 storage.
 	BasePath string `yaml:"basePath"`
 
-	// Object storage settings
+	// Object storage settings (S3).
 	AccessKey  string `yaml:"accessKey"`
 	SecretKey  string `yaml:"secretKey"`
 	BucketName string `yaml:"bucketName"`
@@ -25,13 +24,13 @@ type StorageConfiguration struct {
 // DatabaseConfiguration holds settings for the database backend.
 type DatabaseConfiguration struct {
 	Type     string `yaml:"type"`     // "sqlite" and "postgres" supported
-	DSN      string `yaml:"dsn"`      // Data Source Name. If provided, overrides other settings
-	Host     string `yaml:"host"`     // For networked databases
-	Port     int    `yaml:"port"`     // For networked databases
-	User     string `yaml:"user"`     // For networked databases
-	Password string `yaml:"password"` // For networked databases
-	DBName   string `yaml:"dbName"`   // Database name
-	FilePath string `yaml:"filePath"` // For file-based databases
+	DSN      string `yaml:"dsn"`      // Data source name; when set, overrides the per-field settings below.
+	Host     string `yaml:"host"`     // Host for networked databases.
+	Port     int    `yaml:"port"`     // Port for networked databases.
+	User     string `yaml:"user"`     // User for networked databases.
+	Password string `yaml:"password"` // Password for networked databases.
+	DBName   string `yaml:"dbName"`   // Database name.
+	FilePath string `yaml:"filePath"` // File path for file-based databases.
 }
 
 // LoggingConfiguration holds settings for structured logging.
@@ -82,9 +81,9 @@ type RateLimitConfiguration struct {
 	BurstSize         int                     `yaml:"burstSize"`
 	WhitelistIPs      []string                `yaml:"whitelistIps"`
 	OnLimitExceeded   RateLimitExceededAction `yaml:"onLimitExceeded"`
-	BlockDuration     time.Duration           `yaml:"blockDuration,omitempty"` // Only used if action is "block"
+	BlockDuration     time.Duration           `yaml:"blockDuration,omitempty"`
 
-	TrustedProxies []string `yaml:"-"` // Populated from top-level trustedProxies for use in middleware
+	TrustedProxies []string `yaml:"-"` // Populated from top-level TrustedProxies for use in middleware.
 }
 
 // Configuration is the top-level application configuration.
@@ -111,7 +110,7 @@ type Configuration struct {
 	DebugMode         bool                   `yaml:"debug"`
 }
 
-// ToYaml returns an indented Yaml representation.
+// ToYaml returns the configuration marshalled as indented YAML.
 func (c Configuration) ToYaml() []byte {
 	result, err := yaml.Marshal(c)
 	if err != nil {

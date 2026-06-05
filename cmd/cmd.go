@@ -66,9 +66,9 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// runServer is the long-running entrypoint invoked by the root command.
-// It is responsible for loading configuration, initialising logging and
-// telemetry exactly once, and supervising the application loop.
+// runServer is the long-running entrypoint invoked by the root command. It
+// loads configuration, initialises logging and telemetry exactly once, and
+// supervises the application loop until the process is signalled.
 func runServer(parentCtx context.Context) error {
 	configuration.Load(configPath, debugFlag)
 	logging.Initialize()
@@ -78,12 +78,12 @@ func runServer(parentCtx context.Context) error {
 		}
 	}()
 
-	// Install signal handling once for the whole process; the resulting
-	// context is propagated down through the supervisor / StartApp.
+	// Install signal handling once for the whole process. The resulting
+	// context is propagated down through the supervisor and StartApp.
 	ctx, stop := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry is set up once at process start and torn down on exit, so
+	// Telemetry is set up once at process start and torn down on exit. The
 	// supervisor-driven restarts of the app loop reuse the same exporters
 	// and provider instances rather than re-creating them on every restart.
 	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.Get().Telemetry, configuration.BuildVersion)
@@ -100,12 +100,13 @@ func runServer(parentCtx context.Context) error {
 		}
 	}()
 
-	// Now that the OTel logger provider is registered globally, the otelzap
+	// Once the OTel logger provider is registered globally, the otelzap
 	// bridge can forward records. AttachOTelBridge swaps the global logger
 	// in place without re-opening any file descriptors.
 	logging.AttachOTelBridge()
 
-	// If debug mode is enabled or the supervisor is disabled, run the webserver directly
+	// In debug mode or when the supervisor is disabled, run the webserver
+	// directly so failures surface immediately rather than being restarted.
 	cfg := configuration.Get()
 	if cfg.DebugMode || disableSupervisor {
 		if cfg.DebugMode {
@@ -146,8 +147,8 @@ func Execute() {
 		false,
 		"Disable the supervisor and run the webserver directly")
 
-	// Silence cobra's automatic error/usage output: we already log errors via
-	// the structured logger inside runServer.
+	// Silence cobra's automatic error/usage output: errors are already
+	// logged through the structured logger inside runServer.
 	rootCmd.SilenceErrors = true
 	rootCmd.SilenceUsage = true
 

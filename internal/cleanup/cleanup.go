@@ -15,7 +15,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// cleanupDeleteSource labels FilesDeleted observations originating from the cleanup loop.
+// cleanupDeleteSource labels FilesDeleted observations originating from the
+// background cleanup loop.
 var cleanupDeleteSource = attribute.String(telemetry.AttrSource, "cleanup")
 
 // Service periodically scans for expired files and removes them from both
@@ -29,8 +30,8 @@ type Service struct {
 	wg sync.WaitGroup
 }
 
-// NewService creates a new cleanup Service with the given database, storage backend,
-// enabled flag, and polling interval.
+// NewService returns a cleanup Service. When enabled is false, Start is a
+// no-op and the service performs no work.
 func NewService(db database.Database, storage storage.Storage, enabled bool, interval time.Duration) *Service {
 	return &Service{
 		db:       db,
@@ -40,8 +41,9 @@ func NewService(db database.Database, storage storage.Storage, enabled bool, int
 	}
 }
 
-// Start launches the background cleanup goroutine. It is a no-op if the service
-// is disabled.
+// Start launches the background cleanup goroutine and returns a cancel
+// function that stops it. It is a no-op (returning nil) when the service is
+// disabled.
 func (s *Service) Start(ctx context.Context) context.CancelFunc {
 	if !s.enabled {
 		logging.InfoCtx(ctx, "file cleanup service is disabled")
@@ -57,8 +59,9 @@ func (s *Service) Start(ctx context.Context) context.CancelFunc {
 	return cancel
 }
 
-// Join waits for the cleanup service to finish any ongoing cleanup cycles.
-// It should be called after the context passed to Start is cancelled to ensure a graceful shutdown.
+// Join blocks until the background cleanup loop has finished any in-flight
+// cycle. It should be called after the context passed to Start has been
+// cancelled, to ensure a graceful shutdown.
 func (s *Service) Join() {
 	if !s.enabled {
 		return
@@ -149,7 +152,6 @@ func (s *Service) performCleanup(ctx context.Context) {
 }
 
 func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
-	// Create a context with timeout for the storage operation
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -159,18 +161,20 @@ func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
 			logging.String("file_id", fileID),
 			logging.Error(err))
 
-		// Still try to delete from database even if storage deletion failed
+		// Fall through and still attempt the database delete: leaving the
+		// record in place after a transient storage error would prevent any
+		// future retry from running, since the next cycle would treat the
+		// file as already expired and re-queue the same deletion.
 	}
 
-	// Delete from database
 	dbErr := s.db.OnFileDelete(ctx, fileID)
 	if dbErr != nil {
 		logging.ErrorCtx(ctx, "failed to delete file from database",
 			logging.String("file_id", fileID),
 			logging.Error(dbErr))
 
-		// If storage deletion succeeded but database deletion failed,
-		// we still consider it a partial failure
+		// Storage succeeded but the database delete failed: report a partial
+		// failure so the cycle metrics reflect the inconsistency.
 		if err == nil {
 			telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
 				cleanupDeleteSource,
@@ -181,7 +185,8 @@ func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
 		}
 	}
 
-	// If both operations failed, return the storage error as primary
+	// When both deletes failed, surface the storage error as the primary
+	// cause; the database error has already been logged above.
 	if err != nil {
 		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
 			cleanupDeleteSource,

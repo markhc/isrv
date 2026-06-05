@@ -28,7 +28,7 @@ const (
 	decisionBlocked  = "blocked"
 )
 
-// Pre-allocated decision attribute sets to avoid per-request allocation.
+// Pre-allocated decision attribute sets to avoid per-request allocation in the hot path.
 var (
 	decisionAllowAttrs    = metric.WithAttributes(attribute.String(telemetry.AttrDecision, decisionAllow))
 	decisionThrottleAttrs = metric.WithAttributes(attribute.String(telemetry.AttrDecision, decisionThrottle))
@@ -114,7 +114,7 @@ func RateLimit(ctx context.Context, config models.RateLimitConfiguration) func(h
 					return
 				case models.RateLimitActionNone:
 					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
-					// log only, allow through
+					// Logged but otherwise allowed through.
 				default:
 					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionThrottleAttrs)
 					http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
@@ -162,9 +162,9 @@ func (rl *rateLimiter) isBlocked(ip string) bool {
 	return time.Now().Before(entry.until)
 }
 
-// blockListSize returns the current number of IPs in the blocklist.
-// It is exposed as a callback for the OTel observable gauge and is safe
-// for concurrent use.
+// blockListSize reports the current number of IPs in the blocklist. It is
+// exposed as a callback for the OTel observable gauge and is safe for
+// concurrent use.
 func (rl *rateLimiter) blockListSize() int64 {
 	rl.blockMu.Lock()
 	defer rl.blockMu.Unlock()

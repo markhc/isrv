@@ -23,16 +23,17 @@ import (
 	"github.com/markhc/isrv/internal/telemetry"
 )
 
-// AppMiddleware holds the middleware functions used by the application.
-// Each field wraps an http.Handler and returns a new one.
+// AppMiddleware bundles the middleware functions wired into the application
+// router. Each field wraps an http.Handler and returns a new one.
 type AppMiddleware struct {
 	RequireValidFileID func(http.Handler) http.Handler
 	RequireToken       func(http.Handler) http.Handler
 	RateLimit          func(http.Handler) http.Handler
 }
 
-// Application is the central type that holds all HTTP handler fields and
-// middleware. It is constructed once by New and passed to routes.SetupRoutes.
+// Application bundles the HTTP handlers, middleware, and other dependencies
+// wired into the router. It is constructed once by NewApplication and passed
+// to SetupRoutes.
 type Application struct {
 	IndexHandler    http.HandlerFunc
 	FaviconHandler  http.HandlerFunc
@@ -56,9 +57,9 @@ var templatesFolderEmbedded embed.FS
 //go:embed static
 var staticFilesEmbedded embed.FS
 
-// NewApplication constructs an Application by wiring handler maker funcs and middleware
-// constructors. All fallible initialization (DB, storage, templates, favicon)
-// must be completed by the caller before invoking NewApplication.
+// NewApplication wires together handlers and middleware from the supplied
+// dependencies. All fallible initialization (DB, storage, templates,
+// favicon) must already be complete before this is called.
 func NewApplication(
 	ctx context.Context,
 	config *models.Configuration,
@@ -103,14 +104,14 @@ func NewApplication(
 }
 
 // StartApp initialises all dependencies, registers routes, and runs the HTTP
-// server until the supplied context is cancelled (typically by SIGINT/SIGTERM
-// installed by the caller via signal.NotifyContext).
+// server until ctx is cancelled (typically via signal.NotifyContext in the
+// caller).
 //
-// It returns a non-nil error when startup fails. Telemetry must already be
-// initialised by the caller; logger/telemetry shutdown also remains the
-// caller's responsibility.
+// It returns a non-nil error when startup or the server itself fails.
+// Telemetry must already be initialised by the caller, which also remains
+// responsible for telemetry and logger shutdown.
 //
-//nolint:funlen,cyclop // linear init/run/shutdown sequence; splitting it further hurts readability
+//nolint:funlen,cyclop // linear init/run/shutdown sequence; splitting further hurts readability.
 func StartApp(ctx context.Context) error {
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
@@ -141,7 +142,7 @@ func StartApp(ctx context.Context) error {
 
 	faviconData, err := favicon.FetchFavicon(ctx, config.FaviconURL)
 	if err != nil {
-		// Favicon fetch failure is non-fatal; the app simply serves no favicon.
+		// A missing favicon is non-fatal: the app simply serves none.
 		logging.LogError("failed to fetch favicon", logging.String("url", config.FaviconURL), logging.Error(err))
 	}
 

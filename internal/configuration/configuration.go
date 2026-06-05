@@ -24,9 +24,10 @@ func Get() *models.Configuration {
 	return &config
 }
 
-// Load reads the application configuration.
-// If configPath is non-empty it loads from that file; otherwise it searches
-// known default locations. If no file is found, built-in defaults are used.
+// Load reads the application configuration. When configPath is non-empty it
+// loads from that file; otherwise it searches known default locations. If no
+// file is found, the built-in defaults are used. The debug flag forces debug
+// logging and DebugMode on regardless of the source.
 func Load(configPath string, debug bool) {
 	if configPath != "" {
 		loadFromFile(configPath, debug)
@@ -34,7 +35,6 @@ func Load(configPath string, debug bool) {
 		loadFromFile(path, debug)
 	} else {
 		fmt.Println("no configuration file found, using built-in defaults") //nolint
-		// No configuration file found, use defaults
 		config = getDefaultConfig()
 
 		if debug {
@@ -47,9 +47,9 @@ func Load(configPath string, debug bool) {
 	verifyConfiguration()
 }
 
-// applyEnvOverrides overrides config values with any explicitly set ISRV_* environment variables.
-// Uses os.LookupEnv so that only variables present in the environment take effect;
-// unset variables do not override YAML-derived values.
+// applyEnvOverrides overrides config values with explicitly set ISRV_*
+// environment variables. Unset variables leave the YAML-derived value
+// untouched.
 func applyEnvOverrides() {
 	mapEnv := map[string]string{
 		"ISRV_SERVER_NAME":               "ServerName",
@@ -83,7 +83,8 @@ func applyEnvOverrides() {
 	}
 }
 
-// defaultSearchPaths returns the ordered list of paths to probe for a config file.
+// defaultSearchPaths returns the ordered list of locations probed for a
+// configuration file when none is supplied on the command line.
 func defaultSearchPaths() []string {
 	return []string{
 		"./config.yaml",
@@ -94,7 +95,8 @@ func defaultSearchPaths() []string {
 	}
 }
 
-// configFileExists checks which of the given paths exists and returns the first match.
+// configFileExists returns the first existing path from the given list and
+// whether such a path was found.
 func configFileExists(paths []string) (bool, string) {
 	for _, path := range paths {
 		if _, err := os.Stat(path); err == nil {
@@ -122,7 +124,9 @@ func loadFromFile(path string, debug bool) {
 	}
 }
 
-// Verify that the loaded configuration is valid and attempt to fix any issues.
+// verifyConfiguration validates the loaded configuration and panics with a
+// descriptive message on invalid values. Some normalization (e.g. trailing
+// path separator) is also applied here.
 func verifyConfiguration() {
 	if config.ServerPort < 1 || config.ServerPort > 65535 {
 		panic("Invalid configuration: server_port must be between 1 and 65535")
@@ -156,14 +160,13 @@ func getDefaultConfig() models.Configuration {
 	return defaultConfigStruct
 }
 
-// GenerateDefaultConfig generates a default configuration file at the specified path.
+// GenerateDefaultConfig writes the embedded default configuration to the
+// given path, creating any missing parent directories. It panics on failure.
 func GenerateDefaultConfig(configPath string) {
-	// Check if the embedded default config is available
 	if defaultConfig == "" {
 		panic("Default configuration is not embedded in the binary")
 	}
 
-	// Check that the directory exists, if not attempt to create it
 	dir := filepath.Dir(configPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		err = os.MkdirAll(dir, 0o755)
@@ -188,7 +191,7 @@ func verifyStorageConfig() {
 		if config.Storage.BasePath == "" {
 			panic("Invalid configuration: base_path cannot be empty")
 		}
-		// Ensure data directory ends with a slash
+		// Normalize the base path so it always ends with a separator.
 		if !strings.HasSuffix(config.Storage.BasePath, string(os.PathSeparator)) {
 			config.Storage.BasePath += string(os.PathSeparator)
 		}
@@ -198,7 +201,7 @@ func verifyStorageConfig() {
 		}
 
 		if config.Storage.Endpoint == "" {
-			// Set default endpoint based on region if not provided
+			// Default the endpoint to the regional AWS S3 host.
 			if config.Storage.Region != "" {
 				config.Storage.Endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", config.Storage.Region)
 			}
@@ -216,7 +219,7 @@ func verifyCleanupConfig() {
 
 func verifyRateLimitConfig() {
 	if config.RateLimit.Enabled {
-		// Ensure trusted proxies are set if behind a proxy
+		// Propagate trusted proxies so middleware can resolve client IPs correctly.
 		config.RateLimit.TrustedProxies = config.TrustedProxies
 
 		if config.RateLimit.RequestsPerMinute <= 0 {
