@@ -51,6 +51,9 @@ type Storage interface {
 	// Backend returns a short, stable identifier for this storage backend
 	// (e.g. "local", "s3") suitable for use as a metric attribute value.
 	Backend() string
+	// HealthCheck verifies the storage backend is reachable. Intended for
+	// readiness probes; should be cheap and respect ctx cancellation.
+	HealthCheck(ctx context.Context) error
 	// FileExists reports whether a file with the given ID exists in storage.
 	FileExists(ctx context.Context, fileID string) (bool, error)
 	// SaveFileUpload writes an uploaded file to storage and returns its storage path.

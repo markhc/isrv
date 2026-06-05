@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // instrumentationName matches telemetry.InstrumentationName. Duplicated here
@@ -24,15 +26,14 @@ import (
 const instrumentationName = "github.com/markhc/isrv"
 
 type RequestLoggerOptions struct {
-	LogLevel     zapcore.Level
-	RecoverPanic bool
-	SkipFunc     func(req *http.Request, respStatus int) bool
+	LogLevel zapcore.Level
+	SkipFunc func(req *http.Request, respStatus int) bool
 }
 
 var (
 	logger     *zap.Logger
 	baseCore   zapcore.Core // file + console cores, reused when attaching the OTel bridge
-	logFile    *os.File     // open log file handle, retained for clean shutdown
+	logSink    io.Closer    // rotating file sink (lumberjack), retained for clean shutdown
 	initOnce   sync.Once
 	bridgeOnce sync.Once
 )
@@ -58,21 +59,21 @@ func initializeLocked() {
 		return lvl < zapcore.ErrorLevel && lvl >= config.Logging.Level
 	})
 
-	encoderConfig := zap.NewProductionEncoderConfig()
-	encoderConfig.TimeKey = "ts"
-	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	encoderConfig.EncodeLevel = customLevelEncoder
-	encoderConfig.ConsoleSeparator = " | "
-	encoderConfig.LevelKey = "level"
+	consoleEncoderConfig := zap.NewProductionEncoderConfig()
+	consoleEncoderConfig.TimeKey = "ts"
+	consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	consoleEncoderConfig.EncodeLevel = customLevelEncoder
+	consoleEncoderConfig.ConsoleSeparator = " | "
+	consoleEncoderConfig.LevelKey = "level"
 
-	encoder := zapcore.NewConsoleEncoder(encoderConfig)
+	consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
 
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
 
 	cores := []zapcore.Core{
-		zapcore.NewCore(encoder, consoleErrors, highPriority),
-		zapcore.NewCore(encoder, consoleDebugging, lowPriority),
+		zapcore.NewCore(consoleEncoder, consoleErrors, highPriority),
+		zapcore.NewCore(consoleEncoder, consoleDebugging, lowPriority),
 	}
 
 	if config.Logging.LogToFile {
@@ -82,15 +83,30 @@ func initializeLocked() {
 			}
 		}
 
-		// Append to file it if exists, create it if it doesn't
-		file, err := os.OpenFile(config.Logging.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			panic(err)
+		// Rotate the file sink so long-running servers do not blow up the disk.
+		// Zero values in LoggingConfiguration use lumberjack's own defaults
+		// (100 MiB / unlimited backups / no expiration / no compression).
+		rotator := &lumberjack.Logger{
+			Filename:   config.Logging.Path,
+			MaxSize:    config.Logging.MaxSizeMB,
+			MaxBackups: config.Logging.MaxBackups,
+			MaxAge:     config.Logging.MaxAgeDays,
+			Compress:   config.Logging.Compress,
 		}
+		logSink = rotator
 
-		logFile = file
+		// Use a JSON encoder for the file sink so log records are
+		// machine-parseable by aggregators (Loki, Elasticsearch, etc.); the
+		// console encoder remains for stdout/stderr where humans read.
+		fileEncoderConfig := zap.NewProductionEncoderConfig()
+		fileEncoderConfig.TimeKey = "ts"
+		fileEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		fileEncoderConfig.LevelKey = "level"
+		fileEncoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
+		fileEncoder := zapcore.NewJSONEncoder(fileEncoderConfig)
+
 		cores = append([]zapcore.Core{
-			zapcore.NewCore(encoder, zapcore.AddSync(file), zapcore.DebugLevel),
+			zapcore.NewCore(fileEncoder, zapcore.AddSync(rotator), zapcore.DebugLevel),
 		}, cores...)
 	}
 
@@ -124,11 +140,11 @@ func Shutdown() error {
 		_ = logger.Sync()
 	}
 
-	if logFile != nil {
-		if err := logFile.Close(); err != nil {
-			return fmt.Errorf("close log file: %w", err)
+	if logSink != nil {
+		if err := logSink.Close(); err != nil {
+			return fmt.Errorf("close log sink: %w", err)
 		}
-		logFile = nil
+		logSink = nil
 	}
 
 	return nil
@@ -140,11 +156,13 @@ func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 
 // RequestLogger returns a middleware that logs HTTP requests and responses using the global zap.Logger instance.
 // based on chi-httplog but simplified and customized for this application.
+//
+// Panic recovery is intentionally NOT handled here; install a dedicated
+// recoverer middleware upstream so panics are recorded on the active
+// OpenTelemetry span before this middleware logs the request/response.
 func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			zapFields := make([]zap.Field, 0)
-
 			// Early skip if the SkipFunc returns true
 			if options.SkipFunc != nil && options.SkipFunc(r, 0) {
 				next.ServeHTTP(w, r)
@@ -158,8 +176,6 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 			ctx := r.Context()
 
 			defer func() {
-				zapFields = attemptRecover(ww, r, zapFields, options.RecoverPanic)
-
 				duration := time.Since(start)
 				statusCode := ww.Status()
 				if statusCode == 0 {
@@ -176,7 +192,7 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 					return
 				}
 
-				zapFields = append(zapFields,
+				zapFields := []zap.Field{
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
 					MaybeIP("remote_addr", r.RemoteAddr),
@@ -188,7 +204,7 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 					zap.Int("status", statusCode),
 					zap.Duration("duration", duration),
 					zap.Int("response_bytes", ww.BytesWritten()),
-				)
+				}
 
 				msg := fmt.Sprintf("%s %s => HTTP %v (%v)", r.Method, r.URL, statusCode, duration)
 				Ctx(ctx).Log(lvl, msg, zapFields...)
@@ -200,29 +216,14 @@ func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handle
 	}
 }
 
-func attemptRecover(ww http.ResponseWriter, r *http.Request, fields []zap.Field, recoverPanic bool) []zap.Field {
-	if rec := recover(); rec != nil {
-		if recoverPanic && r.Header.Get("Connection") != "Upgrade" {
-			ww.WriteHeader(http.StatusInternalServerError)
-		}
-
-		// Re-panic if it's a client abort or we're not recovering panics
-		//
-		//nolint:errorlint
-		if rec == http.ErrAbortHandler || !recoverPanic {
-			defer panic(rec)
-		}
-
-		fields = append(fields, zap.String("panic", fmt.Sprintf("%v", rec)))
-	}
-
-	return fields
-}
-
 func getLogLevel(statusCode int) zapcore.Level {
 	switch {
 	case statusCode >= 500:
 		return zapcore.ErrorLevel
+	case statusCode == 404, statusCode == 405:
+		// 404/405 are typically scanner/probe noise. Keep them recorded but
+		// only emit when the operator has the file/console sink at debug.
+		return zapcore.DebugLevel
 	case statusCode == 429:
 		return zapcore.InfoLevel
 	case statusCode >= 400:

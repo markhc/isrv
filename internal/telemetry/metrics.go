@@ -8,20 +8,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Metric attribute keys used across the application. Defined as constants so
-// callers and dashboards share the same vocabulary.
-const (
-	AttrResult    = "result"    // success | error
-	AttrStorage   = "storage"   // local | s3
-	AttrSource    = "source"    // user | cleanup
-	AttrOperation = "operation" // save | delete | exists
-	AttrDecision  = "decision"  // allow | throttle | block | blocked
-
-	// ResultSuccess / ResultError are the conventional values for AttrResult.
-	ResultSuccess = "success"
-	ResultError   = "error"
-)
-
 // Application metric instruments. They are bound to the global Meter at
 // package load time, which returns no-op instruments before a MeterProvider
 // has been installed. Once Setup installs the real MeterProvider, InitMetrics

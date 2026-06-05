@@ -22,6 +22,12 @@ import (
 
 type MockS3Client struct{ mock.Mock }
 
+func (m *MockS3Client) HeadBucket(_ context.Context, params *s3.HeadBucketInput, _ ...func(*s3.Options)) (*s3.HeadBucketOutput, error) {
+	args := m.Called(params)
+	out, _ := args.Get(0).(*s3.HeadBucketOutput)
+	return out, args.Error(1)
+}
+
 func (m *MockS3Client) HeadObject(_ context.Context, params *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
 	args := m.Called(params)
 	out, _ := args.Get(0).(*s3.HeadObjectOutput)

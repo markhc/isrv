@@ -43,6 +43,20 @@ func NewLocalStorage(config models.StorageConfiguration) (*LocalStorage, error) 
 // Backend returns the backend identifier ("local").
 func (ls *LocalStorage) Backend() string { return BackendLocal }
 
+// HealthCheck verifies the configured base directory exists and is a directory.
+func (ls *LocalStorage) HealthCheck(_ context.Context) error {
+	info, err := os.Stat(ls.BasePath)
+	if err != nil {
+		return fmt.Errorf("stat base path %q: %w", ls.BasePath, err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("base path %q is not a directory", ls.BasePath)
+	}
+
+	return nil
+}
+
 // FileExists reports whether a file with the given ID exists on disk.
 func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, error) {
 	var err error

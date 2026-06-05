@@ -114,7 +114,7 @@ func (s *Service) performCleanup(ctx context.Context) {
 	}
 
 	logging.InfoCtx(ctx, "found expired files", logging.Int("count", len(expiredFiles)))
-	span.SetAttributes(attribute.Int("cleanup.expired_count", len(expiredFiles)))
+	span.SetAttributes(attribute.Int(telemetry.AttrCleanupExpiredCount, len(expiredFiles)))
 
 	successCount := 0
 	failureCount := 0

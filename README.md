@@ -124,6 +124,22 @@ When telemetry is enabled, configure the exporter using the standard [OTEL envir
 | `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` auth headers (e.g. `Authorization=Basic <base64(id:token)>`) |
 | `OTEL_SERVICE_NAME` | Overrides the `service.name` resource attribute |
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes (e.g. `deployment.environment=production`) |
+| `OTEL_TRACES_SAMPLER` | Trace sampler. Defaults to `parentbased_always_on`; set to `parentbased_traceidratio` for head-based sampling |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampling ratio in `[0.0, 1.0]` used by ratio samplers (e.g. `0.1` for 10%) |
+
+> Beyond `ISRV_TELEMETRY_ENABLED`, all telemetry-related tuning (endpoint, auth headers, sampling, resource attributes, etc.) is controlled exclusively through the `OTEL_*` environment variables above — the YAML `telemetry` section intentionally exposes nothing else.
+
+### Observability endpoints
+
+When the server is running, the following infrastructure endpoints are always available and excluded from tracing/RED-metrics noise:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /healthz` | Liveness probe; always returns `200 {"status":"ok"}` |
+| `GET /readyz` | Readiness probe; returns `200` when the database and storage backend are both reachable, otherwise `503` with a per-check error map |
+| `GET /metrics` | Prometheus scrape endpoint exposing all OpenTelemetry-recorded metrics in OpenMetrics format |
+
+When `debug: true` is set in the configuration, the standard Go `net/http/pprof` handlers are additionally mounted under `/debug/pprof/`. This endpoint exposes process internals and **must not** be reachable in untrusted environments without an upstream authentication layer.
 
 ## Development
 

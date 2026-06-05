@@ -22,7 +22,7 @@ import (
 	"github.com/uptrace/opentelemetry-go-extra/otelsqlx"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	_ "modernc.org/sqlite"
 )
@@ -136,6 +136,19 @@ func (db *SQLiteDB) Close() error {
 	return nil
 }
 
+// Ping verifies the database connection is still alive.
+func (db *SQLiteDB) Ping(ctx context.Context) error {
+	if db.sqldb == nil {
+		return fmt.Errorf("%w: not connected", ErrConnection)
+	}
+
+	if err := db.sqldb.PingContext(ctx); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
+
+	return nil
+}
+
 // Migrate applies all pending up-migrations using the embedded migration files.
 func (db *SQLiteDB) Migrate() error {
 	iofsSource, err := iofs.New(migrations, "migrations")
@@ -172,10 +185,10 @@ func (db *SQLiteDB) OnFileUpload(
 ) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileUpload",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
-			attribute.String("file.name", fileHeader.Filename),
-			attribute.Int64("file.size_bytes", fileHeader.Size),
-			attribute.String("file.ip_address", ipAddress),
+			attribute.String(telemetry.AttrFileID, fileID),
+			attribute.String(telemetry.AttrFileName, fileHeader.Filename),
+			attribute.Int64(telemetry.AttrFileSize, fileHeader.Size),
+			attribute.String(telemetry.AttrRequestIP, ipAddress),
 		),
 	)
 
@@ -212,10 +225,15 @@ func (db *SQLiteDB) OnFileUpload(
 }
 
 // OnFileDownload increments the download counter for the given file ID.
+//
+// ErrFileNotFound is returned for an unknown ID but is treated as an
+// expected (info-level) outcome rather than a span error so it does not
+// pollute trace error-rate dashboards. Only real SQL failures set the span
+// status to Error.
 func (db *SQLiteDB) OnFileDownload(ctx context.Context, fileID string) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDownload",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
+			attribute.String(telemetry.AttrFileID, fileID),
 		),
 	)
 
@@ -248,7 +266,7 @@ func (db *SQLiteDB) OnFileDownload(ctx context.Context, fileID string) error {
 func (db *SQLiteDB) OnFileDelete(ctx context.Context, fileID string) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDelete",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
+			attribute.String(telemetry.AttrFileID, fileID),
 		),
 	)
 
@@ -281,7 +299,7 @@ func (db *SQLiteDB) OnFileDelete(ctx context.Context, fileID string) error {
 func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileMetadata",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
+			attribute.String(telemetry.AttrFileID, fileID),
 		),
 	)
 
@@ -316,7 +334,7 @@ func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[str
 func (db *SQLiteDB) GetFileToken(ctx context.Context, fileID string) (string, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileToken",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
+			attribute.String(telemetry.AttrFileID, fileID),
 		),
 	)
 
@@ -340,11 +358,7 @@ func (db *SQLiteDB) GetFileToken(ctx context.Context, fileID string) (string, er
 
 // GetFileByToken returns the file ID associated with the given token.
 func (db *SQLiteDB) GetFileByToken(ctx context.Context, token string) (string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileByToken",
-		trace.WithAttributes(
-			attribute.String("file.token", token),
-		),
-	)
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileByToken")
 
 	defer span.End()
 
@@ -405,7 +419,7 @@ func (db *SQLiteDB) GetExpiredFiles(ctx context.Context) ([]string, error) {
 func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileData",
 		trace.WithAttributes(
-			attribute.String("file.id", id),
+			attribute.String(telemetry.AttrFileID, id),
 		),
 	)
 	defer span.End()
@@ -446,8 +460,8 @@ func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, er
 func (db *SQLiteDB) SetExpiration(ctx context.Context, fileID string, expiration time.Time) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.SetExpiration",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
-			attribute.String("file.new_expiration", expiration.Format(time.RFC3339)),
+			attribute.String(telemetry.AttrFileID, fileID),
+			attribute.String(telemetry.AttrFileExpiration, expiration.Format(time.RFC3339)),
 		),
 	)
 	defer span.End()

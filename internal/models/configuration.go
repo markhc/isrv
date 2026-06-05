@@ -35,12 +35,23 @@ type DatabaseConfiguration struct {
 }
 
 // LoggingConfiguration holds settings for structured logging.
+//
+// When LogToFile is true the file sink is wrapped with lumberjack to provide
+// size-based rotation. Zero values for the rotation knobs fall back to
+// lumberjack's defaults (100 MiB per file, unlimited backups, no expiration,
+// no compression).
 type LoggingConfiguration struct {
 	LogToFile  bool          `yaml:"logToFile"`
 	LogUploads bool          `yaml:"logUploads"`
 	LogIps     bool          `yaml:"logIps"`
 	Level      zapcore.Level `yaml:"level"`
 	Path       string        `yaml:"path"`
+
+	// Rotation settings (file sink only).
+	MaxSizeMB  int  `yaml:"maxSizeMb"`  // Max size in MiB before a file is rotated.
+	MaxBackups int  `yaml:"maxBackups"` // Max number of rotated files to retain.
+	MaxAgeDays int  `yaml:"maxAgeDays"` // Max age in days before a rotated file is removed.
+	Compress   bool `yaml:"compress"`   // Whether rotated files should be gzip-compressed.
 }
 
 // CleanupConfiguration holds settings for the background file cleanup service.

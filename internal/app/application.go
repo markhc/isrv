@@ -20,6 +20,7 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
+	"github.com/markhc/isrv/internal/telemetry"
 )
 
 // AppMiddleware holds the middleware functions used by the application.
@@ -40,6 +41,9 @@ type Application struct {
 	DeleteHandler   http.HandlerFunc
 	ExpireHandler   http.HandlerFunc
 	NotFoundHandler http.HandlerFunc
+	HealthzHandler  http.HandlerFunc
+	ReadyzHandler   http.HandlerFunc
+	MetricsHandler  http.Handler
 
 	Middleware  AppMiddleware
 	StaticFiles http.FileSystem
@@ -70,6 +74,9 @@ func NewApplication(
 		DeleteHandler:   handlers.Delete(db, stor),
 		ExpireHandler:   handlers.Expire(config, db),
 		NotFoundHandler: handlers.NotFound(tmpl, config),
+		HealthzHandler:  handlers.Healthz(),
+		ReadyzHandler:   handlers.Readyz(db, stor),
+		MetricsHandler:  telemetry.MetricsHandler(),
 
 		Middleware: AppMiddleware{
 			RequireValidFileID: middleware.RequireValidFileID(db),

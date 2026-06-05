@@ -30,7 +30,7 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 		fileID := chi.URLParam(r, "id")
 
 		ctx, storSpan := telemetry.Tracer().Start(r.Context(), "storage.delete_file",
-			trace.WithAttributes(attribute.String("file.id", fileID)),
+			trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
 		)
 		err := st.DeleteFile(ctx, fileID)
 		storSpan.End()
@@ -52,7 +52,7 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 		}
 
 		ctx, dbSpan := telemetry.Tracer().Start(r.Context(), "db.delete_record",
-			trace.WithAttributes(attribute.String("file.id", fileID)),
+			trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
 		)
 		err = db.OnFileDelete(ctx, fileID)
 		dbSpan.End()
@@ -134,7 +134,7 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 	}
 
 	ctx, getSpan := telemetry.Tracer().Start(r.Context(), "db.get_file_data",
-		trace.WithAttributes(attribute.String("file.id", fileID)),
+		trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
 	)
 	record, err := db.GetFileData(ctx, fileID)
 	if err != nil {
@@ -168,8 +168,8 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 
 	ctx, setSpan := telemetry.Tracer().Start(r.Context(), "db.set_expiration",
 		trace.WithAttributes(
-			attribute.String("file.id", fileID),
-			attribute.String("file.new_expiry", newExpiry.Format(time.RFC3339)),
+			attribute.String(telemetry.AttrFileID, fileID),
+			attribute.String(telemetry.AttrFileExpiration, newExpiry.Format(time.RFC3339)),
 		),
 	)
 	err = db.SetExpiration(ctx, fileID, newExpiry)

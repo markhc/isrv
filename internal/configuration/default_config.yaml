@@ -97,6 +97,12 @@ logging:
   path: ./isrv.log
   logIps: true
   logUploads: true
+  # File-sink rotation (lumberjack). Zero values use lumberjack defaults
+  # (100 MiB per file, unlimited backups, no expiration, no compression).
+  maxSizeMb: 100   # rotate when the active file reaches this many MiB
+  maxBackups: 7    # retain at most this many rotated files (0 = unlimited)
+  maxAgeDays: 30   # delete rotated files older than this (0 = never)
+  compress: true   # gzip-compress rotated files
 
 # cleanup configuration
 cleanup:
@@ -119,5 +125,8 @@ debug: false
 #                                    e.g. Authorization=Basic <base64(id:token)>
 #   OTEL_SERVICE_NAME                Overrides the service.name resource attribute (default: isrv)
 #   OTEL_RESOURCE_ATTRIBUTES         Additional resource attributes, e.g. deployment.environment=production
+#   OTEL_TRACES_SAMPLER              Trace sampler (default parentbased_always_on).
+#                                    Use parentbased_traceidratio for ratio-based sampling.
+#   OTEL_TRACES_SAMPLER_ARG          Sampler argument, e.g. 0.1 for 10% sampling.
 telemetry:
   enabled: false
