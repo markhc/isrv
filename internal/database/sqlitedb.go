@@ -59,7 +59,7 @@ const (
 		SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP
 	`
 	QUERY_SELECT_FILE_DATA = `
-		SELECT id, token, file_size, metadata, expiration_time, ip_address FROM files WHERE id = ?
+		SELECT id, file_name, file_size, token, expiration_time, ip_address, metadata FROM files WHERE id = ?
 	`
 	QUERY_UPDATE_EXPIRATION = `
 		UPDATE files SET expiration_time = ? WHERE id = ?
@@ -428,7 +428,13 @@ func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, er
 	)
 
 	row := db.sqldb.QueryRowContext(ctx, QUERY_SELECT_FILE_DATA, id)
-	err := row.Scan(&record.ID, &record.Token, &record.FileSize, &metadataStr, &record.ExpirationTime, &record.IPAddress)
+	err := row.Scan(&record.ID,
+		&record.FileName,
+		&record.FileSize,
+		&record.Token,
+		&record.ExpirationTime,
+		&record.IPAddress,
+		&metadataStr)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFileNotFound

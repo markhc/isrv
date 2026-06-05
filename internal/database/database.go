@@ -22,6 +22,7 @@ var (
 // Database implementation.
 type FileRecord struct {
 	ID             string    `db:"id"`
+	FileName       string    `db:"file_name"`
 	Token          string    `db:"token"`
 	FileSize       int64     `db:"file_size"`
 	ExpirationTime time.Time `db:"expiration_time"`

@@ -175,30 +175,33 @@ func Test_Static(t *testing.T) {
 
 func Test_Download(t *testing.T) {
 	tests := []struct {
-		name        string
-		fileID      string
-		fileName    string
-		downloadErr error
-		metadata    map[string]string
-		metadataErr error
+		name         string
+		fileID       string
+		fileName     string // name in URL path; empty falls back to the stored name
+		resolvedName string // expected file name passed to ServeFile
+		downloadErr  error
+		metadata     map[string]string
 	}{
 		{
-			name:     "happy path without filename",
-			fileID:   "abc123",
-			fileName: "",
-			metadata: map[string]string{"Content-Type": "image/png"},
+			name:         "happy path without filename",
+			fileID:       "abc123",
+			fileName:     "",
+			resolvedName: "stored.png",
+			metadata:     map[string]string{"Content-Type": "image/png"},
 		},
 		{
-			name:     "happy path with filename",
-			fileID:   "abc123",
-			fileName: "photo.png",
-			metadata: map[string]string{"Content-Type": "image/png"},
+			name:         "happy path with filename",
+			fileID:       "abc123",
+			fileName:     "photo.png",
+			resolvedName: "photo.png",
+			metadata:     map[string]string{"Content-Type": "image/png"},
 		},
 		{
-			name:        "OnFileDownload error is non-fatal",
-			fileID:      "abc123",
-			downloadErr: errors.New("db error"),
-			metadata:    nil,
+			name:         "OnFileDownload error is non-fatal",
+			fileID:       "abc123",
+			resolvedName: "stored.png",
+			downloadErr:  errors.New("db error"),
+			metadata:     nil,
 		},
 	}
 
@@ -207,9 +210,13 @@ func Test_Download(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
 			stor := newMockStorage(t)
 
+			db.On("GetFileData", mock.Anything, tt.fileID).Return(&database.FileRecord{
+				ID:       tt.fileID,
+				FileName: tt.resolvedName,
+				Metadata: tt.metadata,
+			}, nil)
 			db.On("OnFileDownload", mock.Anything, tt.fileID).Return(tt.downloadErr)
-			db.On("GetFileMetadata", mock.Anything, tt.fileID).Return(tt.metadata, tt.metadataErr)
-			stor.On("ServeFile", mock.Anything, mock.Anything, tt.fileID, tt.fileName, tt.metadata, true, true).Return()
+			stor.On("ServeFile", mock.Anything, mock.Anything, tt.fileID, tt.resolvedName, tt.metadata, true, true).Return()
 
 			h := handlers.Download(db, stor)
 
@@ -413,6 +420,7 @@ func Test_Delete(t *testing.T) {
 func smallFileRecord() *database.FileRecord {
 	return &database.FileRecord{
 		ID:             "abc123",
+		FileName:       "file.txt",
 		FileSize:       1024, // 1 KB — effectively treated as zero size → max age applies
 		ExpirationTime: time.Now().Add(30 * 24 * time.Hour),
 	}

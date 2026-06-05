@@ -10,7 +10,6 @@ import (
 	"github.com/markhc/isrv/internal/storage"
 	"github.com/markhc/isrv/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -33,39 +32,30 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 		)
 		defer span.End()
 
-		logging.DebugCtx(ctx,
-			"serving file",
-			logging.String("file_id", fileID),
-			logging.String("file_name", fileName),
-			logging.String("path", r.URL.Path))
-
-		metadata, err := db.GetFileMetadata(ctx, fileID)
+		fileData, err := db.GetFileData(r.Context(), fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
-				// Not-found is expected; do not pollute trace error-rate
-				// dashboards. The 404 rate is still observable via the metric.
-				span.SetAttributes(attribute.String(telemetry.AttrResult, telemetry.ResultError))
-				telemetry.Downloads.Add(ctx, 1, metric.WithAttributes(
-					backendAttr,
-					attribute.String(telemetry.AttrResult, telemetry.ResultError),
-				))
 				http.NotFound(w, r)
 
 				return
 			}
 
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to get file metadata")
-			telemetry.Downloads.Add(ctx, 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
-
-			logging.ErrorCtx(ctx, "failed to get file metadata", logging.Error(err))
+			logging.ErrorCtx(r.Context(), "failed to get file data", logging.Error(err))
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 
 			return
 		}
+
+		// If a file name is not present in the URL, use the original name from the database.
+		if fileName == "" {
+			fileName = fileData.FileName
+		}
+
+		logging.DebugCtx(ctx,
+			"serving file",
+			logging.String("file_id", fileID),
+			logging.String("file_name", fileName),
+			logging.String("path", r.URL.Path))
 
 		if err := db.OnFileDownload(ctx, fileID); err != nil {
 			// The download counter is best-effort; the file is still served.
@@ -78,6 +68,6 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
 		))
 
-		stor.ServeFile(w, r.WithContext(ctx), fileID, fileName, metadata, true, true)
+		stor.ServeFile(w, r.WithContext(ctx), fileID, fileName, fileData.Metadata, true, true)
 	}
 }
