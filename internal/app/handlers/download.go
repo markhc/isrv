@@ -31,16 +31,20 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 		metadata, err := db.GetFileMetadata(r.Context(), fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
-				telemetry.Downloads.Add(r.Context(), 1, metric.WithAttributes(
-					backendAttr,
-					attribute.String(telemetry.AttrResult, telemetry.ResultError),
-				))
 				http.NotFound(w, r)
 
 				return
 			}
 
+			telemetry.Downloads.Add(r.Context(), 1, metric.WithAttributes(
+				backendAttr,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
+
 			logging.ErrorCtx(r.Context(), "failed to get file metadata", logging.Error(err))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+
+			return
 		}
 
 		if err := db.OnFileDownload(r.Context(), fileID); err != nil {

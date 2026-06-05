@@ -149,11 +149,6 @@ func processUpload(
 		return "", err
 	}
 
-	logging.InfoCtx(ctx, "file uploaded successfully",
-		logging.String("file_id", fileID),
-		logging.String("path", path),
-	)
-
 	if err := recordInDatabase(ctx, db, fileID, header, token, expiration, ipAddress); err != nil {
 		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
 			logging.ErrorCtx(ctx, "failed to roll back stored file after db error",
@@ -164,6 +159,11 @@ func processUpload(
 
 		return "", err
 	}
+
+	logging.InfoCtx(ctx, "file uploaded successfully",
+		logging.String("file_id", fileID),
+		logging.String("path", path),
+	)
 
 	safeFilename := url.PathEscape(header.Filename)
 

@@ -183,6 +183,7 @@ func StartApp(ctx context.Context) error {
 
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		logging.LogError("server forced to shutdown", logging.Error(err))
+		runErr = errors.Join(runErr, fmt.Errorf("http server shutdown: %w", err))
 	}
 
 	return runErr
