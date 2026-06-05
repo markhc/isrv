@@ -16,8 +16,12 @@ import (
 	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// userDeleteSource labels FilesDeleted observations originating from user-initiated deletes.
+var userDeleteSource = attribute.String(telemetry.AttrSource, "user")
 
 // Delete returns a handler that deletes a stored file by its ID.
 // The file is removed from both storage and the database.
@@ -34,10 +38,14 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 		if err != nil {
 			storSpan.RecordError(err)
 			storSpan.SetStatus(codes.Error, "failed to delete file from storage")
-			logging.LogError("failed to delete file from storage",
+			logging.ErrorCtx(ctx, "failed to delete file from storage",
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
+			telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+				userDeleteSource,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
 			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete file")
 
 			return
@@ -52,14 +60,23 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 		if err != nil {
 			dbSpan.RecordError(err)
 			dbSpan.SetStatus(codes.Error, "failed to remove file record from database")
-			logging.LogError("failed to remove file record from database",
+			logging.ErrorCtx(ctx, "failed to remove file record from database",
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
+			telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+				userDeleteSource,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
 			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete file record")
 
 			return
 		}
+
+		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+			userDeleteSource,
+			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
+		))
 
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -126,7 +143,7 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 		} else {
 			getSpan.RecordError(err)
 			getSpan.SetStatus(codes.Error, "failed to get file data")
-			logging.LogError("failed to get file data",
+			logging.ErrorCtx(ctx, "failed to get file data",
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
@@ -159,7 +176,7 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 	if err != nil {
 		setSpan.RecordError(err)
 		setSpan.SetStatus(codes.Error, "failed to update expiration")
-		logging.LogError("failed to update expiration",
+		logging.ErrorCtx(ctx, "failed to update expiration",
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)

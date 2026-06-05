@@ -22,17 +22,28 @@ func Test_NewLocalStorage(t *testing.T) {
 	t.Run("creates directory if not exists", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "newdir")
 		cfg := models.StorageConfiguration{BasePath: dir}
-		ls := NewLocalStorage(cfg)
+		ls, err := NewLocalStorage(cfg)
+		require.NoError(t, err)
 		assert.Equal(t, dir, ls.BasePath)
-		_, err := os.Stat(dir)
+		_, err = os.Stat(dir)
 		assert.False(t, os.IsNotExist(err), "NewLocalStorage() did not create the base directory")
 	})
 
 	t.Run("accepts existing directory", func(t *testing.T) {
 		dir := t.TempDir()
 		cfg := models.StorageConfiguration{BasePath: dir}
-		ls := NewLocalStorage(cfg)
+		ls, err := NewLocalStorage(cfg)
+		require.NoError(t, err)
 		assert.Equal(t, dir, ls.BasePath)
+	})
+
+	t.Run("returns error when base path is a file", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "notadir")
+		require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+		cfg := models.StorageConfiguration{BasePath: file}
+		ls, err := NewLocalStorage(cfg)
+		require.Error(t, err)
+		assert.Nil(t, ls)
 	})
 }
 

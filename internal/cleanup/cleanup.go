@@ -9,7 +9,14 @@ import (
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/storage"
+	"github.com/markhc/isrv/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 )
+
+// cleanupDeleteSource labels FilesDeleted observations originating from the cleanup loop.
+var cleanupDeleteSource = attribute.String(telemetry.AttrSource, "cleanup")
 
 // Service periodically scans for expired files and removes them from both
 // storage and the database.
@@ -37,16 +44,15 @@ func NewService(db database.Database, storage storage.Storage, enabled bool, int
 // is disabled.
 func (s *Service) Start(ctx context.Context) context.CancelFunc {
 	if !s.enabled {
-		logging.LogInfo("file cleanup service is disabled")
+		logging.InfoCtx(ctx, "file cleanup service is disabled")
 
 		return nil
 	}
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	s.wg.Add(1)
-	go s.cleanupLoop(cancellableCtx)
+	s.wg.Go(func() { s.cleanupLoop(cancellableCtx) })
 
-	logging.LogInfo("file cleanup service started", logging.String("interval", s.interval.String()))
+	logging.InfoCtx(ctx, "file cleanup service started", logging.String("interval", s.interval.String()))
 
 	return cancel
 }
@@ -62,8 +68,6 @@ func (s *Service) Join() {
 }
 
 func (s *Service) cleanupLoop(ctx context.Context) {
-	defer s.wg.Done()
-
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -77,30 +81,47 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 	}
 }
 
+//nolint:funlen // Linear cleanup-cycle code path with inline metric emission.
 func (s *Service) performCleanup(ctx context.Context) {
-	logging.LogDebug("starting cleanup cycle")
+	ctx, span := telemetry.Tracer().Start(ctx, "cleanup.cycle")
+	defer span.End()
+
+	start := time.Now()
+	result := telemetry.ResultSuccess
+
+	defer func() {
+		telemetry.CleanupCycleDuration.Record(ctx, time.Since(start).Seconds(),
+			metric.WithAttributes(attribute.String(telemetry.AttrResult, result)),
+		)
+	}()
+
+	logging.DebugCtx(ctx, "starting cleanup cycle")
 
 	expiredFiles, err := s.db.GetExpiredFiles(ctx)
 	if err != nil {
-		logging.LogError("failed to get expired files", logging.Error(err))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to get expired files")
+		logging.ErrorCtx(ctx, "failed to get expired files", logging.Error(err))
+		result = telemetry.ResultError
 
 		return
 	}
 
 	if len(expiredFiles) == 0 {
-		logging.LogDebug("no expired files found")
+		logging.DebugCtx(ctx, "no expired files found")
 
 		return
 	}
 
-	logging.LogInfo("found expired files", logging.Int("count", len(expiredFiles)))
+	logging.InfoCtx(ctx, "found expired files", logging.Int("count", len(expiredFiles)))
+	span.SetAttributes(attribute.Int("cleanup.expired_count", len(expiredFiles)))
 
 	successCount := 0
 	failureCount := 0
 
 	for _, fileID := range expiredFiles {
 		if err := s.cleanupFile(ctx, fileID); err != nil {
-			logging.LogError("failed to cleanup file",
+			logging.ErrorCtx(ctx, "failed to cleanup file",
 				logging.String("file_id", fileID),
 				logging.Error(err))
 			failureCount++
@@ -109,7 +130,20 @@ func (s *Service) performCleanup(ctx context.Context) {
 		}
 	}
 
-	logging.LogInfo("cleanup cycle completed",
+	if successCount > 0 {
+		telemetry.CleanupFilesProcessed.Add(ctx, int64(successCount), metric.WithAttributes(
+			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
+		))
+	}
+
+	if failureCount > 0 {
+		telemetry.CleanupFilesProcessed.Add(ctx, int64(failureCount), metric.WithAttributes(
+			attribute.String(telemetry.AttrResult, telemetry.ResultError),
+		))
+		result = telemetry.ResultError
+	}
+
+	logging.InfoCtx(ctx, "cleanup cycle completed",
 		logging.Int("success", successCount),
 		logging.Int("failures", failureCount))
 }
@@ -121,7 +155,7 @@ func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
 
 	err := s.storage.DeleteFile(ctx, fileID)
 	if err != nil {
-		logging.LogError("failed to delete file from storage",
+		logging.ErrorCtx(ctx, "failed to delete file from storage",
 			logging.String("file_id", fileID),
 			logging.Error(err))
 
@@ -131,23 +165,38 @@ func (s *Service) cleanupFile(ctx context.Context, fileID string) error {
 	// Delete from database
 	dbErr := s.db.OnFileDelete(ctx, fileID)
 	if dbErr != nil {
-		logging.LogError("failed to delete file from database",
+		logging.ErrorCtx(ctx, "failed to delete file from database",
 			logging.String("file_id", fileID),
 			logging.Error(dbErr))
 
 		// If storage deletion succeeded but database deletion failed,
 		// we still consider it a partial failure
 		if err == nil {
+			telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+				cleanupDeleteSource,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
+
 			return fmt.Errorf("failed to delete file from database: %w", dbErr)
 		}
 	}
 
 	// If both operations failed, return the storage error as primary
 	if err != nil {
+		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+			cleanupDeleteSource,
+			attribute.String(telemetry.AttrResult, telemetry.ResultError),
+		))
+
 		return fmt.Errorf("failed to delete file from storage: %w", err)
 	}
 
-	logging.LogDebug("successfully cleaned up file", logging.String("file_id", fileID))
+	telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+		cleanupDeleteSource,
+		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
+	))
+
+	logging.DebugCtx(ctx, "successfully cleaned up file", logging.String("file_id", fileID))
 
 	return nil
 }

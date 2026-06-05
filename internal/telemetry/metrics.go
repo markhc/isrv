@@ -1,0 +1,189 @@
+package telemetry
+
+import (
+	"context"
+	"fmt"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+)
+
+// Metric attribute keys used across the application. Defined as constants so
+// callers and dashboards share the same vocabulary.
+const (
+	AttrResult    = "result"    // success | error
+	AttrStorage   = "storage"   // local | s3
+	AttrSource    = "source"    // user | cleanup
+	AttrOperation = "operation" // save | delete | exists
+	AttrDecision  = "decision"  // allow | throttle | block | blocked
+
+	// ResultSuccess / ResultError are the conventional values for AttrResult.
+	ResultSuccess = "success"
+	ResultError   = "error"
+)
+
+// Application metric instruments. They are bound to the global Meter at
+// package load time, which returns no-op instruments before a MeterProvider
+// has been installed. Once Setup installs the real MeterProvider, InitMetrics
+// rebinds these vars to instruments backed by that provider.
+//
+// All instruments are safe for concurrent use; recording on a no-op instrument
+// is a side-effect-free no-op (useful for unit tests that do not call Setup).
+var (
+	Uploads               metric.Int64Counter
+	UploadSize            metric.Int64Histogram
+	UploadsInFlight       metric.Int64UpDownCounter
+	Downloads             metric.Int64Counter
+	DownloadsInFlight     metric.Int64UpDownCounter
+	FilesDeleted          metric.Int64Counter
+	CleanupCycleDuration  metric.Float64Histogram
+	CleanupFilesProcessed metric.Int64Counter
+	RateLimitDecisions    metric.Int64Counter
+	StorageOpDuration     metric.Float64Histogram
+)
+
+// init binds the application metric vars to no-op instruments via the global
+// Meter (which itself defaults to a no-op MeterProvider before Setup runs).
+// This keeps unit tests that exercise instrumented code paths from panicking
+// when Setup has not been called, without forcing every call site to nil-check.
+//
+//nolint:gochecknoinits // Required to keep package-level instrument vars non-nil before Setup runs.
+func init() {
+	// Bind to the no-op meter so that the package vars are never nil. This
+	// keeps unit tests that exercise instrumented code paths from panicking
+	// when Setup has not been called.
+	if err := registerMetrics(otel.Meter(InstrumentationName)); err != nil {
+		// The no-op meter never returns an error; panic here would mask
+		// a future regression but is otherwise unreachable.
+		panic(fmt.Sprintf("telemetry: bind no-op metric instruments: %v", err))
+	}
+}
+
+// InitMetrics rebinds the application metric instruments against the global
+// MeterProvider. It must be called once after Setup has installed the provider
+// so that subsequent recordings flow to the configured backend.
+func InitMetrics() error {
+	if err := registerMetrics(otel.Meter(InstrumentationName)); err != nil {
+		return fmt.Errorf("rebind metric instruments: %w", err)
+	}
+
+	return nil
+}
+
+//nolint:funlen,cyclop // Mechanical instrument registration; splitting would only obscure the metric catalog.
+func registerMetrics(meter metric.Meter) error {
+	var err error
+
+	if Uploads, err = meter.Int64Counter(
+		"isrv.uploads",
+		metric.WithDescription("Number of upload attempts, by result and storage backend."),
+		metric.WithUnit("{upload}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.uploads: %w", err)
+	}
+
+	if UploadSize, err = meter.Int64Histogram(
+		"isrv.upload.size_bytes",
+		metric.WithDescription("Size of successfully uploaded files."),
+		metric.WithUnit("By"),
+	); err != nil {
+		return fmt.Errorf("register isrv.upload.size_bytes: %w", err)
+	}
+
+	if UploadsInFlight, err = meter.Int64UpDownCounter(
+		"isrv.uploads.in_flight",
+		metric.WithDescription("Number of uploads currently being processed."),
+		metric.WithUnit("{upload}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.uploads.in_flight: %w", err)
+	}
+
+	if Downloads, err = meter.Int64Counter(
+		"isrv.downloads",
+		metric.WithDescription("Number of download attempts, by result and storage backend."),
+		metric.WithUnit("{download}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.downloads: %w", err)
+	}
+
+	if DownloadsInFlight, err = meter.Int64UpDownCounter(
+		"isrv.downloads.in_flight",
+		metric.WithDescription("Number of downloads currently being served."),
+		metric.WithUnit("{download}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.downloads.in_flight: %w", err)
+	}
+
+	if FilesDeleted, err = meter.Int64Counter(
+		"isrv.files.deleted",
+		metric.WithDescription("Number of files removed from storage, by source and result."),
+		metric.WithUnit("{file}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.files.deleted: %w", err)
+	}
+
+	if CleanupCycleDuration, err = meter.Float64Histogram(
+		"isrv.cleanup.cycle.duration",
+		metric.WithDescription("Duration of a single cleanup cycle, by result."),
+		metric.WithUnit("s"),
+	); err != nil {
+		return fmt.Errorf("register isrv.cleanup.cycle.duration: %w", err)
+	}
+
+	if CleanupFilesProcessed, err = meter.Int64Counter(
+		"isrv.cleanup.files_processed",
+		metric.WithDescription("Number of expired files processed by the cleanup service, by result."),
+		metric.WithUnit("{file}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.cleanup.files_processed: %w", err)
+	}
+
+	if RateLimitDecisions, err = meter.Int64Counter(
+		"isrv.ratelimit.decisions",
+		metric.WithDescription("Rate-limiter decisions, by decision kind."),
+		metric.WithUnit("{decision}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.ratelimit.decisions: %w", err)
+	}
+
+	if StorageOpDuration, err = meter.Float64Histogram(
+		"isrv.storage.operation.duration",
+		metric.WithDescription("Duration of storage backend operations."),
+		metric.WithUnit("s"),
+	); err != nil {
+		return fmt.Errorf("register isrv.storage.operation.duration: %w", err)
+	}
+
+	return nil
+}
+
+// RegisterBlocklistGauge installs an ObservableGauge that reports the current
+// rate-limit blocklist size on every metric collection cycle. The supplied
+// callback is invoked from the metric SDK and must be safe for concurrent use.
+//
+// It is a no-op if the meter provider has not been registered yet.
+func RegisterBlocklistGauge(observe func() int64) error {
+	meter := otel.Meter(InstrumentationName)
+
+	gauge, err := meter.Int64ObservableGauge(
+		"isrv.ratelimit.blocklist.size",
+		metric.WithDescription("Number of IP addresses currently in the rate-limit blocklist."),
+		metric.WithUnit("{ip}"),
+	)
+	if err != nil {
+		return fmt.Errorf("register isrv.ratelimit.blocklist.size: %w", err)
+	}
+
+	if _, err := meter.RegisterCallback(
+		func(_ context.Context, obs metric.Observer) error {
+			obs.ObserveInt64(gauge, observe())
+
+			return nil
+		},
+		gauge,
+	); err != nil {
+		return fmt.Errorf("register blocklist gauge callback: %w", err)
+	}
+
+	return nil
+}

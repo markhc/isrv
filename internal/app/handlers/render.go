@@ -21,7 +21,7 @@ func NotFound(tmpl *template.Template, config *models.Configuration) http.Handle
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "notfound", data); err != nil {
-			logging.LogError("failed to execute template", logging.Error(err))
+			logging.ErrorCtx(r.Context(), "failed to execute template", logging.Error(err))
 		}
 	}
 }
@@ -29,7 +29,7 @@ func NotFound(tmpl *template.Template, config *models.Configuration) http.Handle
 // Index returns a handler that renders the index page.
 func Index(tmpl *template.Template, config *models.Configuration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		logging.LogDebug("indexHandler", logging.String("path", r.URL.Path))
+		logging.DebugCtx(r.Context(), "indexHandler", logging.String("path", r.URL.Path))
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
@@ -40,7 +40,7 @@ func Index(tmpl *template.Template, config *models.Configuration) http.HandlerFu
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "index", data); err != nil {
-			logging.LogError("failed to execute template", logging.Error(err))
+			logging.ErrorCtx(r.Context(), "failed to execute template", logging.Error(err))
 		}
 	}
 }

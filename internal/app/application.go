@@ -8,9 +8,6 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"text/template"
 	"time"
 
@@ -23,7 +20,6 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
-	"github.com/markhc/isrv/internal/telemetry"
 )
 
 // AppMiddleware holds the middleware functions used by the application.
@@ -99,34 +95,29 @@ func NewApplication(
 	return a
 }
 
-// StartApp initialises all dependencies, registers routes, and runs the HTTP server
-// until an interrupt or termination signal is received.
+// StartApp initialises all dependencies, registers routes, and runs the HTTP
+// server until the supplied context is cancelled (typically by SIGINT/SIGTERM
+// installed by the caller via signal.NotifyContext).
 //
-//nolint:funlen
-func StartApp(ctx context.Context) {
+// It returns a non-nil error when startup fails. Telemetry must already be
+// initialised by the caller; logger/telemetry shutdown also remains the
+// caller's responsibility.
+//
+//nolint:funlen,cyclop // linear init/run/shutdown sequence; splitting it further hurts readability
+func StartApp(ctx context.Context) error {
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
 	config := configuration.Get()
 
-	shutdownTelemetry, err := telemetry.Setup(ctx, config.Telemetry, configuration.BuildVersion)
+	storageClient, err := createStorage(ctx, config)
 	if err != nil {
-		logging.LogFatal("failed to initialise telemetry", logging.Error(err))
+		return fmt.Errorf("initialise storage: %w", err)
 	}
-	defer func() { //nolint:contextcheck
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := shutdownTelemetry(shutdownCtx); err != nil {
-			logging.LogError("failed to flush telemetry", logging.Error(err))
-		}
-	}()
 
-	// Rebuild the logger now that the OTel global log provider is registered,
-	// so the otelzap bridge core forwards log records to the OTLP backend.
-	logging.Initialize()
-
-	storageClient := createStorage(ctx, config)
-	dbInstance := createDb(config)
-
+	dbInstance, err := createDb(config)
+	if err != nil {
+		return fmt.Errorf("initialise database: %w", err)
+	}
 	defer func() {
 		if err := dbInstance.Close(); err != nil {
 			logging.LogError("failed to close database connection", logging.Error(err))
@@ -135,7 +126,7 @@ func StartApp(ctx context.Context) {
 
 	tmpl, err := initializeTemplates(templatesFolderEmbedded)
 	if err != nil {
-		logging.LogFatal("failed to initialise server", logging.Error(err))
+		return fmt.Errorf("initialise templates: %w", err)
 	}
 
 	cleanupService := cleanup.NewService(dbInstance, storageClient, config.Cleanup.Enabled, config.Cleanup.Interval)
@@ -143,6 +134,7 @@ func StartApp(ctx context.Context) {
 
 	faviconData, err := favicon.FetchFavicon(ctx, config.FaviconURL)
 	if err != nil {
+		// Favicon fetch failure is non-fatal; the app simply serves no favicon.
 		logging.LogError("failed to fetch favicon", logging.String("url", config.FaviconURL), logging.Error(err))
 	}
 
@@ -152,31 +144,36 @@ func StartApp(ctx context.Context) {
 		"starting webserver", logging.String("host", config.ServerHost), logging.Int("port", config.ServerPort))
 
 	httpSrv := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		Handler:      SetupRoutes(application),
+		Addr:              fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort),
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		Handler:           SetupRoutes(application),
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},
 	}
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
+	srvErr := make(chan error, 1)
 	go func() {
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logging.LogError("failed to start server", logging.Error(err))
-			quit <- syscall.SIGTERM
+			srvErr <- err
 		}
+		close(srvErr)
 	}()
 
 	logging.LogInfo("server started successfully")
 
-	<-quit
-	logging.LogInfo("shutting down server...")
+	var runErr error
+	select {
+	case <-ctx.Done():
+		logging.LogInfo("shutting down server...")
+	case err := <-srvErr:
+		runErr = fmt.Errorf("http server: %w", err)
+		logging.LogError("server failed", logging.Error(runErr))
+	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
 	if cancelCleanup != nil {
@@ -184,50 +181,59 @@ func StartApp(ctx context.Context) {
 		cleanupService.Join()
 	}
 
-	if err := httpSrv.Shutdown(ctx); err != nil {
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		logging.LogError("server forced to shutdown", logging.Error(err))
 	}
+
+	return runErr
 }
 
 //nolint:ireturn
-func createDb(config *models.Configuration) database.Database {
+func createDb(config *models.Configuration) (database.Database, error) {
 	var dbInstance database.Database
 
 	switch config.Database.Type {
 	case "sqlite":
 		dbInstance = database.NewSQLiteDB(*config)
 	default:
-		logging.LogFatal("invalid database type", logging.String("type", config.Database.Type))
+		return nil, fmt.Errorf("invalid database type %q", config.Database.Type)
 	}
 
-	err := dbInstance.Connect()
-	if err != nil {
-		logging.LogFatal("failed to connect to database", logging.Error(err))
+	if err := dbInstance.Connect(); err != nil {
+		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 
-	err = dbInstance.Migrate()
-	if err != nil {
-		dbInstance.Close()
-		logging.LogFatal("failed to migrate database", logging.Error(err))
+	if err := dbInstance.Migrate(); err != nil {
+		if closeErr := dbInstance.Close(); closeErr != nil {
+			logging.LogError("failed to close database after migration error", logging.Error(closeErr))
+		}
+
+		return nil, fmt.Errorf("migrate database: %w", err)
 	}
 
-	return dbInstance
+	return dbInstance, nil
 }
 
 //nolint:ireturn
-func createStorage(ctx context.Context, config *models.Configuration) storage.Storage {
-	var storageClient storage.Storage
-
+func createStorage(ctx context.Context, config *models.Configuration) (storage.Storage, error) {
 	switch config.Storage.Type {
 	case "local":
-		storageClient = storage.NewLocalStorage(config.Storage)
-	case "s3":
-		storageClient = storage.NewS3Storage(ctx, config.Storage)
-	default:
-		logging.LogFatal("invalid storage type", logging.String("type", config.Storage.Type))
-	}
+		ls, err := storage.NewLocalStorage(config.Storage)
+		if err != nil {
+			return nil, fmt.Errorf("initialise local storage: %w", err)
+		}
 
-	return storageClient
+		return ls, nil
+	case "s3":
+		s3, err := storage.NewS3Storage(ctx, config.Storage)
+		if err != nil {
+			return nil, fmt.Errorf("initialise s3 storage: %w", err)
+		}
+
+		return s3, nil
+	default:
+		return nil, fmt.Errorf("invalid storage type %q", config.Storage.Type)
+	}
 }
 
 func initializeTemplates(templatesFS embed.FS) (*template.Template, error) {

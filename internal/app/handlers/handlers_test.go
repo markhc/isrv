@@ -58,6 +58,16 @@ func defaultConfig() *models.Configuration {
 	}
 }
 
+// newMockStorage wraps stmocks.NewMockStorage with an optional Backend()
+// expectation so that handlers which read the backend label for metric
+// attributes do not panic in tests that don't otherwise care about it.
+func newMockStorage(t *testing.T) *stmocks.MockStorage {
+	t.Helper()
+	s := stmocks.NewMockStorage(t)
+	s.On("Backend").Return("local").Maybe()
+	return s
+}
+
 // chiRequest injects chi URL params into a request's context.
 func chiRequest(r *http.Request, params map[string]string) *http.Request {
 	rctx := chi.NewRouteContext()
@@ -195,7 +205,7 @@ func Test_Download(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
-			stor := stmocks.NewMockStorage(t)
+			stor := newMockStorage(t)
 
 			db.On("OnFileDownload", mock.Anything, tt.fileID).Return(tt.downloadErr)
 			db.On("GetFileMetadata", mock.Anything, tt.fileID).Return(tt.metadata, tt.metadataErr)
@@ -246,7 +256,7 @@ func Test_Upload(t *testing.T) {
 			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(""))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
+				return req, dbmocks.NewMockDatabase(t), newMockStorage(t)
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "file' field is missing",
@@ -257,7 +267,7 @@ func Test_Upload(t *testing.T) {
 				body, ct := multipartBody(t, "big.bin", bytes.Repeat([]byte("x"), 10))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
-				return req, dbmocks.NewMockDatabase(t), stmocks.NewMockStorage(t)
+				return req, dbmocks.NewMockDatabase(t), newMockStorage(t)
 			},
 			expectedStatus: http.StatusRequestEntityTooLarge,
 			expectedBody:   "file size exceeds the maximum allowed limit",
@@ -269,7 +279,7 @@ func Test_Upload(t *testing.T) {
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
-				stor := stmocks.NewMockStorage(t)
+				stor := newMockStorage(t)
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("", errors.New("storage failure"))
 				return req, db, stor
@@ -284,7 +294,7 @@ func Test_Upload(t *testing.T) {
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
-				stor := stmocks.NewMockStorage(t)
+				stor := newMockStorage(t)
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/file.txt", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -302,7 +312,7 @@ func Test_Upload(t *testing.T) {
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
-				stor := stmocks.NewMockStorage(t)
+				stor := newMockStorage(t)
 				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/photo.png", nil)
 				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -378,7 +388,7 @@ func Test_Delete(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
-			st := stmocks.NewMockStorage(t)
+			st := newMockStorage(t)
 			tt.setup(db, st)
 
 			h := handlers.Delete(db, st)

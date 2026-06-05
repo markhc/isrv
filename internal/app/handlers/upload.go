@@ -17,14 +17,26 @@ import (
 	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // Upload returns a handler that accepts file uploads and stores them.
+//
+//nolint:funlen // Handler body is mostly inline error-path branches that emit metrics; splitting harms readability.
 func Upload(config *models.Configuration, db database.Database, stor storage.Storage) http.HandlerFunc {
+	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		telemetry.UploadsInFlight.Add(r.Context(), 1, metric.WithAttributes(backendAttr))
+		defer telemetry.UploadsInFlight.Add(r.Context(), -1, metric.WithAttributes(backendAttr))
+
 		file, header, err := validateUploadRequest(r)
 		if err != nil {
+			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+				backendAttr,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
 			utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 
 			return
@@ -32,6 +44,10 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 		defer file.Close()
 
 		if err := validateFileSize(header, config.MaxFileSizeMB); err != nil {
+			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+				backendAttr,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
 			utils.RespondWithError(w, http.StatusRequestEntityTooLarge, err.Error())
 
 			return
@@ -40,20 +56,30 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 		ipAddress := utils.GetIPAddress(r, config.TrustedProxies)
 		expiration := utils.CalculateExpirationTime(r, header.Size, config)
 
-		logging.LogInfo("file upload requested",
+		logging.InfoCtx(r.Context(), "file upload requested",
 			logging.String("filename", header.Filename),
 			logging.Int64("size", header.Size),
 			logging.TimeRFC3339("expiration", expiration),
-			logging.String("ip_address", ipAddress),
+			logging.MaybeIP("ip_address", ipAddress),
 		)
 
 		fileURL, err := processUpload(r.Context(), config, db, stor, file, header, expiration, ipAddress)
 		if err != nil {
-			logging.LogError("failed to process file upload", logging.Error(err))
+			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+				backendAttr,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
+			logging.ErrorCtx(r.Context(), "failed to process file upload", logging.Error(err))
 			utils.RespondWithError(w, http.StatusInternalServerError, "failed to process upload")
 
 			return
 		}
+
+		telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+			backendAttr,
+			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
+		))
+		telemetry.UploadSize.Record(r.Context(), header.Size, metric.WithAttributes(backendAttr))
 
 		utils.RespondWithSuccess(w, struct {
 			Status     string `json:"status"`
@@ -105,15 +131,15 @@ func processUpload(
 
 	defer span.End()
 
-	logging.LogInfo("processing uploaded file: " + header.Filename)
+	logging.InfoCtx(ctx, "processing uploaded file", logging.String("filename", header.Filename))
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
 
-	logging.LogDebug("generated file ID", logging.String("file_id", fileID))
+	logging.DebugCtx(ctx, "generated file ID", logging.String("file_id", fileID))
 
 	token, err := utils.GenerateFileToken()
 	if err != nil {
-		logging.LogError("failed to generate file token", logging.Error(err))
+		logging.ErrorCtx(ctx, "failed to generate file token", logging.Error(err))
 
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to generate file token")
@@ -121,18 +147,19 @@ func processUpload(
 		return "", fmt.Errorf("failed to generate file token: %w", err)
 	}
 
-	logging.LogDebug("generated file token", logging.String("token", token))
-
 	path, err := saveToStorage(ctx, stor, fileID, file, header)
 	if err != nil {
 		return "", err
 	}
 
-	logging.LogInfo("file uploaded successfully", logging.String("file_id", fileID), logging.String("path", path))
+	logging.InfoCtx(ctx, "file uploaded successfully",
+		logging.String("file_id", fileID),
+		logging.String("path", path),
+	)
 
 	if err := recordInDatabase(ctx, db, fileID, header, token, expiration, ipAddress); err != nil {
 		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
-			logging.LogError("failed to roll back stored file after db error",
+			logging.ErrorCtx(ctx, "failed to roll back stored file after db error",
 				logging.String("file_id", fileID),
 				logging.Error(rollbackErr),
 			)
@@ -166,7 +193,7 @@ func saveToStorage(
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to save uploaded file")
-		logging.LogError("failed to save uploaded file", logging.Error(err))
+		logging.ErrorCtx(ctx, "failed to save uploaded file", logging.Error(err))
 
 		return "", fmt.Errorf("failed to save uploaded file: %w", err)
 	}
@@ -195,7 +222,7 @@ func recordInDatabase(
 	if err := db.OnFileUpload(ctx, fileID, header, token, expiration, ipAddress); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to record file upload in database")
-		logging.LogError("failed to record file upload in database",
+		logging.ErrorCtx(ctx, "failed to record file upload in database",
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)

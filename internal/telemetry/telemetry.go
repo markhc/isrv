@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/markhc/isrv/internal/models"
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -58,7 +59,7 @@ type ShutdownFunc func(context.Context) error
 // The caller is responsible for calling the returned ShutdownFunc to flush all
 // buffered telemetry data before the process exits.
 //
-//nolint:funlen
+//nolint:funlen,cyclop // Exporter+provider+metric bootstrap is intentionally linear and unfolded.
 func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion string) (ShutdownFunc, error) {
 	if !cfg.Enabled {
 		return func(context.Context) error { return nil }, nil
@@ -94,10 +95,10 @@ func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion 
 		return nil, fmt.Errorf("create metric exporter: %w", err)
 	}
 
-	mp := sdkmetric.NewMeterProvider(
+	mp := sdkmetric.NewMeterProvider(append([]sdkmetric.Option{
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)),
 		sdkmetric.WithResource(res),
-	)
+	}, metricViews()...)...)
 
 	logExporter, err := otlploghttp.New(ctx)
 	if err != nil {
@@ -120,6 +121,22 @@ func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion 
 		propagation.Baggage{},
 	))
 
+	if err := InitMetrics(); err != nil {
+		_ = tp.Shutdown(ctx)
+		_ = mp.Shutdown(ctx)
+		_ = lp.Shutdown(ctx)
+
+		return nil, fmt.Errorf("init application metrics: %w", err)
+	}
+
+	if err := runtime.Start(runtime.WithMeterProvider(mp)); err != nil {
+		_ = tp.Shutdown(ctx)
+		_ = mp.Shutdown(ctx)
+		_ = lp.Shutdown(ctx)
+
+		return nil, fmt.Errorf("start runtime instrumentation: %w", err)
+	}
+
 	return func(ctx context.Context) error {
 		var errs []error
 		if err := tp.Shutdown(ctx); err != nil {
@@ -137,4 +154,48 @@ func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion 
 
 		return nil
 	}, nil
+}
+
+// metricViews returns the explicit histogram bucket boundaries used by the
+// application's custom instruments. Byte-size buckets cover typical upload
+// sizes from a few KiB to several GiB; duration buckets target millisecond-
+// to-multi-second storage and cleanup operations.
+func metricViews() []sdkmetric.Option {
+	byteBuckets := []float64{
+		1 << 10,       // 1 KiB
+		16 << 10,      // 16 KiB
+		256 << 10,     // 256 KiB
+		1 << 20,       // 1 MiB
+		8 << 20,       // 8 MiB
+		64 << 20,      // 64 MiB
+		256 << 20,     // 256 MiB
+		1 << 30,       // 1 GiB
+		4 * (1 << 30), // 4 GiB
+	}
+
+	durationBuckets := []float64{
+		0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5,
+		1, 2.5, 5, 10, 30, 60, 120, 300,
+	}
+
+	return []sdkmetric.Option{
+		sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "isrv.upload.size_bytes"},
+			sdkmetric.Stream{
+				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: byteBuckets},
+			},
+		)),
+		sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "isrv.storage.operation.duration"},
+			sdkmetric.Stream{
+				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: durationBuckets},
+			},
+		)),
+		sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "isrv.cleanup.cycle.duration"},
+			sdkmetric.Stream{
+				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: durationBuckets},
+			},
+		)),
+	}
 }
