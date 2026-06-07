@@ -31,10 +31,7 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 	return func(w http.ResponseWriter, r *http.Request) {
 		file, header, err := validateUploadRequest(r)
 		if err != nil {
-			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
+			// Return error, but do not count towards error metrics
 			utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 
 			return
