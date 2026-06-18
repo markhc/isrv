@@ -7,8 +7,8 @@ package mocks
 import (
 	"context"
 	"mime/multipart"
-	"net/http"
 
+	"github.com/gofiber/fiber/v3"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -336,9 +336,20 @@ func (_c *MockStorage_SaveFileUpload_Call) RunAndReturn(run func(ctx context.Con
 }
 
 // ServeFile provides a mock function for the type MockStorage
-func (_mock *MockStorage) ServeFile(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) {
-	_mock.Called(w, r, fileID, fileName, metadata, inlineContent, cachingEnabled)
-	return
+func (_mock *MockStorage) ServeFile(c fiber.Ctx, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) error {
+	ret := _mock.Called(c, fileID, fileName, metadata, inlineContent, cachingEnabled)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ServeFile")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(fiber.Ctx, string, string, map[string]string, bool, bool) error); ok {
+		r0 = returnFunc(c, fileID, fileName, metadata, inlineContent, cachingEnabled)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
 }
 
 // MockStorage_ServeFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServeFile'
@@ -347,46 +358,41 @@ type MockStorage_ServeFile_Call struct {
 }
 
 // ServeFile is a helper method to define mock.On call
-//   - w http.ResponseWriter
-//   - r *http.Request
+//   - c fiber.Ctx
 //   - fileID string
 //   - fileName string
 //   - metadata map[string]string
 //   - inlineContent bool
 //   - cachingEnabled bool
-func (_e *MockStorage_Expecter) ServeFile(w interface{}, r interface{}, fileID interface{}, fileName interface{}, metadata interface{}, inlineContent interface{}, cachingEnabled interface{}) *MockStorage_ServeFile_Call {
-	return &MockStorage_ServeFile_Call{Call: _e.mock.On("ServeFile", w, r, fileID, fileName, metadata, inlineContent, cachingEnabled)}
+func (_e *MockStorage_Expecter) ServeFile(c interface{}, fileID interface{}, fileName interface{}, metadata interface{}, inlineContent interface{}, cachingEnabled interface{}) *MockStorage_ServeFile_Call {
+	return &MockStorage_ServeFile_Call{Call: _e.mock.On("ServeFile", c, fileID, fileName, metadata, inlineContent, cachingEnabled)}
 }
 
-func (_c *MockStorage_ServeFile_Call) Run(run func(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool)) *MockStorage_ServeFile_Call {
+func (_c *MockStorage_ServeFile_Call) Run(run func(c fiber.Ctx, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool)) *MockStorage_ServeFile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 http.ResponseWriter
+		var arg0 fiber.Ctx
 		if args[0] != nil {
-			arg0 = args[0].(http.ResponseWriter)
+			arg0 = args[0].(fiber.Ctx)
 		}
-		var arg1 *http.Request
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(*http.Request)
+			arg1 = args[1].(string)
 		}
 		var arg2 string
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
-		var arg3 string
+		var arg3 map[string]string
 		if args[3] != nil {
-			arg3 = args[3].(string)
+			arg3 = args[3].(map[string]string)
 		}
-		var arg4 map[string]string
+		var arg4 bool
 		if args[4] != nil {
-			arg4 = args[4].(map[string]string)
+			arg4 = args[4].(bool)
 		}
 		var arg5 bool
 		if args[5] != nil {
 			arg5 = args[5].(bool)
-		}
-		var arg6 bool
-		if args[6] != nil {
-			arg6 = args[6].(bool)
 		}
 		run(
 			arg0,
@@ -395,18 +401,17 @@ func (_c *MockStorage_ServeFile_Call) Run(run func(w http.ResponseWriter, r *htt
 			arg3,
 			arg4,
 			arg5,
-			arg6,
 		)
 	})
 	return _c
 }
 
-func (_c *MockStorage_ServeFile_Call) Return() *MockStorage_ServeFile_Call {
-	_c.Call.Return()
+func (_c *MockStorage_ServeFile_Call) Return(err error) *MockStorage_ServeFile_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockStorage_ServeFile_Call) RunAndReturn(run func(w http.ResponseWriter, r *http.Request, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool)) *MockStorage_ServeFile_Call {
-	_c.Run(run)
+func (_c *MockStorage_ServeFile_Call) RunAndReturn(run func(c fiber.Ctx, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) error) *MockStorage_ServeFile_Call {
+	_c.Call.Return(run)
 	return _c
 }

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net/http"
 	"os"
 	"path"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
@@ -124,14 +124,13 @@ func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 
 // ServeFile sets response headers and serves the file directly from disk.
 func (ls *LocalStorage) ServeFile(
-	w http.ResponseWriter,
-	r *http.Request,
+	c fiber.Ctx,
 	fileID string,
 	fileName string,
 	metadata map[string]string,
 	inlineContent bool,
 	cachingEnabled bool,
-) {
-	headers.SetHeaders(w, fileName, metadata, inlineContent, cachingEnabled)
-	http.ServeFile(w, r, path.Join(ls.BasePath, fileID))
+) error {
+	headers.SetHeaders(c, fileName, metadata, inlineContent, cachingEnabled)
+	return c.SendFile(path.Join(ls.BasePath, fileID), fiber.SendFile{ByteRange: true})
 }

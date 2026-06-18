@@ -88,26 +88,27 @@ type RateLimitConfiguration struct {
 
 // Configuration is the top-level application configuration.
 type Configuration struct {
-	ServerName        string                 `yaml:"serverName"`
-	ServerURL         string                 `yaml:"serverUrl"`
-	ServerHost        string                 `yaml:"serverHost"`
-	ServerPort        int                    `yaml:"serverPort"`
-	TrustedProxies    []string               `yaml:"trustedProxies"`
-	MaxFileSizeMB     int                    `yaml:"maxFileSizeMb"`
-	MinAgeDays        int                    `yaml:"minAgeDays"`
-	MaxAgeDays        int                    `yaml:"maxAgeDays"`
-	RandomIDLength    int                    `yaml:"randomIdLength"`
-	DisableIndexPage  bool                   `yaml:"disableIndexPage"`
-	DisableUploadPage bool                   `yaml:"disableUploadPage"`
-	FaviconURL        string                 `yaml:"faviconUrl"`
-	FaviconFormat     string                 `yaml:"faviconFormat"`
-	Storage           StorageConfiguration   `yaml:"storage"`
-	Database          DatabaseConfiguration  `yaml:"database"`
-	RateLimit         RateLimitConfiguration `yaml:"rateLimit"`
-	Logging           LoggingConfiguration   `yaml:"logging"`
-	Cleanup           CleanupConfiguration   `yaml:"cleanup"`
-	Telemetry         TelemetryConfiguration `yaml:"telemetry"`
-	DebugMode         bool                   `yaml:"debug"`
+	ServerName           string                 `yaml:"serverName"`
+	ServerURL            string                 `yaml:"serverUrl"`
+	ServerHost           string                 `yaml:"serverHost"`
+	ServerPort           int                    `yaml:"serverPort"`
+	TrustedProxies       []string               `yaml:"trustedProxies"`
+	MaxFileSizeMB        int                    `yaml:"maxFileSizeMb"`
+	MinAgeDays           int                    `yaml:"minAgeDays"`
+	MaxAgeDays           int                    `yaml:"maxAgeDays"`
+	RandomIDLength       int                    `yaml:"randomIdLength"`
+	KeepOriginalFilename bool                   `yaml:"keepOriginalFilename"`
+	DisableIndexPage     bool                   `yaml:"disableIndexPage"`
+	DisableUploadPage    bool                   `yaml:"disableUploadPage"`
+	FaviconURL           string                 `yaml:"faviconUrl"`
+	FaviconFormat        string                 `yaml:"faviconFormat"`
+	Storage              StorageConfiguration   `yaml:"storage"`
+	Database             DatabaseConfiguration  `yaml:"database"`
+	RateLimit            RateLimitConfiguration `yaml:"rateLimit"`
+	Logging              LoggingConfiguration   `yaml:"logging"`
+	Cleanup              CleanupConfiguration   `yaml:"cleanup"`
+	Telemetry            TelemetryConfiguration `yaml:"telemetry"`
+	DebugMode            bool                   `yaml:"debug"`
 }
 
 // ToYaml returns the configuration marshalled as indented YAML.

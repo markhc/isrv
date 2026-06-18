@@ -13,6 +13,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -235,14 +236,19 @@ func Test_S3Storage_ServeFile(t *testing.T) {
 
 			s := newTestS3Storage(nil, presigner)
 
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			app := fiber.New()
+			app.Get("/", func(c fiber.Ctx) error {
+				return s.ServeFile(c, "test-id", tt.fileName, tt.metadata, tt.inlineContent, tt.cachingEnabled)
+			})
 
-			s.ServeFile(w, r, "test-id", tt.fileName, tt.metadata, tt.inlineContent, tt.cachingEnabled)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			resp.Body.Close()
 
-			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, tt.wantStatus, resp.StatusCode)
 			if tt.wantLocation != "" {
-				assert.Equal(t, tt.wantLocation, w.Header().Get("Location"))
+				assert.Equal(t, tt.wantLocation, resp.Header.Get("Location"))
 			}
 			presigner.AssertExpectations(t)
 		})

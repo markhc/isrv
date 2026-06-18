@@ -2,11 +2,11 @@ package middleware
 
 import (
 	"context"
-	"net/http"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/telemetry"
@@ -69,64 +69,52 @@ func newRateLimiter(ctx context.Context, config models.RateLimitConfiguration) *
 	return rl
 }
 
-// RateLimit returns a middleware that enforces per-IP rate limiting based on config.
-func RateLimit(ctx context.Context, config models.RateLimitConfiguration) func(http.Handler) http.Handler {
+// RateLimit returns a Fiber middleware that enforces per-IP rate limiting based on config.
+func RateLimit(ctx context.Context, config models.RateLimitConfiguration) fiber.Handler {
 	rl := newRateLimiter(ctx, config)
 
-	return func(next http.Handler) http.Handler {
+	return func(c fiber.Ctx) error {
 		if !config.Enabled || config.RequestsPerMinute <= 0 {
-			return next
+			return c.Next()
 		}
 
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ipAddress := utils.GetIPAddress(r, config.TrustedProxies)
+		ipAddress := utils.GetIPAddress(c, config.TrustedProxies)
 
-			if slices.Contains(config.WhitelistIPs, ipAddress) {
-				telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
-				next.ServeHTTP(w, r)
+		if slices.Contains(config.WhitelistIPs, ipAddress) {
+			telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionAllowAttrs)
+			return c.Next()
+		}
 
-				return
+		if rl.isBlocked(ipAddress) {
+			telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionBlockedAttrs)
+			logging.WarnCtx(c.Context(), "blocked request from IP", logging.MaybeIP("ip_address", ipAddress))
+			return c.Status(fiber.StatusForbidden).SendString("Rejected")
+		}
+
+		limiter := rl.getLimiter(ipAddress)
+		if !limiter.Allow() {
+			logging.WarnCtx(c.Context(), "rate limit exceeded", logging.MaybeIP("ip_address", ipAddress))
+
+			switch config.OnLimitExceeded {
+			case models.RateLimitActionBlock:
+				telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionBlockAttrs)
+				rl.blockIP(ipAddress, config.BlockDuration)
+				return c.Status(fiber.StatusForbidden).SendString("Rejected")
+			case models.RateLimitActionThrottle:
+				telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionThrottleAttrs)
+				return c.Status(fiber.StatusTooManyRequests).SendString("Too Many Requests")
+			case models.RateLimitActionNone:
+				telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionAllowAttrs)
+				// Logged but otherwise allowed through.
+			default:
+				telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionThrottleAttrs)
+				return c.Status(fiber.StatusTooManyRequests).SendString("Too Many Requests")
 			}
+		} else {
+			telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionAllowAttrs)
+		}
 
-			if rl.isBlocked(ipAddress) {
-				telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionBlockedAttrs)
-				logging.WarnCtx(r.Context(), "blocked request from IP", logging.MaybeIP("ip_address", ipAddress))
-				http.Error(w, "Rejected", http.StatusForbidden)
-
-				return
-			}
-
-			limiter := rl.getLimiter(ipAddress)
-			if !limiter.Allow() {
-				logging.WarnCtx(r.Context(), "rate limit exceeded", logging.MaybeIP("ip_address", ipAddress))
-
-				switch config.OnLimitExceeded {
-				case models.RateLimitActionBlock:
-					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionBlockAttrs)
-					rl.blockIP(ipAddress, config.BlockDuration)
-					http.Error(w, "Rejected", http.StatusForbidden)
-
-					return
-				case models.RateLimitActionThrottle:
-					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionThrottleAttrs)
-					http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
-
-					return
-				case models.RateLimitActionNone:
-					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
-					// Logged but otherwise allowed through.
-				default:
-					telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionThrottleAttrs)
-					http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
-
-					return
-				}
-			} else {
-				telemetry.RateLimitDecisions.Add(r.Context(), 1, decisionAllowAttrs)
-			}
-
-			next.ServeHTTP(w, r)
-		})
+		return c.Next()
 	}
 }
 

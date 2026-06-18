@@ -2,13 +2,12 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"mime/multipart"
-	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
@@ -24,62 +23,65 @@ import (
 // Upload returns a handler that accepts a multipart file upload and persists
 // it to storage along with a database record.
 //
-//nolint:funlen // Linear request handling with inline metric emission per branch.
-func Upload(config *models.Configuration, db database.Database, stor storage.Storage) http.HandlerFunc {
+//nolint:funlen
+func Upload(config *models.Configuration, db database.Database, stor storage.Storage) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		file, header, err := validateUploadRequest(r)
+	return func(c fiber.Ctx) error {
+		header, err := c.FormFile("file")
 		if err != nil {
-			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
 				backendAttr,
 				attribute.String(telemetry.AttrResult, telemetry.ResultError),
 			))
-			utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+			return utils.RespondWithError(c, fiber.StatusBadRequest, "multipart form 'file' field is missing")
+		}
 
-			return
+		if err := validateFileSize(header, config.MaxFileSizeMB); err != nil {
+			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
+				backendAttr,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
+			return utils.RespondWithError(c, fiber.StatusRequestEntityTooLarge, err.Error())
+		}
+
+		file, err := header.Open()
+		if err != nil {
+			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
+				backendAttr,
+				attribute.String(telemetry.AttrResult, telemetry.ResultError),
+			))
+			return utils.RespondWithError(c, fiber.StatusBadRequest, "failed to open uploaded file")
 		}
 		defer file.Close()
 
-		if err := validateFileSize(header, config.MaxFileSizeMB); err != nil {
-			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
-			utils.RespondWithError(w, http.StatusRequestEntityTooLarge, err.Error())
+		ipAddress := utils.GetIPAddress(c, config.TrustedProxies)
+		expiration := utils.CalculateExpirationTime(c, header.Size, config)
 
-			return
-		}
-
-		ipAddress := utils.GetIPAddress(r, config.TrustedProxies)
-		expiration := utils.CalculateExpirationTime(r, header.Size, config)
-
-		logging.InfoCtx(r.Context(), "file upload requested",
+		logging.InfoCtx(c.Context(), "file upload requested",
 			logging.String("filename", header.Filename),
 			logging.Int64("size", header.Size),
 			logging.TimeRFC3339("expiration", expiration),
 			logging.MaybeIP("ip_address", ipAddress),
 		)
 
-		fileURL, err := processUpload(r.Context(), config, db, stor, file, header, expiration, ipAddress)
+		fileURL, err := processUpload(c.Context(), config, db, stor, file, header, expiration, ipAddress)
 		if err != nil {
-			telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
 				backendAttr,
 				attribute.String(telemetry.AttrResult, telemetry.ResultError),
 			))
-			logging.ErrorCtx(r.Context(), "failed to process file upload", logging.Error(err))
-			utils.RespondWithError(w, http.StatusInternalServerError, "failed to process upload")
-
-			return
+			logging.ErrorCtx(c.Context(), "failed to process file upload", logging.Error(err))
+			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to process upload")
 		}
 
-		telemetry.Uploads.Add(r.Context(), 1, metric.WithAttributes(
+		telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
 			backendAttr,
 			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
 		))
-		telemetry.UploadSize.Record(r.Context(), header.Size, metric.WithAttributes(backendAttr))
+		telemetry.UploadSize.Record(c.Context(), header.Size, metric.WithAttributes(backendAttr))
 
-		utils.RespondWithSuccess(w, struct {
+		return utils.RespondWithSuccess(c, struct {
 			Status     string `json:"status"`
 			Filename   string `json:"filename"`
 			Expiration string `json:"expiration"`
@@ -91,25 +93,15 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 	}
 }
 
-func validateUploadRequest(r *http.Request) (multipart.File, *multipart.FileHeader, error) {
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		return nil, nil, errors.New("multipart form 'file' field is missing")
-	}
-
-	return file, header, nil
-}
-
 func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int) error {
 	maxSizeBytes := int64(maxFileSizeMB * 1024 * 1024)
 	if header.Size > maxSizeBytes {
 		return fmt.Errorf("file size exceeds the maximum allowed limit of %d MB", maxFileSizeMB)
 	}
-
 	return nil
 }
 
-//nolint:funlen // Linear upload pipeline
+//nolint:funlen
 func processUpload(
 	ctx context.Context,
 	config *models.Configuration,
@@ -127,7 +119,6 @@ func processUpload(
 			attribute.Int64(telemetry.AttrFileSize, header.Size),
 		),
 	)
-
 	defer span.End()
 
 	logging.InfoCtx(ctx, "processing uploaded file", logging.String("filename", header.Filename))
@@ -137,24 +128,23 @@ func processUpload(
 
 	logging.DebugCtx(ctx, "generated file ID", logging.String("file_id", fileID))
 
+	if !config.KeepOriginalFilename {
+		header.Filename = fileID + utils.GetFileExtension(header.Filename)
+	}
+
 	token, err := utils.GenerateFileToken()
 	if err != nil {
 		logging.ErrorCtx(ctx, "failed to generate file token", logging.Error(err))
-
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to generate file token")
-
 		return "", fmt.Errorf("failed to generate file token: %w", err)
 	}
 
-	// Storage and database calls emit their own spans and metrics; wrapping
-	// them here would only duplicate attributes in the trace tree.
 	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to save uploaded file")
 		logging.ErrorCtx(ctx, "failed to save uploaded file", logging.Error(err))
-
 		return "", fmt.Errorf("failed to save uploaded file: %w", err)
 	}
 
@@ -172,7 +162,6 @@ func processUpload(
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)
-
 		return "", fmt.Errorf("failed to record file upload: %w", err)
 	}
 
@@ -182,6 +171,5 @@ func processUpload(
 	)
 
 	safeFilename := url.PathEscape(header.Filename)
-
 	return config.ServerURL + "/d/" + fileID + "/" + safeFilename, nil
 }

@@ -115,12 +115,6 @@ test-race:
 	@echo "Running tests with race detection..."
 	go test -v -race ./...
 
-# Benchmark tests
-.PHONY: bench
-bench:
-	@echo "Running benchmarks..."
-	go test -bench=. -benchmem ./...
-
 # Format code
 .PHONY: fmt
 fmt:
@@ -210,7 +204,6 @@ help:
 	@echo "  test         - Run tests"
 	@echo "  test-coverage- Run tests with coverage report"
 	@echo "  test-race    - Run tests with race detection"
-	@echo "  bench        - Run benchmark tests"
 	@echo "  fmt          - Format code"
 	@echo "  lint         - Run linter"
 	@echo "  vet          - Vet code"

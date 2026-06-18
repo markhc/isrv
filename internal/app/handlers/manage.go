@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
@@ -25,11 +24,11 @@ var userDeleteSource = attribute.String(telemetry.AttrSource, "user")
 
 // Delete returns a handler that removes a stored file by its ID from both
 // storage and the database.
-func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		fileID := chi.URLParam(r, "id")
+func Delete(db database.Database, st storage.Storage) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		fileID := c.Params("id")
 
-		ctx, storSpan := telemetry.Tracer().Start(r.Context(), "storage.delete_file",
+		ctx, storSpan := telemetry.Tracer().Start(c.Context(), "storage.delete_file",
 			trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
 		)
 		err := st.DeleteFile(ctx, fileID)
@@ -46,12 +45,10 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 				userDeleteSource,
 				attribute.String(telemetry.AttrResult, telemetry.ResultError),
 			))
-			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete file")
-
-			return
+			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file")
 		}
 
-		ctx, dbSpan := telemetry.Tracer().Start(r.Context(), "db.delete_record",
+		ctx, dbSpan := telemetry.Tracer().Start(c.Context(), "db.delete_record",
 			trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
 		)
 		err = db.OnFileDelete(ctx, fileID)
@@ -68,9 +65,7 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 				userDeleteSource,
 				attribute.String(telemetry.AttrResult, telemetry.ResultError),
 			))
-			utils.RespondWithError(w, http.StatusInternalServerError, "failed to delete file record")
-
-			return
+			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file record")
 		}
 
 		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
@@ -78,102 +73,84 @@ func Delete(db database.Database, st storage.Storage) http.HandlerFunc {
 			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
 		))
 
-		w.WriteHeader(http.StatusNoContent)
+		return c.SendStatus(fiber.StatusNoContent)
 	}
 }
 
 // expireRequest is the JSON body accepted by the Expire handler.
 type expireRequest struct {
-	// Expires is a Unix timestamp in milliseconds, or a number of hours from
-	// now. Values below 1,000,000 are treated as hours.
+	// Expires is a Unix timestamp in milliseconds, or a number of hours from now.
 	Expires string `json:"expires"`
 }
 
-// parseExpireRequest decodes and validates the Expire request body. It
-// returns the parsed expiry and true on success; otherwise it writes an
-// error response and returns false.
-func parseExpireRequest(w http.ResponseWriter, r *http.Request) (time.Time, bool) {
+// parseExpireRequest decodes and validates the Expire request body.
+func parseExpireRequest(c fiber.Ctx) (time.Time, bool, error) {
 	var body expireRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "invalid request body")
-
-		return time.Time{}, false
+	if err := json.Unmarshal(c.Body(), &body); err != nil {
+		return time.Time{}, false, utils.RespondWithError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
 	if body.Expires == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "'expires' field is required")
-
-		return time.Time{}, false
+		return time.Time{}, false, utils.RespondWithError(c, fiber.StatusBadRequest, "'expires' field is required")
 	}
 
 	newExpiry, err := utils.ParseExpiresForm(body.Expires)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, fmt.Sprintf("invalid expires value: %v", err))
-
-		return time.Time{}, false
+		msg := fmt.Sprintf("invalid expires value: %v", err)
+		return time.Time{}, false, utils.RespondWithError(c, fiber.StatusBadRequest, msg)
 	}
 
-	return newExpiry, true
+	return newExpiry, true, nil
 }
 
-// Expire returns a handler that updates the expiration time of a stored
-// file. The new expiration must not exceed the maximum derived from the
-// file's size and the configured min/max age settings.
-func Expire(config *models.Configuration, db database.Database) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		applyExpire(w, r, config, db)
+// Expire returns a handler that updates the expiration time of a stored file.
+func Expire(config *models.Configuration, db database.Database) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		return applyExpire(c, config, db)
 	}
 }
 
-//nolint:funlen
-func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configuration, db database.Database) {
-	fileID := chi.URLParam(r, "id")
+func applyExpire(c fiber.Ctx, config *models.Configuration, db database.Database) error {
+	fileID := c.Params("id")
 
-	newExpiry, ok := parseExpireRequest(w, r)
+	newExpiry, ok, respErr := parseExpireRequest(c)
 	if !ok {
-		return
+		return respErr
 	}
 
-	ctx, getSpan := telemetry.Tracer().Start(r.Context(), "db.get_file_data",
+	ctx, getSpan := telemetry.Tracer().Start(c.Context(), "db.get_file_data",
 		trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
 	)
 	record, err := db.GetFileData(ctx, fileID)
+	getSpan.End()
 	if err != nil {
 		if errors.Is(err, database.ErrFileNotFound) {
-			utils.RespondWithError(w, http.StatusNotFound, "file not found")
-		} else {
-			getSpan.RecordError(err)
-			getSpan.SetStatus(codes.Error, "failed to get file data")
-			logging.ErrorCtx(ctx, "failed to get file data",
-				logging.String("file_id", fileID),
-				logging.Error(err),
-			)
-			utils.RespondWithError(w, http.StatusInternalServerError, "internal server error")
+			return utils.RespondWithError(c, fiber.StatusNotFound, "file not found")
 		}
-
-		getSpan.End()
-
-		return
+		getSpan.RecordError(err)
+		getSpan.SetStatus(codes.Error, "failed to get file data")
+		logging.ErrorCtx(ctx, "failed to get file data",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+		return utils.RespondWithError(c, fiber.StatusInternalServerError, "internal server error")
 	}
-
-	getSpan.End()
 
 	maxExpiry := utils.MaxExpirationTime(record.FileSize, config)
 	if newExpiry.After(maxExpiry) {
-		utils.RespondWithError(w, http.StatusUnprocessableEntity,
+		return utils.RespondWithError(c, fiber.StatusUnprocessableEntity,
 			"expiration exceeds the maximum allowed time of "+maxExpiry.Format(time.RFC3339),
 		)
-
-		return
 	}
 
-	ctx, setSpan := telemetry.Tracer().Start(r.Context(), "db.set_expiration",
+	ctx, setSpan := telemetry.Tracer().Start(c.Context(), "db.set_expiration",
 		trace.WithAttributes(
 			attribute.String(telemetry.AttrFileID, fileID),
 			attribute.String(telemetry.AttrFileExpiration, newExpiry.Format(time.RFC3339)),
 		),
 	)
 	err = db.SetExpiration(ctx, fileID, newExpiry)
+	setSpan.End()
 	if err != nil {
 		setSpan.RecordError(err)
 		setSpan.SetStatus(codes.Error, "failed to update expiration")
@@ -181,16 +158,10 @@ func applyExpire(w http.ResponseWriter, r *http.Request, config *models.Configur
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)
-		utils.RespondWithError(w, http.StatusInternalServerError, "failed to update expiration")
-
-		setSpan.End()
-
-		return
+		return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to update expiration")
 	}
 
-	setSpan.End()
-
-	utils.RespondWithSuccess(w, struct {
+	return utils.RespondWithSuccess(c, struct {
 		FileID     string `json:"fileId"`
 		Expiration string `json:"expiration"`
 	}{

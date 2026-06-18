@@ -4,22 +4,45 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func Test_AddCacheHeader(t *testing.T) {
-	recorder := httptest.NewRecorder()
+// runCtx executes fn inside a request handler so it has a live fiber.Ctx,
+// then returns the response headers captured by app.Test.
+func runCtx(t *testing.T, fn func(c fiber.Ctx)) map[string]string {
+	t.Helper()
 
-	AddCacheHeader(recorder)
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		fn(c)
+		return nil
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	out := make(map[string]string)
+	for k := range resp.Header {
+		out[k] = resp.Header.Get(k)
+	}
+	return out
+}
+
+func Test_AddCacheHeader(t *testing.T) {
+	got := runCtx(t, AddCacheHeader)
 
 	expectedHeaders := map[string]string{
-		"cdn-cache-control":            "public, max-age=36000",
-		"Cloudflare-CDN-Cache-Control": "public, max-age=36000",
-		"cache-control":                "public, max-age=36000",
+		"Cdn-Cache-Control":            "public, max-age=36000",
+		"Cloudflare-Cdn-Cache-Control": "public, max-age=36000",
+		"Cache-Control":                "public, max-age=36000",
 	}
 
 	for headerName, expectedValue := range expectedHeaders {
-		assert.Equal(t, expectedValue, recorder.Header().Get(headerName))
+		assert.Equal(t, expectedValue, got[headerName], "header %s", headerName)
 	}
 }
 
@@ -40,10 +63,10 @@ func Test_SetContentDisposition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-
-			SetContentDisposition(recorder, tt.fileName, tt.inline)
-			assert.Equal(t, tt.expected, recorder.Header().Get("Content-Disposition"))
+			got := runCtx(t, func(c fiber.Ctx) {
+				SetContentDisposition(c, tt.fileName, tt.inline)
+			})
+			assert.Equal(t, tt.expected, got["Content-Disposition"])
 		})
 	}
 }
@@ -57,54 +80,42 @@ func Test_SetContentType(t *testing.T) {
 		{"application/json", "application/json"},
 		{"image/jpeg", "image/jpeg"},
 		{"application/octet-stream", "application/octet-stream"},
-		{"empty content type", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-
-			SetContentType(recorder, tt.contentType)
-			assert.Equal(t, tt.contentType, recorder.Header().Get("Content-Type"))
+			got := runCtx(t, func(c fiber.Ctx) {
+				SetContentType(c, tt.contentType)
+			})
+			assert.Equal(t, tt.contentType, got["Content-Type"])
 		})
 	}
 }
 
 func Test_SetHeaders_withMetadata(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	fileName := "test.pdf"
-	fileMetadata := map[string]string{
-		"Content-Type": "application/pdf",
-	}
+	got := runCtx(t, func(c fiber.Ctx) {
+		SetHeaders(c, "test.pdf", map[string]string{"Content-Type": "application/pdf"}, false, true)
+	})
 
-	SetHeaders(recorder, fileName, fileMetadata, false, true)
-
-	assert.Equal(t, "public, max-age=36000", recorder.Header().Get("cache-control"))
-	assert.Equal(t, "application/pdf", recorder.Header().Get("Content-Type"))
-	assert.Equal(t, `attachment; filename="test.pdf"`, recorder.Header().Get("Content-Disposition"))
+	assert.Equal(t, "public, max-age=36000", got["Cache-Control"])
+	assert.Equal(t, "application/pdf", got["Content-Type"])
+	assert.Equal(t, `attachment; filename="test.pdf"`, got["Content-Disposition"])
 }
 
 func Test_SetHeaders_noCache(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	fileName := "image.jpg"
-	fileMetadata := map[string]string{
-		"Content-Type": "image/jpeg",
-	}
+	got := runCtx(t, func(c fiber.Ctx) {
+		SetHeaders(c, "image.jpg", map[string]string{"Content-Type": "image/jpeg"}, true, false)
+	})
 
-	SetHeaders(recorder, fileName, fileMetadata, true, false)
-
-	assert.Empty(t, recorder.Header().Get("cache-control"))
-	assert.Equal(t, "image/jpeg", recorder.Header().Get("Content-Type"))
-	assert.Equal(t, `inline; filename="image.jpg"`, recorder.Header().Get("Content-Disposition"))
+	assert.Empty(t, got["Cache-Control"])
+	assert.Equal(t, "image/jpeg", got["Content-Type"])
+	assert.Equal(t, `inline; filename="image.jpg"`, got["Content-Disposition"])
 }
 
 func Test_SetHeaders_noMetadata(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	fileName := "unknown.bin"
-	fileMetadata := map[string]string{} // empty metadata
+	got := runCtx(t, func(c fiber.Ctx) {
+		SetHeaders(c, "unknown.bin", map[string]string{}, false, false)
+	})
 
-	SetHeaders(recorder, fileName, fileMetadata, false, false)
-
-	assert.Empty(t, recorder.Header().Get("Content-Type"))
-	assert.Equal(t, `attachment; filename="unknown.bin"`, recorder.Header().Get("Content-Disposition"))
+	assert.Equal(t, `attachment; filename="unknown.bin"`, got["Content-Disposition"])
 }

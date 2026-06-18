@@ -13,11 +13,18 @@ linters:
     - gosec
     - mnd
     - nestif
+    - nlreturn # fiber handler chains generate many short returns
+    - contextcheck # fiber.Ctx propagates request context via c.Context()
     - revive
     - noinlineerr
     - varnamelen
     - wsl
     - wsl_v5
+  settings:
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/gofiber/fiber/*
+        - github.com/markhc/isrv/internal/utils
 
 formatters:
   enable:

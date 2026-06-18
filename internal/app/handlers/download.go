@@ -2,9 +2,8 @@ package handlers
 
 import (
 	"errors"
-	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/storage"
@@ -15,15 +14,15 @@ import (
 )
 
 // Download returns a handler that serves a stored file by its ID.
-// It is mounted on both /d/{id} and /d/{id}/{filename}.
-func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
+// It is mounted on both /d/:id and /d/:id/:filename.
+func Download(db database.Database, stor storage.Storage) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		fileID := chi.URLParam(r, "id")
-		fileName := chi.URLParam(r, "filename")
+	return func(c fiber.Ctx) error {
+		fileID := c.Params("id")
+		fileName := c.Params("filename")
 
-		ctx, span := telemetry.Tracer().Start(r.Context(), "download.serve",
+		ctx, span := telemetry.Tracer().Start(c.Context(), "download.serve",
 			trace.WithAttributes(
 				attribute.String(telemetry.AttrFileID, fileID),
 				attribute.String(telemetry.AttrFileName, fileName),
@@ -31,22 +30,18 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			),
 		)
 		defer span.End()
+		c.SetContext(ctx)
 
-		fileData, err := db.GetFileData(r.Context(), fileID)
+		fileData, err := db.GetFileData(ctx, fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
-				http.NotFound(w, r)
-
-				return
+				return c.Status(fiber.StatusNotFound).SendString("not found")
 			}
 
-			logging.ErrorCtx(r.Context(), "failed to get file data", logging.Error(err))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-
-			return
+			logging.ErrorCtx(ctx, "failed to get file data", logging.Error(err))
+			return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
 		}
 
-		// If a file name is not present in the URL, use the original name from the database.
 		if fileName == "" {
 			fileName = fileData.FileName
 		}
@@ -55,10 +50,10 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			"serving file",
 			logging.String("file_id", fileID),
 			logging.String("file_name", fileName),
-			logging.String("path", r.URL.Path))
+			logging.String("path", c.Path()))
 
 		if err := db.OnFileDownload(ctx, fileID); err != nil {
-			// The download counter is best-effort; the file is still served.
+			// best-effort
 			logging.ErrorCtx(ctx, "failed to update file metrics", logging.Error(err))
 		}
 
@@ -68,6 +63,6 @@ func Download(db database.Database, stor storage.Storage) http.HandlerFunc {
 			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
 		))
 
-		stor.ServeFile(w, r.WithContext(ctx), fileID, fileName, fileData.Metadata, true, true)
+		return stor.ServeFile(c, fileID, fileName, fileData.Metadata, true, true)
 	}
 }

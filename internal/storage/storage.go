@@ -5,9 +5,9 @@ package storage
 import (
 	"context"
 	"mime/multipart"
-	"net/http"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -68,11 +68,10 @@ type Storage interface {
 	// ServeFile writes the file to the HTTP response, applying the
 	// appropriate headers based on metadata and the inline/caching flags.
 	ServeFile(
-		w http.ResponseWriter,
-		r *http.Request,
+		c fiber.Ctx,
 		fileID string,
 		fileName string,
 		metadata map[string]string,
 		inlineContent bool,
-		cachingEnabled bool)
+		cachingEnabled bool) error
 }

@@ -62,6 +62,7 @@ func applyEnvOverrides() {
 		"ISRV_LOGGING_IPS_ENABLED":       "Logging.LogIps",
 		"ISRV_LOGGING_UPLOADS_ENABLED":   "Logging.LogUploads",
 		"ISRV_RANDOM_ID_LENGTH":          "RandomIDLength",
+		"ISRV_KEEP_ORIGINAL_FILENAME":    "KeepOriginalFilename",
 		"ISRV_MAX_FILE_SIZE_MB":          "MaxFileSizeMB",
 		"ISRV_CLEANUP_ENABLED":           "Cleanup.Enabled",
 		"ISRV_CLEANUP_INTERVAL":          "Cleanup.Interval",

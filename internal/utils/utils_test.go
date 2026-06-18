@@ -2,12 +2,16 @@ package utils
 
 import (
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,16 +166,16 @@ func Test_GetIPAddress_noTrustedProxies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/", nil)
-			req.RemoteAddr = tt.remoteAddr
+			host, _, _ := net.SplitHostPort(tt.remoteAddr)
+			headers := map[string]string{}
 			if tt.xff != "" {
-				req.Header.Set("X-Forwarded-For", tt.xff)
+				headers["X-Forwarded-For"] = tt.xff
 			}
 			if tt.xRealIP != "" {
-				req.Header.Set("X-Real-IP", tt.xRealIP)
+				headers["X-Real-IP"] = tt.xRealIP
 			}
 
-			result := GetIPAddress(req, nil)
+			result := resolveIPAddress(host, func(k string) string { return headers[k] }, nil)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -196,16 +200,16 @@ func Test_GetIPAddress_exactIPTrusted(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/", nil)
-			req.RemoteAddr = tt.remoteAddr
+			host, _, _ := net.SplitHostPort(tt.remoteAddr)
+			headers := map[string]string{}
 			if tt.xff != "" {
-				req.Header.Set("X-Forwarded-For", tt.xff)
+				headers["X-Forwarded-For"] = tt.xff
 			}
 			if tt.xRealIP != "" {
-				req.Header.Set("X-Real-IP", tt.xRealIP)
+				headers["X-Real-IP"] = tt.xRealIP
 			}
 
-			result := GetIPAddress(req, trusted)
+			result := resolveIPAddress(host, func(k string) string { return headers[k] }, trusted)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -227,11 +231,10 @@ func Test_GetIPAddress_cidrTrusted(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/", nil)
-			req.RemoteAddr = tt.remoteAddr
-			req.Header.Set("X-Forwarded-For", tt.xff)
+			host, _, _ := net.SplitHostPort(tt.remoteAddr)
+			headers := map[string]string{"X-Forwarded-For": tt.xff}
 
-			result := GetIPAddress(req, trusted)
+			result := resolveIPAddress(host, func(k string) string { return headers[k] }, trusted)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -240,11 +243,9 @@ func Test_GetIPAddress_cidrTrusted(t *testing.T) {
 func Test_GetIPAddress_xffFirstEntry(t *testing.T) {
 	// When XFF contains multiple entries (client, proxy1, proxy2), the leftmost
 	// (original client) must be returned.
-	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1:1234"
-	req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.99, 10.0.0.1")
+	headers := map[string]string{"X-Forwarded-For": "203.0.113.5, 10.0.0.99, 10.0.0.1"}
 
-	result := GetIPAddress(req, []string{"10.0.0.1"})
+	result := resolveIPAddress("10.0.0.1", func(k string) string { return headers[k] }, []string{"10.0.0.1"})
 	assert.Equal(t, "203.0.113.5", result)
 }
 
@@ -263,10 +264,8 @@ func Test_GetIPAddress_mixedTrustedList(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = c.remoteIP + ":9000"
-		req.Header.Set("X-Forwarded-For", c.xff)
-		assert.Equal(t, c.want, GetIPAddress(req, trusted), "remoteIP=%s", c.remoteIP)
+		headers := map[string]string{"X-Forwarded-For": c.xff}
+		assert.Equal(t, c.want, resolveIPAddress(c.remoteIP, func(k string) string { return headers[k] }, trusted), "remoteIP=%s", c.remoteIP)
 	}
 }
 
@@ -276,15 +275,42 @@ func Test_GetIPAddress_mixedTrustedList(t *testing.T) {
 // proxy header is incorrectly ignored.
 func Test_GetIPAddress_ipv4MappedIPv6ExactMatch(t *testing.T) {
 	trusted := []string{"10.0.0.1"}
+	headers := map[string]string{"X-Forwarded-For": "203.0.113.5"}
 
-	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "[::ffff:10.0.0.1]:4567"
-	req.Header.Set("X-Forwarded-For", "203.0.113.5")
-
-	result := GetIPAddress(req, trusted)
+	result := resolveIPAddress("::ffff:10.0.0.1", func(k string) string { return headers[k] }, trusted)
 
 	assert.Equal(t, "203.0.113.5", result,
 		"IPv4-mapped IPv6 address ::ffff:10.0.0.1 should match trusted proxy entry 10.0.0.1 and honour XFF")
+}
+
+// calcExpiresCtx fires a POST with the given expires form field value through
+// a minimal Fiber app and returns the time computed by CalculateExpirationTime.
+// Pass an empty string to omit the field entirely.
+func calcExpiresCtx(t *testing.T, expiresVal string, fileSize int64, cfg *models.Configuration) time.Time {
+	t.Helper()
+	var result time.Time
+	app := fiber.New()
+	app.Post("/", func(c fiber.Ctx) error {
+		result = CalculateExpirationTime(c, fileSize, cfg)
+		return c.SendString("ok")
+	})
+
+	var body io.Reader
+	var contentType string
+	if expiresVal != "" {
+		body = strings.NewReader("expires=" + url.QueryEscape(expiresVal))
+		contentType = "application/x-www-form-urlencoded"
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/", body)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	return result
 }
 
 func Test_CalculateExpirationTime(t *testing.T) {
@@ -295,9 +321,8 @@ func Test_CalculateExpirationTime(t *testing.T) {
 	}
 
 	t.Run("no expires param uses formula", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", nil)
 		before := time.Now()
-		exp := CalculateExpirationTime(req, 0, cfg)
+		exp := calcExpiresCtx(t, "", 0, cfg)
 		after := time.Now()
 
 		assert.True(t, exp.After(before))
@@ -307,33 +332,29 @@ func Test_CalculateExpirationTime(t *testing.T) {
 	t.Run("expires unix ms earlier than default is used", func(t *testing.T) {
 		// value < 1000000 is treated as hours; use a large unix ms value
 		target := time.Now().Add(1 * time.Hour)
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/?expires=%d", target.UnixMilli()), nil)
-		exp := CalculateExpirationTime(req, 0, cfg)
+		exp := calcExpiresCtx(t, fmt.Sprintf("%d", target.UnixMilli()), 0, cfg)
 
 		assert.WithinDuration(t, target, exp, 2*time.Second)
 	})
 
 	t.Run("expires unix ms later than default falls back to default", func(t *testing.T) {
 		farFuture := time.Now().Add(10 * 365 * 24 * time.Hour)
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/?expires=%d", farFuture.UnixMilli()), nil)
-		exp := CalculateExpirationTime(req, 0, cfg)
+		exp := calcExpiresCtx(t, fmt.Sprintf("%d", farFuture.UnixMilli()), 0, cfg)
 
 		assert.True(t, exp.Before(farFuture))
 	})
 
 	t.Run("invalid expires string falls back to default", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/?expires=notanumber", nil)
 		before := time.Now()
-		exp := CalculateExpirationTime(req, 0, cfg)
+		exp := calcExpiresCtx(t, "notanumber", 0, cfg)
 
 		assert.True(t, exp.After(before))
 	})
 
 	t.Run("expires in hours is interpreted as hours", func(t *testing.T) {
 		// value < 1000000 is treated as hours
-		req := httptest.NewRequest(http.MethodPost, "/?expires=2", nil)
+		exp := calcExpiresCtx(t, "2", 0, cfg)
 		target := time.Now().Add(2 * time.Hour)
-		exp := CalculateExpirationTime(req, 0, cfg)
 
 		assert.WithinDuration(t, target, exp, 2*time.Second)
 	})

@@ -31,7 +31,7 @@ import (
 
 // InstrumentationName is the OpenTelemetry instrumentation scope name used
 // for all spans and metrics emitted directly by this application's code (as
-// opposed to the auto-instrumented HTTP spans from otelhttp).
+// opposed to the HTTP server spans from the FiberTracing middleware).
 const InstrumentationName = "github.com/markhc/isrv"
 
 // metricsHandler stores the Prometheus scrape handler installed by Setup so

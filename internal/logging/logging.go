@@ -5,14 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/configuration"
+	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -24,10 +24,13 @@ import (
 // here to avoid an import cycle once telemetry starts using the logger.
 const instrumentationName = "github.com/markhc/isrv"
 
+// requestIDContextKey is a typed key for storing a request ID in a context.Context.
+type requestIDContextKey struct{}
+
 // RequestLoggerOptions configures the per-request logger middleware.
 type RequestLoggerOptions struct {
 	LogLevel zapcore.Level
-	SkipFunc func(req *http.Request, respStatus int) bool
+	SkipFunc func(c fiber.Ctx, respStatus int) bool
 }
 
 var (
@@ -153,63 +156,59 @@ func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
 }
 
-// RequestLogger returns a middleware that logs each HTTP request/response
+// RequestLogger returns a Fiber middleware that logs each HTTP request/response
 // pair through the global zap logger. It is loosely based on chi-httplog,
 // simplified for this application.
 //
 // Panic recovery is intentionally NOT handled here; install a dedicated
 // recoverer middleware upstream so panics are recorded on the active
 // OpenTelemetry span before this middleware logs the request/response.
-func RequestLogger(options *RequestLoggerOptions) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if options.SkipFunc != nil && options.SkipFunc(r, 0) {
-				next.ServeHTTP(w, r)
+func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if options.SkipFunc != nil && options.SkipFunc(c, 0) {
+			return c.Next()
+		}
 
-				return
-			}
+		start := time.Now()
 
-			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		// Propagate the Fiber request ID into the standard context so Ctx()
+		// can attach it to structured log records.
+		if reqID := c.Get("X-Request-Id"); reqID != "" {
+			c.SetContext(context.WithValue(c.Context(), requestIDContextKey{}, reqID))
+		}
 
-			start := time.Now()
-			ctx := r.Context()
+		err := c.Next()
 
-			defer func() {
-				duration := time.Since(start)
-				statusCode := ww.Status()
-				if statusCode == 0 {
-					statusCode = 200
-				}
+		duration := time.Since(start)
+		statusCode := c.Response().StatusCode()
 
-				if options.SkipFunc != nil && options.SkipFunc(r, statusCode) {
-					return
-				}
+		if options.SkipFunc != nil && options.SkipFunc(c, statusCode) {
+			return err
+		}
 
-				lvl := getLogLevel(statusCode)
-				if lvl < options.LogLevel {
-					return
-				}
+		lvl := getLogLevel(statusCode)
+		if lvl < options.LogLevel {
+			return err
+		}
 
-				zapFields := []zap.Field{
-					zap.String("method", r.Method),
-					zap.String("path", r.URL.Path),
-					MaybeIP("remote_addr", r.RemoteAddr),
-					zap.String("host", r.Host),
-					zap.String("scheme", scheme(r)),
-					zap.String("proto", r.Proto),
-					zap.Int64("length", r.ContentLength),
-					zap.String("user_agent", r.UserAgent()),
-					zap.Int("status", statusCode),
-					zap.Duration("duration", duration),
-					zap.Int("response_bytes", ww.BytesWritten()),
-				}
+		zapFields := []zap.Field{
+			zap.String("method", c.Method()),
+			zap.String("path", c.Path()),
+			MaybeIP("remote_addr", utils.GetIPAddress(c, configuration.Get().TrustedProxies)),
+			zap.String("host", c.Hostname()),
+			zap.String("scheme", c.Protocol()),
+			zap.String("proto", c.Protocol()),
+			zap.Int64("length", int64(len(c.Body()))),
+			zap.String("user_agent", c.Get("User-Agent")),
+			zap.Int("status", statusCode),
+			zap.Duration("duration", duration),
+			zap.Int("response_bytes", len(c.Response().Body())),
+		}
 
-				msg := fmt.Sprintf("%s %s => HTTP %v (%v)", r.Method, r.URL, statusCode, duration)
-				Ctx(ctx).Log(lvl, msg, zapFields...)
-			}()
+		msg := fmt.Sprintf("%s %s => HTTP %v (%v)", c.Method(), c.Path(), statusCode, duration)
+		Ctx(c.Context()).Log(lvl, msg, zapFields...)
 
-			next.ServeHTTP(ww, r)
-		})
+		return err
 	}
 }
 
@@ -229,14 +228,6 @@ func getLogLevel(statusCode int) zapcore.Level {
 	default:
 		return zapcore.InfoLevel
 	}
-}
-
-func scheme(r *http.Request) string {
-	if r.TLS != nil {
-		return "https"
-	}
-
-	return "http"
 }
 
 // GetLogger returns the global zap.Logger instance.
@@ -307,7 +298,7 @@ func Ctx(ctx context.Context) *zap.Logger {
 		)
 	}
 
-	if reqID := middleware.GetReqID(ctx); reqID != "" {
+	if reqID, _ := ctx.Value(requestIDContextKey{}).(string); reqID != "" {
 		fields = append(fields, zap.String("request_id", reqID))
 	}
 
