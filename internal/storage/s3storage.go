@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
-	"net/http"
 	"net/url"
 	"path"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/models"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 )
@@ -190,14 +190,13 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 
 // ServeFile generates a pre-signed S3 URL and redirects the client to it.
 func (storage *S3Storage) ServeFile(
-	w http.ResponseWriter,
-	r *http.Request,
+	c fiber.Ctx,
 	fileID string,
 	fileName string,
 	metadata map[string]string,
 	inlineContent bool,
 	cachingEnabled bool,
-) {
+) error {
 	sanitizedFileName := url.PathEscape(fileName)
 	objectKey := path.Join(storage.BasePath, fileID)
 
@@ -216,7 +215,7 @@ func (storage *S3Storage) ServeFile(
 		contentType = ct
 	}
 
-	presignedUrl, err := storage.presigner.PresignGetObject(r.Context(), &s3.GetObjectInput{
+	presignedUrl, err := storage.presigner.PresignGetObject(c.Context(), &s3.GetObjectInput{
 		Bucket:                     aws.String(storage.Bucket),
 		Key:                        aws.String(objectKey),
 		ResponseCacheControl:       aws.String(cacheControl),
@@ -224,10 +223,8 @@ func (storage *S3Storage) ServeFile(
 		ResponseContentType:        aws.String(contentType),
 	}, s3.WithPresignExpires(12*time.Hour))
 	if err != nil {
-		http.Error(w, "Failed to generate file URL", http.StatusInternalServerError)
-
-		return
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to generate file URL")
 	}
 
-	http.Redirect(w, r, presignedUrl.URL, http.StatusFound)
+	return c.Redirect().Status(fiber.StatusFound).To(presignedUrl.URL)
 }

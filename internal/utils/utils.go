@@ -3,16 +3,15 @@ package utils
 import (
 	cryptoRand "crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	mathRand "math/rand"
 	"net"
-	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/models"
 )
 
@@ -69,27 +68,27 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	return time.UnixMilli(expires), nil
 }
 
-// GetIPAddress returns the resolved client IP for r. X-Forwarded-For and
-// X-Real-IP are consulted only when the immediate peer (RemoteAddr) is
-// contained in trustedProxies; otherwise the peer address is returned.
-func GetIPAddress(r *http.Request, trustedProxies []string) string {
-	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		remoteIP = r.RemoteAddr
-	}
+// GetIPAddress returns the resolved client IP for c. X-Forwarded-For and
+// X-Real-IP are consulted only when the immediate peer is contained in
+// trustedProxies; otherwise the peer address is returned.
+func GetIPAddress(c fiber.Ctx, trustedProxies []string) string {
+	return resolveIPAddress(c.IP(), func(k string) string { return c.Get(k) }, trustedProxies)
+}
 
+// resolveIPAddress is the testable core of GetIPAddress.
+func resolveIPAddress(remoteIP string, getHeader func(string) string, trustedProxies []string) string {
 	if len(trustedProxies) == 0 || !isInTrustedProxies(remoteIP, trustedProxies) {
 		return remoteIP
 	}
 
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+	if xff := getHeader("X-Forwarded-For"); xff != "" {
 		// XFF may be a comma-separated list; the leftmost entry is the original client.
 		if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
 			return ip
 		}
 	}
 
-	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+	if xri := strings.TrimSpace(getHeader("X-Real-IP")); xri != "" {
 		return xri
 	}
 
@@ -127,10 +126,10 @@ func isInTrustedProxies(ip string, trustedProxies []string) bool {
 // following minAge + (minAge - maxAge) * pow(size/maxSize - 1, 3).
 // If the request's "expires" form field requests a sooner expiration, that
 // value is used instead.
-func CalculateExpirationTime(r *http.Request, fileSize int64, config *models.Configuration) time.Time {
+func CalculateExpirationTime(c fiber.Ctx, fileSize int64, config *models.Configuration) time.Time {
 	defaultExpiresTime := MaxExpirationTime(fileSize, config)
 
-	if expiresStr := r.FormValue("expires"); expiresStr != "" {
+	if expiresStr := c.FormValue("expires"); expiresStr != "" {
 		if expiresTime, err := ParseExpiresForm(expiresStr); err == nil {
 			if expiresTime.Before(defaultExpiresTime) {
 				return expiresTime
@@ -155,11 +154,8 @@ func MaxExpirationTime(fileSize int64, config *models.Configuration) time.Time {
 }
 
 // RespondWithError writes a JSON error payload with the given status code.
-func RespondWithError(w http.ResponseWriter, code int, message string) error {
-	errorData := make(map[string]string)
-	errorData["error"] = message
-
-	if err := setJsonResponse(w, code, errorData); err != nil {
+func RespondWithError(c fiber.Ctx, code int, message string) error {
+	if err := c.Status(code).JSON(map[string]string{"error": message}); err != nil {
 		return fmt.Errorf("failed to write error response: %w", err)
 	}
 
@@ -167,27 +163,9 @@ func RespondWithError(w http.ResponseWriter, code int, message string) error {
 }
 
 // RespondWithSuccess writes a JSON success payload with HTTP 200.
-func RespondWithSuccess(w http.ResponseWriter, data any) error {
-	if err := setJsonResponse(w, http.StatusOK, data); err != nil {
+func RespondWithSuccess(c fiber.Ctx, data any) error {
+	if err := c.Status(fiber.StatusOK).JSON(data); err != nil {
 		return fmt.Errorf("failed to write success response: %w", err)
-	}
-
-	return nil
-}
-
-func setJsonResponse(w http.ResponseWriter, statusCode int, data any) error {
-	w.Header().Set("Content-Type", "application/json")
-
-	b, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON response: %w", err)
-	}
-
-	w.WriteHeader(statusCode)
-
-	_, err = w.Write(b)
-	if err != nil {
-		return fmt.Errorf("failed to write JSON response: %w", err)
 	}
 
 	return nil
@@ -277,4 +255,12 @@ func SetStructField(target any, fieldPath string, value any) error {
 	}
 
 	return nil
+}
+
+func GetFileExtension(filename string) string {
+	if dot := strings.LastIndex(filename, "."); dot != -1 && dot < len(filename)-1 {
+		return filename[dot:]
+	}
+
+	return ""
 }

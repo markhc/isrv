@@ -31,6 +31,10 @@ maxAgeDays: 365
 # length of randomly generated file ids
 randomIdLength: 12
 
+# whether to keep the original filename in the upload response and in the database.
+# Has no effect on the actual stored filename, which is always a random ID.
+keepOriginalFilename: true
+
 # Disables the index page that shows project information and help, among other things.
 disableIndexPage: false
 # Disables the upload page that allows users to upload files through a web form.

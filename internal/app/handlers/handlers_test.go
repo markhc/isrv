@@ -2,10 +2,10 @@ package handlers_test
 
 import (
 	"bytes"
-	"context"
 	"embed"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime/multipart"
 	"net/http"
@@ -16,7 +16,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/app/handlers"
 	"github.com/markhc/isrv/internal/database"
 	dbmocks "github.com/markhc/isrv/internal/database/mocks"
@@ -68,13 +68,28 @@ func newMockStorage(t *testing.T) *stmocks.MockStorage {
 	return s
 }
 
-// chiRequest injects chi URL params into a request's context.
-func chiRequest(r *http.Request, params map[string]string) *http.Request {
-	rctx := chi.NewRouteContext()
-	for k, v := range params {
-		rctx.URLParams.Add(k, v)
-	}
-	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+// newApp returns a fresh fiber.App with no middleware. Tests register the
+// route under test on it before calling app.Test.
+func newApp() *fiber.App {
+	return fiber.New()
+}
+
+// doTest dispatches r through the app and returns the response. The caller
+// is responsible for closing resp.Body.
+func doTest(t *testing.T, app *fiber.App, r *http.Request) *http.Response {
+	t.Helper()
+	resp, err := app.Test(r, fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
+	require.NoError(t, err)
+	return resp
+}
+
+// bodyString reads and returns the response body as a string, then closes it.
+func bodyString(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return string(b)
 }
 
 // ---------------------------------------------------------------------------
@@ -82,15 +97,12 @@ func chiRequest(r *http.Request, params map[string]string) *http.Request {
 // ---------------------------------------------------------------------------
 
 func Test_NotFound(t *testing.T) {
-	tmpl := loadTemplates(t)
-	h := handlers.NotFound(tmpl, defaultConfig())
+	app := newApp()
+	app.Use(handlers.NotFound(loadTemplates(t), defaultConfig()))
 
-	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
-	w := httptest.NewRecorder()
+	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/nonexistent", nil))
+	defer resp.Body.Close()
 
-	h(w, req)
-
-	resp := w.Result()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
 }
@@ -100,15 +112,12 @@ func Test_NotFound(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_Index(t *testing.T) {
-	tmpl := loadTemplates(t)
-	h := handlers.Index(tmpl, defaultConfig())
+	app := newApp()
+	app.Get("/", handlers.Index(loadTemplates(t), defaultConfig()))
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	w := httptest.NewRecorder()
+	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/", nil))
+	defer resp.Body.Close()
 
-	h(w, req)
-
-	resp := w.Result()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
 }
@@ -118,19 +127,18 @@ func Test_Index(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_Favicon(t *testing.T) {
-	faviconBytes := []byte{0x89, 0x50, 0x4E, 0x47} // PNG magic bytes
-	h := handlers.Favicon(faviconBytes, "png")
+	faviconBytes := []byte{0x89, 0x50, 0x4E, 0x47}
 
-	req := httptest.NewRequest(http.MethodGet, "/favicon.png", nil)
-	w := httptest.NewRecorder()
+	app := newApp()
+	app.Get("/favicon.:format", handlers.Favicon(faviconBytes, "png"))
 
-	h.ServeHTTP(w, req)
+	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/favicon.png", nil))
+	body := bodyString(t, resp)
 
-	resp := w.Result()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "image/png", resp.Header.Get("Content-Type"))
-	assert.NotEmpty(t, resp.Header.Get("cache-control"))
-	assert.Equal(t, faviconBytes, w.Body.Bytes())
+	assert.NotEmpty(t, resp.Header.Get("Cache-Control"))
+	assert.Equal(t, string(faviconBytes), body)
 }
 
 // ---------------------------------------------------------------------------
@@ -138,35 +146,17 @@ func Test_Favicon(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_Static(t *testing.T) {
-	tests := []struct {
-		name           string
-		path           string
-		expectedStatus int
-	}{
-		{
-			name:           "path traversal blocked",
-			path:           "/static/../webserver.go",
-			expectedStatus: http.StatusBadRequest,
-		},
-	}
+	staticDir, err := fs.Sub(testTemplatesFS, "testdata")
+	require.NoError(t, err)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			staticDir, err := fs.Sub(testTemplatesFS, "testdata")
-			require.NoError(t, err)
+	app := newApp()
+	app.Get("/static/*", handlers.Static(staticDir))
 
-			h := handlers.Static(staticDir)
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-			req = chiRequest(req, map[string]string{
-				"file": strings.TrimPrefix(tt.path, "/static/"),
-			})
-			w := httptest.NewRecorder()
-
-			h.ServeHTTP(w, req)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-		})
-	}
+	t.Run("path traversal blocked", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/static/../webserver.go", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -177,8 +167,8 @@ func Test_Download(t *testing.T) {
 	tests := []struct {
 		name         string
 		fileID       string
-		fileName     string // name in URL path; empty falls back to the stored name
-		resolvedName string // expected file name passed to ServeFile
+		fileName     string
+		resolvedName string
 		downloadErr  error
 		metadata     map[string]string
 	}{
@@ -216,22 +206,20 @@ func Test_Download(t *testing.T) {
 				Metadata: tt.metadata,
 			}, nil)
 			db.On("OnFileDownload", mock.Anything, tt.fileID).Return(tt.downloadErr)
-			stor.On("ServeFile", mock.Anything, mock.Anything, tt.fileID, tt.resolvedName, tt.metadata, true, true).Return()
+			stor.On("ServeFile", mock.Anything, tt.fileID, tt.resolvedName, tt.metadata, true, true).Return(nil)
 
+			app := newApp()
 			h := handlers.Download(db, stor)
+			app.Get("/d/:id", h)
+			app.Get("/d/:id/:filename", h)
 
 			path := "/d/" + tt.fileID
-			params := map[string]string{"id": tt.fileID}
 			if tt.fileName != "" {
 				path += "/" + tt.fileName
-				params["filename"] = tt.fileName
 			}
 
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req = chiRequest(req, params)
-			w := httptest.NewRecorder()
-
-			h.ServeHTTP(w, req)
+			resp := doTest(t, app, httptest.NewRequest(http.MethodGet, path, nil))
+			resp.Body.Close()
 		})
 	}
 }
@@ -247,14 +235,15 @@ func Test_Upload(t *testing.T) {
 		mw := multipart.NewWriter(&buf)
 		fw, err := mw.CreateFormFile("file", filename)
 		require.NoError(t, err)
-		fw.Write(content)
-		mw.Close()
+		_, _ = fw.Write(content)
+		require.NoError(t, mw.Close())
 		return &buf, mw.FormDataContentType()
 	}
 
 	tests := []struct {
 		name           string
 		setup          func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage)
+		cfgMutator     func(*models.Configuration)
 		expectedStatus int
 		expectedBody   string
 	}{
@@ -276,6 +265,7 @@ func Test_Upload(t *testing.T) {
 				req.Header.Set("Content-Type", ct)
 				return req, dbmocks.NewMockDatabase(t), newMockStorage(t)
 			},
+			cfgMutator:     func(c *models.Configuration) { c.MaxFileSizeMB = 0 },
 			expectedStatus: http.StatusRequestEntityTooLarge,
 			expectedBody:   "file size exceeds the maximum allowed limit",
 		},
@@ -334,18 +324,20 @@ func Test_Upload(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := defaultConfig()
-			if tt.name == "file too large returns 413" {
-				cfg.MaxFileSizeMB = 0
+			if tt.cfgMutator != nil {
+				tt.cfgMutator(cfg)
 			}
 
 			req, db, stor := tt.setup(t)
-			h := handlers.Upload(cfg, db, stor)
 
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, req)
+			app := newApp()
+			app.Post("/", handlers.Upload(cfg, db, stor))
 
-			assert.Equal(t, tt.expectedStatus, w.Code)
-			assert.Contains(t, w.Body.String(), tt.expectedBody)
+			resp := doTest(t, app, req)
+			body := bodyString(t, resp)
+
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+			assert.Contains(t, body, tt.expectedBody)
 		})
 	}
 }
@@ -398,14 +390,16 @@ func Test_Delete(t *testing.T) {
 			st := newMockStorage(t)
 			tt.setup(db, st)
 
-			h := handlers.Delete(db, st)
-			req := chiRequest(httptest.NewRequest(http.MethodDelete, "/"+tt.fileID, nil), map[string]string{"id": tt.fileID})
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, req)
+			app := newApp()
+			app.Delete("/:id", handlers.Delete(db, st))
 
-			assert.Equal(t, tt.expectedStatus, w.Code)
+			req := httptest.NewRequest(http.MethodDelete, "/"+tt.fileID, nil)
+			resp := doTest(t, app, req)
+			body := bodyString(t, resp)
+
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 			if tt.expectedBody != "" {
-				assert.Contains(t, w.Body.String(), tt.expectedBody)
+				assert.Contains(t, body, tt.expectedBody)
 			}
 		})
 	}
@@ -421,17 +415,15 @@ func smallFileRecord() *database.FileRecord {
 	return &database.FileRecord{
 		ID:             "abc123",
 		FileName:       "file.txt",
-		FileSize:       1024, // 1 KB — effectively treated as zero size → max age applies
+		FileSize:       1024,
 		ExpirationTime: time.Now().Add(30 * 24 * time.Hour),
 	}
 }
 
 func Test_Expire(t *testing.T) {
-	// expiresJSON returns a full JSON body for the given expires value string.
 	expiresJSON := func(expires string) string {
 		return fmt.Sprintf(`{"expires":%q}`, expires)
 	}
-	// unixMsIn returns a Unix-ms string for a time offset from now.
 	unixMsIn := func(d time.Duration) string {
 		return fmt.Sprintf("%d", time.Now().Add(d).UnixMilli())
 	}
@@ -447,7 +439,7 @@ func Test_Expire(t *testing.T) {
 		{
 			name:   "happy path — unix-ms timestamp within limit",
 			fileID: "abc123",
-			body:   expiresJSON(unixMsIn(24 * time.Hour)), // 1 day from now — well within 30 days min
+			body:   expiresJSON(unixMsIn(24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
 				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
@@ -458,7 +450,7 @@ func Test_Expire(t *testing.T) {
 		{
 			name:   "happy path — hours shorthand within limit",
 			fileID: "abc123",
-			body:   expiresJSON("48"), // 48 hours from now
+			body:   expiresJSON("48"),
 			setup: func(db *dbmocks.MockDatabase) {
 				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
@@ -493,9 +485,7 @@ func Test_Expire(t *testing.T) {
 		{
 			name:   "expiry exceeding max returns 422",
 			fileID: "abc123",
-			// A 1 KB file with defaultConfig (min=30d, max=365d) has a max expiry ~365 days;
-			// request 400 days — exceeds the max for a 1 KB file under defaultConfig.
-			body: expiresJSON(unixMsIn(400 * 24 * time.Hour)),
+			body:   expiresJSON(unixMsIn(400 * 24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
 				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 			},
@@ -540,17 +530,18 @@ func Test_Expire(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
 			tt.setup(db)
 
-			h := handlers.Expire(defaultConfig(), db)
-			req := chiRequest(
-				httptest.NewRequest(http.MethodPatch, "/"+tt.fileID+"/expire", strings.NewReader(tt.body)),
-				map[string]string{"id": tt.fileID},
-			)
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, req)
+			app := newApp()
+			app.Patch("/:id/expire", handlers.Expire(defaultConfig(), db))
 
-			assert.Equal(t, tt.expectedStatus, w.Code)
+			req := httptest.NewRequest(http.MethodPatch, "/"+tt.fileID+"/expire", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+
+			resp := doTest(t, app, req)
+			body := bodyString(t, resp)
+
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 			if tt.expectedBody != "" {
-				assert.Contains(t, w.Body.String(), tt.expectedBody)
+				assert.Contains(t, body, tt.expectedBody)
 			}
 		})
 	}

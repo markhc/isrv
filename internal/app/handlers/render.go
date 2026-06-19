@@ -1,47 +1,40 @@
 package handlers
 
 import (
-	"net/http"
+	"bytes"
 	"text/template"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 )
 
-// NotFound returns a handler that renders the 404 page and responds with
-// HTTP 404.
-func NotFound(tmpl *template.Template, config *models.Configuration) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusNotFound)
-
-		data := struct {
-			Config *models.Configuration
-		}{
-			Config: config,
-		}
-
-		if err := tmpl.ExecuteTemplate(w, "notfound", data); err != nil {
-			logging.ErrorCtx(r.Context(), "failed to execute template", logging.Error(err))
-		}
+// NotFound returns a handler that renders the 404 page and responds with HTTP 404.
+func NotFound(tmpl *template.Template, config *models.Configuration) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		return renderTemplate(c, tmpl, "notfound", config, fiber.StatusNotFound)
 	}
 }
 
 // Index returns a handler that renders the index page.
-func Index(tmpl *template.Template, config *models.Configuration) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		logging.DebugCtx(r.Context(), "indexHandler", logging.String("path", r.URL.Path))
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-		data := struct {
-			Config *models.Configuration
-		}{
-			Config: config,
-		}
-
-		if err := tmpl.ExecuteTemplate(w, "index", data); err != nil {
-			logging.ErrorCtx(r.Context(), "failed to execute template", logging.Error(err))
-		}
+func Index(tmpl *template.Template, config *models.Configuration) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		logging.DebugCtx(c.Context(), "indexHandler", logging.String("path", c.Path()))
+		return renderTemplate(c, tmpl, "index", config, fiber.StatusOK)
 	}
+}
+
+func renderTemplate(c fiber.Ctx, tmpl *template.Template, name string, config *models.Configuration, status int) error {
+	data := struct {
+		Config *models.Configuration
+	}{Config: config}
+
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
+		logging.ErrorCtx(c.Context(), "failed to execute template", logging.Error(err))
+		return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
+	}
+
+	c.Set(fiber.HeaderContentType, "text/html; charset=utf-8")
+	return c.Status(status).Send(buf.Bytes())
 }

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net"
 	"net/http"
 	"text/template"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/app/handlers"
 	"github.com/markhc/isrv/internal/app/middleware"
 	"github.com/markhc/isrv/internal/cleanup"
@@ -23,32 +23,31 @@ import (
 	"github.com/markhc/isrv/internal/telemetry"
 )
 
-// AppMiddleware bundles the middleware functions wired into the application
-// router. Each field wraps an http.Handler and returns a new one.
+// AppMiddleware bundles the Fiber middleware functions wired into the router.
 type AppMiddleware struct {
-	RequireValidFileID func(http.Handler) http.Handler
-	RequireToken       func(http.Handler) http.Handler
-	RateLimit          func(http.Handler) http.Handler
+	RequireToken fiber.Handler
+	RateLimit    fiber.Handler
 }
 
-// Application bundles the HTTP handlers, middleware, and other dependencies
+// Application bundles the Fiber handlers, middleware, and other dependencies
 // wired into the router. It is constructed once by NewApplication and passed
 // to SetupRoutes.
 type Application struct {
-	IndexHandler    http.HandlerFunc
-	FaviconHandler  http.HandlerFunc
-	DownloadHandler http.HandlerFunc
-	UploadHandler   http.HandlerFunc
-	DeleteHandler   http.HandlerFunc
-	ExpireHandler   http.HandlerFunc
-	NotFoundHandler http.HandlerFunc
-	HealthzHandler  http.HandlerFunc
-	ReadyzHandler   http.HandlerFunc
-	MetricsHandler  http.Handler
+	IndexHandler    fiber.Handler
+	FaviconHandler  fiber.Handler
+	DownloadHandler fiber.Handler
+	UploadHandler   fiber.Handler
+	DeleteHandler   fiber.Handler
+	ExpireHandler   fiber.Handler
+	NotFoundHandler fiber.Handler
+	HealthzHandler  fiber.Handler
+	ReadyzHandler   fiber.Handler
+	StaticHandler   fiber.Handler
 
-	Middleware  AppMiddleware
-	StaticFiles http.FileSystem
-	Debug       bool
+	MetricsHandler http.Handler
+
+	Middleware AppMiddleware
+	Debug      bool
 }
 
 //go:embed templates
@@ -58,8 +57,7 @@ var templatesFolderEmbedded embed.FS
 var staticFilesEmbedded embed.FS
 
 // NewApplication wires together handlers and middleware from the supplied
-// dependencies. All fallible initialization (DB, storage, templates,
-// favicon) must already be complete before this is called.
+// dependencies.
 func NewApplication(
 	ctx context.Context,
 	config *models.Configuration,
@@ -80,9 +78,8 @@ func NewApplication(
 		MetricsHandler:  telemetry.MetricsHandler(),
 
 		Middleware: AppMiddleware{
-			RequireValidFileID: middleware.RequireValidFileID(db),
-			RequireToken:       middleware.RequireToken(db),
-			RateLimit:          middleware.RateLimit(ctx, config.RateLimit),
+			RequireToken: middleware.RequireToken(db),
+			RateLimit:    middleware.RateLimit(ctx, config.RateLimit),
 		},
 	}
 
@@ -97,21 +94,38 @@ func NewApplication(
 	}
 
 	if !config.DisableUploadPage {
-		a.StaticFiles = http.FS(staticFilesDir)
+		a.StaticHandler = handlers.Static(staticFilesDir)
 	}
 
 	return a
 }
 
-// StartApp initialises all dependencies, registers routes, and runs the HTTP
-// server until ctx is cancelled (typically via signal.NotifyContext in the
-// caller).
+// fiberErrorHandler converts handler-returned errors to JSON responses.
+func fiberErrorHandler(c fiber.Ctx, err error) error {
+	code := fiber.StatusInternalServerError
+	msg := "internal server error"
+	var fe *fiber.Error
+	if errors.As(err, &fe) {
+		code = fe.Code
+
+		if fe.Code < fiber.StatusInternalServerError {
+			msg = fe.Message
+		}
+	}
+
+	logging.ErrorCtx(c.Context(), "request handler error",
+		logging.Int("status", code),
+		logging.Error(err),
+	)
+
+	return c.Status(code).JSON(map[string]string{"error": msg})
+}
+
+// StartApp initialises all dependencies, registers routes, and runs the
+// Fiber server until ctx is cancelled (typically via signal.NotifyContext in
+// the caller).
 //
-// It returns a non-nil error when startup or the server itself fails.
-// Telemetry must already be initialised by the caller, which also remains
-// responsible for telemetry and logger shutdown.
-//
-//nolint:funlen,cyclop // linear init/run/shutdown sequence; splitting further hurts readability.
+//nolint:funlen,cyclop
 func StartApp(ctx context.Context) error {
 	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
 
@@ -148,23 +162,34 @@ func StartApp(ctx context.Context) error {
 
 	application := NewApplication(ctx, config, dbInstance, storageClient, tmpl, faviconData, staticFilesDir)
 
-	logging.LogInfo(
-		"starting webserver", logging.String("host", config.ServerHost), logging.Int("port", config.ServerPort))
+	// BodyLimit enforces a hard upload cap before handler code runs;
+	// derived from MaxFileSizeMB so the limit matches the upload handler.
+	bodyLimit := config.MaxFileSizeMB * 1024 * 1024
 
-	httpSrv := &http.Server{
-		Addr:              fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort),
-		ReadTimeout:       30 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		Handler:           SetupRoutes(application),
-		BaseContext: func(_ net.Listener) context.Context {
-			return ctx
-		},
-	}
+	app := fiber.New(fiber.Config{
+		ReadTimeout:      30 * time.Second,
+		WriteTimeout:     30 * time.Second,
+		IdleTimeout:      120 * time.Second,
+		BodyLimit:        bodyLimit,
+		ErrorHandler:     fiberErrorHandler,
+		ProxyHeader:      fiber.HeaderXForwardedFor,
+		TrustProxy:       len(config.TrustedProxies) > 0,
+		TrustProxyConfig: fiber.TrustProxyConfig{Proxies: config.TrustedProxies},
+	})
+
+	SetupRoutes(app, application)
+
+	logging.LogInfo(
+		"starting webserver",
+		logging.String("host", config.ServerHost),
+		logging.Int("port", config.ServerPort),
+	)
+
+	addr := fmt.Sprintf("%s:%d", config.ServerHost, config.ServerPort)
 
 	srvErr := make(chan error, 1)
 	go func() {
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := app.Listen(addr, fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 			srvErr <- err
 		}
 		close(srvErr)
@@ -189,7 +214,7 @@ func StartApp(ctx context.Context) error {
 		cleanupService.Join()
 	}
 
-	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
 		logging.LogError("server forced to shutdown", logging.Error(err))
 		runErr = errors.Join(runErr, fmt.Errorf("http server shutdown: %w", err))
 	}
