@@ -11,6 +11,7 @@ import (
 	"github.com/markhc/isrv/internal/database/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // newTokenApp creates a Fiber app with RequireToken middleware on a /:id route.
@@ -27,7 +28,7 @@ func TestRequireToken_NoToken_ReturnsUnauthorized(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/file-id", nil)
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -41,7 +42,7 @@ func TestRequireToken_ValidToken_QueryParam_Allows(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/file-id?token=secret", nil)
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -56,7 +57,7 @@ func TestRequireToken_ValidToken_BearerHeader_Allows(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/file-id", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -70,7 +71,7 @@ func TestRequireToken_InvalidToken_ReturnsUnauthorized(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/file-id?token=badtoken", nil)
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -84,7 +85,7 @@ func TestRequireToken_TokenFileIDMismatch_ReturnsUnauthorized(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/requested-file-id?token=token-for-other-file", nil)
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -100,7 +101,7 @@ func TestRequireToken_DatabaseError_ReturnsInternalServerError(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/file-id?token=sometoken", nil)
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -124,7 +125,7 @@ func TestRequireToken_MalformedAuthorizationHeader_ReturnsUnauthorized(t *testin
 			req := httptest.NewRequest(http.MethodGet, "/file-id", nil)
 			req.Header.Set("Authorization", tt.header)
 			resp, err := app.Test(req)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			resp.Body.Close()
 
 			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -141,7 +142,7 @@ func TestRequireToken_QueryParamTakesPrecedenceOverHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/file-id?token=fromquery", nil)
 	req.Header.Set("Authorization", "Bearer fromheader")
 	resp, err := app.Test(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

@@ -53,11 +53,11 @@ func Test_SetContentDisposition(t *testing.T) {
 		inline   bool
 		expected string
 	}{
-		{"attachment simple filename", "document.pdf", false, `attachment; filename="document.pdf"`},
+		{"attachment simple filename", "document.pdf", false, `attachment; filename=document.pdf`},
 		{"attachment with spaces", "my file.txt", false, `attachment; filename="my file.txt"`},
-		{"attachment with special chars", "file-name_v2.docx", false, `attachment; filename="file-name_v2.docx"`},
+		{"attachment with special chars", "file-name_v2.docx", false, `attachment; filename=file-name_v2.docx`},
 		{"attachment empty filename", "", false, `attachment; filename=""`},
-		{"inline simple filename", "image.jpg", true, `inline; filename="image.jpg"`},
+		{"inline simple filename", "image.jpg", true, `inline; filename=image.jpg`},
 		{"inline with spaces", "photo gallery.png", true, `inline; filename="photo gallery.png"`},
 	}
 
@@ -92,30 +92,76 @@ func Test_SetContentType(t *testing.T) {
 	}
 }
 
-func Test_SetHeaders_withMetadata(t *testing.T) {
-	got := runCtx(t, func(c fiber.Ctx) {
-		SetHeaders(c, "test.pdf", map[string]string{"Content-Type": "application/pdf"}, false, true)
-	})
+func Test_SetHeaders(t *testing.T) {
+	tests := []struct {
+		name            string
+		filename        string
+		metadata        map[string]string
+		inline          bool
+		cache           bool
+		expectedHeaders map[string]string
+		absentHeaders   []string
+	}{
+		{
+			name:     "with metadata",
+			filename: "test.pdf",
+			metadata: map[string]string{"Content-Type": "application/pdf"},
+			inline:   false,
+			cache:    true,
+			expectedHeaders: map[string]string{
+				"Cache-Control":       "public, max-age=36000",
+				"Content-Type":        "application/pdf",
+				"Content-Disposition": `attachment; filename=test.pdf`,
+			},
+		},
+		{
+			name:     "with spaces in filename",
+			filename: "my file.txt",
+			metadata: map[string]string{"Content-Type": "application/pdf"},
+			inline:   false,
+			cache:    true,
+			expectedHeaders: map[string]string{
+				"Cache-Control":       "public, max-age=36000",
+				"Content-Type":        "application/pdf",
+				"Content-Disposition": `attachment; filename="my file.txt"`,
+			},
+		},
+		{
+			name:     "no cache",
+			filename: "image.jpg",
+			metadata: map[string]string{"Content-Type": "image/jpeg"},
+			inline:   true,
+			cache:    false,
+			expectedHeaders: map[string]string{
+				"Content-Type":        "image/jpeg",
+				"Content-Disposition": `inline; filename=image.jpg`,
+			},
+			absentHeaders: []string{"Cache-Control"},
+		},
+		{
+			name:     "no metadata",
+			filename: "unknown.bin",
+			metadata: map[string]string{},
+			inline:   false,
+			cache:    false,
+			expectedHeaders: map[string]string{
+				"Content-Disposition": `attachment; filename=unknown.bin`,
+			},
+		},
+	}
 
-	assert.Equal(t, "public, max-age=36000", got["Cache-Control"])
-	assert.Equal(t, "application/pdf", got["Content-Type"])
-	assert.Equal(t, `attachment; filename="test.pdf"`, got["Content-Disposition"])
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := runCtx(t, func(c fiber.Ctx) {
+				SetHeaders(c, tt.filename, tt.metadata, tt.inline, tt.cache)
+			})
 
-func Test_SetHeaders_noCache(t *testing.T) {
-	got := runCtx(t, func(c fiber.Ctx) {
-		SetHeaders(c, "image.jpg", map[string]string{"Content-Type": "image/jpeg"}, true, false)
-	})
-
-	assert.Empty(t, got["Cache-Control"])
-	assert.Equal(t, "image/jpeg", got["Content-Type"])
-	assert.Equal(t, `inline; filename="image.jpg"`, got["Content-Disposition"])
-}
-
-func Test_SetHeaders_noMetadata(t *testing.T) {
-	got := runCtx(t, func(c fiber.Ctx) {
-		SetHeaders(c, "unknown.bin", map[string]string{}, false, false)
-	})
-
-	assert.Equal(t, `attachment; filename="unknown.bin"`, got["Content-Disposition"])
+			for header, expected := range tt.expectedHeaders {
+				assert.Equal(t, expected, got[header], "header %s", header)
+			}
+			for _, header := range tt.absentHeaders {
+				assert.Empty(t, got[header], "header %s should be absent", header)
+			}
+		})
+	}
 }

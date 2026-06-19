@@ -25,9 +25,8 @@ import (
 
 // AppMiddleware bundles the Fiber middleware functions wired into the router.
 type AppMiddleware struct {
-	RequireValidFileID fiber.Handler
-	RequireToken       fiber.Handler
-	RateLimit          fiber.Handler
+	RequireToken fiber.Handler
+	RateLimit    fiber.Handler
 }
 
 // Application bundles the Fiber handlers, middleware, and other dependencies
@@ -79,9 +78,8 @@ func NewApplication(
 		MetricsHandler:  telemetry.MetricsHandler(),
 
 		Middleware: AppMiddleware{
-			RequireValidFileID: middleware.RequireValidFileID(db),
-			RequireToken:       middleware.RequireToken(db),
-			RateLimit:          middleware.RateLimit(ctx, config.RateLimit),
+			RequireToken: middleware.RequireToken(db),
+			RateLimit:    middleware.RateLimit(ctx, config.RateLimit),
 		},
 	}
 
@@ -105,9 +103,14 @@ func NewApplication(
 // fiberErrorHandler converts handler-returned errors to JSON responses.
 func fiberErrorHandler(c fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError
+	msg := "internal server error"
 	var fe *fiber.Error
 	if errors.As(err, &fe) {
 		code = fe.Code
+
+		if fe.Code < fiber.StatusInternalServerError {
+			msg = fe.Message
+		}
 	}
 
 	logging.ErrorCtx(c.Context(), "request handler error",
@@ -115,7 +118,7 @@ func fiberErrorHandler(c fiber.Ctx, err error) error {
 		logging.Error(err),
 	)
 
-	return c.Status(code).JSON(map[string]string{"error": err.Error()})
+	return c.Status(code).JSON(map[string]string{"error": msg})
 }
 
 // StartApp initialises all dependencies, registers routes, and runs the

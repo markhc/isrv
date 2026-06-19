@@ -2,7 +2,11 @@
 // headers used when serving file downloads.
 package headers
 
-import "github.com/gofiber/fiber/v3"
+import (
+	"mime"
+
+	"github.com/gofiber/fiber/v3"
+)
 
 // AddCacheHeader sets long-lived (10h) cache-control headers, including
 // CDN-specific variants understood by Cloudflare.
@@ -19,7 +23,13 @@ func SetContentDisposition(c fiber.Ctx, fileName string, inlineContent bool) {
 	if inlineContent {
 		dispositionType = "inline"
 	}
-	c.Set("Content-Disposition", dispositionType+"; filename=\""+fileName+"\"")
+
+	value := mime.FormatMediaType(dispositionType, map[string]string{"filename": fileName})
+	if value == "" {
+		value = dispositionType
+	}
+
+	c.Set("Content-Disposition", value)
 }
 
 // SetContentType sets the Content-Type header on the response.

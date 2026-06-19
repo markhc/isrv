@@ -14,9 +14,7 @@ import (
 	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // userDeleteSource labels FilesDeleted observations originating from a user-initiated delete.
@@ -28,47 +26,33 @@ func Delete(db database.Database, st storage.Storage) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		fileID := c.Params("id")
 
-		ctx, storSpan := telemetry.Tracer().Start(c.Context(), "storage.delete_file",
-			trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
-		)
-		err := st.DeleteFile(ctx, fileID)
-		storSpan.End()
-
+		err := st.DeleteFile(c.Context(), fileID)
 		if err != nil {
-			storSpan.RecordError(err)
-			storSpan.SetStatus(codes.Error, "failed to delete file from storage")
-			logging.ErrorCtx(ctx, "failed to delete file from storage",
+			logging.ErrorCtx(c.Context(), "failed to delete file from storage",
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
-			telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+			telemetry.FilesDeleted.Add(c.Context(), 1, metric.WithAttributes(
 				userDeleteSource,
 				attribute.String(telemetry.AttrResult, telemetry.ResultError),
 			))
 			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file")
 		}
 
-		ctx, dbSpan := telemetry.Tracer().Start(c.Context(), "db.delete_record",
-			trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
-		)
-		err = db.OnFileDelete(ctx, fileID)
-		dbSpan.End()
-
+		err = db.OnFileDelete(c.Context(), fileID)
 		if err != nil {
-			dbSpan.RecordError(err)
-			dbSpan.SetStatus(codes.Error, "failed to remove file record from database")
-			logging.ErrorCtx(ctx, "failed to remove file record from database",
+			logging.ErrorCtx(c.Context(), "failed to remove file record from database",
 				logging.String("file_id", fileID),
 				logging.Error(err),
 			)
-			telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+			telemetry.FilesDeleted.Add(c.Context(), 1, metric.WithAttributes(
 				userDeleteSource,
 				attribute.String(telemetry.AttrResult, telemetry.ResultError),
 			))
 			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file record")
 		}
 
-		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+		telemetry.FilesDeleted.Add(c.Context(), 1, metric.WithAttributes(
 			userDeleteSource,
 			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
 		))
@@ -118,18 +102,12 @@ func applyExpire(c fiber.Ctx, config *models.Configuration, db database.Database
 		return respErr
 	}
 
-	ctx, getSpan := telemetry.Tracer().Start(c.Context(), "db.get_file_data",
-		trace.WithAttributes(attribute.String(telemetry.AttrFileID, fileID)),
-	)
-	record, err := db.GetFileData(ctx, fileID)
-	getSpan.End()
+	record, err := db.GetFileData(c.Context(), fileID)
 	if err != nil {
 		if errors.Is(err, database.ErrFileNotFound) {
 			return utils.RespondWithError(c, fiber.StatusNotFound, "file not found")
 		}
-		getSpan.RecordError(err)
-		getSpan.SetStatus(codes.Error, "failed to get file data")
-		logging.ErrorCtx(ctx, "failed to get file data",
+		logging.ErrorCtx(c.Context(), "failed to get file data",
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)
@@ -143,18 +121,9 @@ func applyExpire(c fiber.Ctx, config *models.Configuration, db database.Database
 		)
 	}
 
-	ctx, setSpan := telemetry.Tracer().Start(c.Context(), "db.set_expiration",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-			attribute.String(telemetry.AttrFileExpiration, newExpiry.Format(time.RFC3339)),
-		),
-	)
-	err = db.SetExpiration(ctx, fileID, newExpiry)
-	setSpan.End()
+	err = db.SetExpiration(c.Context(), fileID, newExpiry)
 	if err != nil {
-		setSpan.RecordError(err)
-		setSpan.SetStatus(codes.Error, "failed to update expiration")
-		logging.ErrorCtx(ctx, "failed to update expiration",
+		logging.ErrorCtx(c.Context(), "failed to update expiration",
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)

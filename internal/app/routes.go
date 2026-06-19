@@ -80,7 +80,7 @@ func SetupRoutes(app *fiber.App, a *Application) {
 	rateLimited := app.Group("", a.Middleware.RateLimit)
 	rateLimited.Post("/", a.UploadHandler)
 
-	protected := rateLimited.Group("", a.Middleware.RequireValidFileID, a.Middleware.RequireToken)
+	protected := rateLimited.Group("", a.Middleware.RequireToken)
 	protected.Delete("/:id", a.DeleteHandler)
 	protected.Patch("/:id/expire", a.ExpireHandler)
 
