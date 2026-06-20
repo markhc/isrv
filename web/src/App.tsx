@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
 
 function App() {
   useEffect(() => {
-    initializeTheme()
+    return initializeTheme()
   }, [])
 
   return (

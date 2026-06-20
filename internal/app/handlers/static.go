@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -76,7 +77,10 @@ func SPA(distFS fs.FS, cfg models.FrontendConfig) fiber.Handler {
 			return serveIndex(c)
 		}
 
-		if strings.Contains(path, "..") {
+		// UnescapePath is disabled by default, so c.Path() is still URL-encoded.
+		// Reject traversal in both the raw and decoded forms.
+		decoded, err := url.QueryUnescape(path)
+		if strings.Contains(path, "..") || err != nil || strings.Contains(decoded, "..") {
 			return c.Status(fiber.StatusBadRequest).SendString("invalid path")
 		}
 

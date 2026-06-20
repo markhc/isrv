@@ -28,14 +28,17 @@ export function getCurrentMode(): ThemeMode {
   return getStoredMode()
 }
 
-export function initializeTheme(): void {
+export function initializeTheme(): () => void {
   applyMode(getStoredMode())
 
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)")
+  const listener = () => {
     if (getStoredMode() === "auto") {
       applyMode("auto")
     }
-  })
+  }
+  mq.addEventListener("change", listener)
+  return () => mq.removeEventListener("change", listener)
 }
 
 export function setMode(mode: ThemeMode): void {

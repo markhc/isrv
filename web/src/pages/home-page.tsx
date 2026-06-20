@@ -76,9 +76,13 @@ export default function HomePage() {
 
   async function copyLink() {
     if (!result) return
-    await navigator.clipboard.writeText(result.shortUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(result.shortUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      toast.error(t("common:copyFailed"))
+    }
   }
 
   function getCodeExamples(): string {
@@ -86,13 +90,13 @@ export default function HomePage() {
     if (config.disableUploadPage) {
       return [
         t("faq:code.simpleUpload"),
-        `$ curl -F file=@photo.jpg ${origin}/`,
+        `$ curl -F file=@photo.jpg ${window.location.origin}/`,
         "",
         t("faq:code.expiresInHours"),
-        `$ curl -F file=@document.pdf -F expires=24 ${origin}/`,
+        `$ curl -F file=@document.pdf -F expires=24 ${window.location.origin}/`,
         "",
         t("faq:code.expiresAsTimestamp"),
-        `$ curl -F file=@archive.zip -F expires=1767225600 ${origin}/`,
+        `$ curl -F file=@archive.zip -F expires=1767225600 ${window.location.origin}/`,
       ].join("\n")
     } else {
       return [
@@ -104,7 +108,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-8">
       <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-4xl font-bold tracking-tight">iSRV</h1>
+        <h1 className="text-4xl font-bold tracking-tight">{config.serverName}</h1>
         <p className="text-muted-foreground">{t("home:subtitle")}</p>
       </div>
       <div className={["flex flex-col items-center gap-2 text-center", config.disableUploadPage ? "hidden" : ""].join(" ")}>

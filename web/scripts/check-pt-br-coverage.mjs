@@ -9,6 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const localesDir = path.join(__dirname, "../src/i18n/locales")
 const lang = "pt-BR"
 
+function extractPlaceholders(str) {
+  return new Set(str.match(/\{\{[^}]+\}\}/g) ?? [])
+}
+
 function compareStructure(enVal, langVal, location, errors) {
   if (Array.isArray(enVal)) {
     if (!Array.isArray(langVal)) {
@@ -44,6 +48,17 @@ function compareStructure(enVal, langVal, location, errors) {
       errors.push(`${location}: expected string`)
     } else if (langVal.trim() === "") {
       errors.push(`${location}: empty string`)
+    } else {
+      const enPlaceholders = extractPlaceholders(enVal)
+      const langPlaceholders = extractPlaceholders(langVal)
+      const missing = [...enPlaceholders].filter((p) => !langPlaceholders.has(p))
+      const extra = [...langPlaceholders].filter((p) => !enPlaceholders.has(p))
+      if (missing.length > 0) {
+        errors.push(`${location}: missing interpolation placeholder(s) ${missing.join(", ")}`)
+      }
+      if (extra.length > 0) {
+        errors.push(`${location}: unexpected interpolation placeholder(s) ${extra.join(", ")}`)
+      }
     }
   }
 }

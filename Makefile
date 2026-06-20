@@ -170,8 +170,14 @@ info:
 	@echo "  Platform: $(BUILD_PLATFORM)"
 
 # Development workflow
+# Runs the frontend and backend concurrently
 .PHONY: dev
-dev: dev-frontend dev-backend
+dev:
+	@echo "Starting dev environment -> open http://localhost:5173 (Ctrl-C to stop both)..."
+	@trap 'kill 0' EXIT INT TERM; \
+		(cd web && $(PNPM) dev) & \
+		go run ./cmd/isrv & \
+		wait
 
 .PHONY: dev-backend
 dev-backend:

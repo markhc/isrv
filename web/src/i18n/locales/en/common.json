@@ -8,6 +8,7 @@
   },
   "copy": "Copy",
   "copied": "Copied!",
+  "copyFailed": "Failed to copy to clipboard",
   "theme": {
     "light": "Light",
     "dark": "Dark",

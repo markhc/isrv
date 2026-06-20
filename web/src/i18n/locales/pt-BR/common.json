@@ -8,6 +8,7 @@
   },
   "copy": "Copiar",
   "copied": "Copiado!",
+  "copyFailed": "Falha ao copiar para a área de transferência",
   "theme": {
     "light": "Claro",
     "dark": "Escuro",
