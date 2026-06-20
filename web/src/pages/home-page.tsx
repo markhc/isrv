@@ -10,12 +10,12 @@ import { getServerConfig } from "@/lib/config"
 interface UploadResponse {
   status: string
   filename: string
-  short_url: string
+  shortUrl: string
   expiration: string
 }
 
 interface UploadResult {
-  shortURL: string
+  shortUrl: string
   expiration: Date
   filename: string
 }
@@ -35,8 +35,9 @@ async function uploadFile(file: File): Promise<UploadResult> {
   }
 
   const data = (await res.json()) as UploadResponse
+  console.log(data)
   return {
-    shortURL: data.short_url,
+    shortUrl: data.shortUrl,
     expiration: new Date(data.expiration),
     filename: file.name,
   }
@@ -75,7 +76,7 @@ export default function HomePage() {
 
   async function copyLink() {
     if (!result) return
-    await navigator.clipboard.writeText(result.shortURL)
+    await navigator.clipboard.writeText(result.shortUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -155,12 +156,12 @@ export default function HomePage() {
           <p className="text-sm font-medium">{result.filename}</p>
           <div className="flex items-center gap-2">
             <a
-              href={result.shortURL}
+              href={result.shortUrl}
               target="_blank"
               rel="noreferrer"
               className="flex-1 truncate text-sm text-primary underline underline-offset-2"
             >
-              {result.shortURL}
+              {result.shortUrl}
             </a>
             <button
               type="button"
