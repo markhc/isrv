@@ -1,0 +1,16 @@
+{
+  "tagline": "Drop a file to get a shareable link.",
+  "subtitle": "A temporary file sharing service with a focus on privacy and security.",
+  "upload": {
+    "uploading": "Uploading…",
+    "dropToUpload": "Drop to upload",
+    "dragOrClick": "Drag & drop a file here, or",
+    "clickToBrowse": "click to browse",
+    "orViaHTTP": "Or upload via HTTP",
+    "commandLine": "Upload via command line",
+    "moreExamples": "More examples →"
+  },
+  "result": {
+    "expires": "Expires {{date}}"
+  }
+}

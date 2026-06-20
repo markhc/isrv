@@ -1,0 +1,25 @@
+{
+  "title": "Abuse Policy",
+  "subtitle": "This service is provided for legitimate file sharing purposes.",
+  "sections": {
+    "prohibited": {
+      "title": "Prohibited content",
+      "intro": "The following are not permitted on this service:",
+      "items": [
+        "Illegal content as defined by applicable law",
+        "Malware, viruses, or other malicious software",
+        "Content that violates others’ rights",
+        "Spam or commercial solicitation",
+        "Anything intended to harm or exploit others"
+      ]
+    },
+    "enforcement": {
+      "title": "Enforcement",
+      "body": "Violations will result in immediate file removal and may be reported to the appropriate authorities. Repeated or severe violations may result in the originating IP address being blocked."
+    },
+    "reporting": {
+      "title": "Reporting abuse",
+      "body": "To report abusive content, contact the server administrator. Abuse reports are investigated and acted upon promptly."
+    }
+  }
+}

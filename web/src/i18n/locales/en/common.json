@@ -1,0 +1,18 @@
+{
+  "back": "← Back",
+  "nav": {
+    "faq": "FAQ",
+    "about": "About",
+    "abuse": "Abuse Policy",
+    "privacy": "Privacy"
+  },
+  "copy": "Copy",
+  "copied": "Copied!",
+  "copyFailed": "Failed to copy to clipboard",
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "language": "Language"
+}

@@ -1,0 +1,25 @@
+{
+  "title": "About",
+  "subtitle": "What is iSRV and how does it work?",
+  "sections": {
+    "whatIs": {
+      "title": "What is iSRV?",
+      "body": "iSRV is a minimal, self-hostable file sharing service. It is designed to be simple: upload a file, get a link, share it. No accounts required, no tracking, no clutter."
+    },
+    "howItWorks": {
+      "title": "How does it work?",
+      "body": "Files are uploaded via a drag-and-drop interface or a file picker. Each upload is assigned a short, random identifier and stored on the server. Files expire automatically after a configurable period and are removed during periodic cleanup runs."
+    },
+    "techStack": {
+      "title": "Tech stack",
+      "backend": "Backend: Go with the Fiber web framework",
+      "frontend": "Frontend: React 19, Vite, and Tailwind CSS",
+      "storage": "Storage: local filesystem or S3-compatible object storage",
+      "database": "Database: SQLite"
+    },
+    "selfHosting": {
+      "title": "Self-hosting",
+      "body": "iSRV is open source and designed to be self-hosted. You control where your files are stored, how long they are kept, and who can upload. Refer to the project repository for setup instructions."
+    }
+  }
+}

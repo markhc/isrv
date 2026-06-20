@@ -1,0 +1,65 @@
+{
+  "title": "FAQ",
+  "subtitle": "Frequently asked questions",
+  "items": [
+    {
+      "question": "What is {{config.serverName}}?",
+      "answer": "{{config.serverName}} is a lightweight, self-hostable temporary file sharing service. Upload any file and get a short link you can share with anyone."
+    },
+    {
+      "question": "How do I upload a file?",
+      "answer": "On the home page, drag and drop a file onto the upload area, or click it to open a file browser. Uploads start immediately after you select a file."
+    },
+    {
+      "id": "command-line",
+      "question": "Can I upload files without the web interface?",
+      "answer": "Yes. Files can be uploaded via HTTP using any tool that supports multipart form uploads, such as curl. POST a multipart/form-data request with the file in a field named \"file\" to the server root. An optional \"expires\" field accepts a duration in hours or a UNIX timestamp to control when the file expires.",
+      "code": "commandLineUpload"
+    },
+    {
+      "question": "How do I delete a file?",
+      "answer": "A file token is provided after a successful upload. You can use this token to delete the file before it expires.",
+      "code": "commandLineDelete"
+    },
+    {
+      "question": "Are there any file type restrictions?",
+      "answer": "No. {{config.serverName}} accepts any file type — images, documents, archives, binaries... whatever you want to upload."
+    },
+    {
+      "question": "Is there a file size limit?",
+      "answer": "The maximum file size allowed by the administrator is {{config.maxFileSizeMb}} MB. If your upload exceeds the limit, you will see an error message."
+    },
+    {
+      "question": "How long will my file be available?",
+      "answer": "File expiration is determined by the file size. Smaller files last longer. The current configuration allows files to be stored for up to {{config.maxAgeDays}} days."
+    },
+    {
+      "question": "How do I share a file?",
+      "answer": "After a successful upload, a short link is displayed. Click Copy to copy it to your clipboard, then share it however you like."
+    },
+    {
+      "question": "Can I see a list of my uploaded files?",
+      "answer": "No. {{config.serverName}} is an anonymous service with no user accounts. There is no way to retrieve a list of files you have uploaded, so keep track of your links."
+    },
+    {
+      "question": "Is content scanned or monitored?",
+      "answer": "Files are not scanned automatically. Abuse reports are investigated and files found to violate the service policy will be removed."
+    },
+    {
+      "question": "Are files encrypted on the server?",
+      "answer": "Files are stored securely but are not encrypted at rest. If you need confidentiality, encrypt the file on your device before uploading."
+    },
+    {
+      "question": "What information is logged?",
+      "answer": "Minimal information is logged for abuse investigation purposes, such as IP addresses. No personally identifiable information is stored beyond what is strictly necessary."
+    }
+  ],
+  "code": {
+    "simpleUpload": "# Simple upload",
+    "expiresInHours": "# Set expiration in hours (e.g. 24 hours)",
+    "expiresAsTimestamp": "# Set expiration as a UNIX timestamp",
+    "uploadReturnsToken": "# The upload response includes a file token for deletion",
+    "deleteFileHeaderToken": "# To delete a file, use the token as Authorization header",
+    "deleteFileQueryToken": "# Or send it as a query parameter"
+  }
+}

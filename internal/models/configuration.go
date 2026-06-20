@@ -111,6 +111,18 @@ type Configuration struct {
 	DebugMode            bool                   `yaml:"debug"`
 }
 
+// FrontendConfig holds the subset of Configuration that is safe to expose to
+// the browser. It is serialised as JSON and injected into index.html at
+// startup.
+type FrontendConfig struct {
+	ServerName        string `json:"serverName"`
+	DisableUploadPage bool   `json:"disableUploadPage"`
+	MaxFileSizeMB     int    `json:"maxFileSizeMb"`
+	MinAgeDays        int    `json:"minAgeDays"`
+	MaxAgeDays        int    `json:"maxAgeDays"`
+	Version           string `json:"version"`
+}
+
 // ToYaml returns the configuration marshalled as indented YAML.
 func (c Configuration) ToYaml() []byte {
 	result, err := yaml.Marshal(c)

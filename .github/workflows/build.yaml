@@ -13,6 +13,30 @@ jobs:
       uses: actions/setup-go@v6
       with:
         go-version: 1.25
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 22
+    - name: Install pnpm
+      run: npm install -g pnpm
+    
+    - name: Get Cache Store Path
+      run: |
+        PNPM_STORE_PATH=$(pnpm store path)
+        echo "PNPM_STORE_PATH=$PNPM_STORE_PATH" >> $GITHUB_ENV
+
+    - name: Cache pnpm store
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.PNPM_STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+
     - name: Build
       run: make build
     - name: Run tests

@@ -1,0 +1,18 @@
+{
+  "back": "← Voltar",
+  "nav": {
+    "faq": "FAQ",
+    "about": "Sobre",
+    "abuse": "Política de Abuso",
+    "privacy": "Privacidade"
+  },
+  "copy": "Copiar",
+  "copied": "Copiado!",
+  "copyFailed": "Falha ao copiar para a área de transferência",
+  "theme": {
+    "light": "Claro",
+    "dark": "Escuro",
+    "system": "Sistema"
+  },
+  "language": "Idioma"
+}

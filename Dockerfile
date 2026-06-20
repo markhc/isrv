@@ -1,5 +1,18 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /app/web
+
+RUN apk add --no-cache git
+
+RUN npm install -g corepack@latest && corepack enable
+
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY web ./
+RUN pnpm run build
+
+FROM golang:1.25-alpine AS go-builder
 
 WORKDIR /app
 
@@ -13,9 +26,10 @@ ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY main.go ./
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+COPY web/ ./web/
+COPY --from=frontend-builder /app/web/dist ./web/dist
 
 # Detect docker platform and set GOARCH accordingly
 RUN case "$(uname -m)" in \
@@ -37,7 +51,7 @@ RUN export BUILD_DATE=$(date -u '+%Y-%m-%d_%H:%M:%S') && \
     -X 'github.com/markhc/isrv/internal/configuration.BuildCommit=${BUILD_COMMIT}' \
     -X 'github.com/markhc/isrv/internal/configuration.BuildDate=${BUILD_DATE}' \
     -X 'github.com/markhc/isrv/internal/configuration.BuildGoVersion=${BUILD_GO_VERSION}' \
-    -X 'github.com/markhc/isrv/internal/configuration.BuildPlatform=${BUILD_PLATFORM}'" -o isrv .
+    -X 'github.com/markhc/isrv/internal/configuration.BuildPlatform=${BUILD_PLATFORM}'" -o isrv ./cmd/isrv
 
 # Final stage
 FROM alpine:latest
@@ -52,7 +66,7 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -g $GROUP_ID -S isrv && \
     adduser -u $USER_ID -S -G isrv -H -s /sbin/nologin isrv
 
-COPY --from=builder /app/isrv /app/isrv
+COPY --from=go-builder /app/isrv /app/isrv
 
 RUN mkdir -p /config && \
     chown -R isrv:isrv /config && \

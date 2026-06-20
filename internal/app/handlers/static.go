@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"io/fs"
+	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/logging"
+	"github.com/markhc/isrv/internal/models"
 )
 
 // Static returns a handler that serves embedded static files and rejects
@@ -29,6 +34,63 @@ func Static(staticFilesDir fs.FS) fiber.Handler {
 		headers.AddCacheHeader(c)
 
 		// Determine content type from extension; Fiber will infer from filename.
+		c.Type(extOf(path))
+		return c.Send(data)
+	}
+}
+
+// SPA returns a handler that serves a single-page application from distFS.
+// Requests for files that exist in the FS (e.g. /assets/...) are served
+// directly with cache headers. All other requests fall back to index.html so
+// client-side routing can handle them.
+//
+// cfg is serialised as JSON and injected into the page as
+// window.__ISRV_CONFIG__ so the frontend can read server settings without an
+// extra round-trip.
+func SPA(distFS fs.FS, cfg models.FrontendConfig) fiber.Handler {
+	indexHTML, err := fs.ReadFile(distFS, "index.html")
+	if err != nil {
+		// Frontend has not been built yet — serve a minimal placeholder.
+		return func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
+			return c.Status(fiber.StatusServiceUnavailable).SendString("frontend not built: run 'make frontend'")
+		}
+	}
+
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		// FrontendConfig contains only primitive types; this cannot happen.
+		panic(fmt.Errorf("marshal frontend config: %w", err))
+	}
+	script := append([]byte(`<script>window.__ISRV_CONFIG__=`+string(cfgJSON)+`;</script>`), []byte("</head>")...)
+	indexHTML = bytes.Replace(indexHTML, []byte("</head>"), script, 1)
+
+	serveIndex := func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "text/html; charset=utf-8")
+		return c.Send(indexHTML)
+	}
+
+	return func(c fiber.Ctx) error {
+		path := strings.TrimPrefix(c.Path(), "/")
+
+		if path == "" {
+			return serveIndex(c)
+		}
+
+		// UnescapePath is disabled by default, so c.Path() is still URL-encoded.
+		// Reject traversal in both the raw and decoded forms.
+		decoded, err := url.QueryUnescape(path)
+		if strings.Contains(path, "..") || err != nil || strings.Contains(decoded, "..") {
+			return c.Status(fiber.StatusBadRequest).SendString("invalid path")
+		}
+
+		data, err := fs.ReadFile(distFS, path)
+		if err != nil {
+			// Unknown path — let the SPA router handle it.
+			return serveIndex(c)
+		}
+
+		headers.AddCacheHeader(c)
 		c.Type(extOf(path))
 		return c.Send(data)
 	}

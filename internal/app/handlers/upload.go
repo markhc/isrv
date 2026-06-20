@@ -20,10 +20,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+type uploadResponse struct {
+	Status     string `json:"status"`
+	Filename   string `json:"filename"`
+	FileToken  string `json:"fileToken"`
+	ShortURL   string `json:"shortUrl"`
+	Expiration string `json:"expiration"`
+}
+
 // Upload returns a handler that accepts a multipart file upload and persists
 // it to storage along with a database record.
-//
-//nolint:funlen
 func Upload(config *models.Configuration, db database.Database, stor storage.Storage) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
@@ -65,7 +71,7 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 			logging.MaybeIP("ip_address", ipAddress),
 		)
 
-		fileURL, err := processUpload(c.Context(), config, db, stor, file, header, expiration, ipAddress)
+		uploadResp, err := processUpload(c.Context(), config, db, stor, file, header, expiration, ipAddress)
 		if err != nil {
 			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
 				backendAttr,
@@ -81,15 +87,7 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 		))
 		telemetry.UploadSize.Record(c.Context(), header.Size, metric.WithAttributes(backendAttr))
 
-		return utils.RespondWithSuccess(c, struct {
-			Status     string `json:"status"`
-			Filename   string `json:"filename"`
-			Expiration string `json:"expiration"`
-		}{
-			Status:     "success",
-			Filename:   fileURL,
-			Expiration: expiration.Format(time.RFC3339),
-		})
+		return utils.RespondWithSuccess(c, uploadResp)
 	}
 }
 
@@ -111,7 +109,7 @@ func processUpload(
 	header *multipart.FileHeader,
 	expiration time.Time,
 	ipAddress string,
-) (string, error) {
+) (uploadResponse, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "upload.process_file",
 		trace.WithAttributes(
 			attribute.String(telemetry.AttrFileName, header.Filename),
@@ -137,7 +135,7 @@ func processUpload(
 		logging.ErrorCtx(ctx, "failed to generate file token", logging.Error(err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to generate file token")
-		return "", fmt.Errorf("failed to generate file token: %w", err)
+		return uploadResponse{}, fmt.Errorf("failed to generate file token: %w", err)
 	}
 
 	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
@@ -145,7 +143,7 @@ func processUpload(
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to save uploaded file")
 		logging.ErrorCtx(ctx, "failed to save uploaded file", logging.Error(err))
-		return "", fmt.Errorf("failed to save uploaded file: %w", err)
+		return uploadResponse{}, fmt.Errorf("failed to save uploaded file: %w", err)
 	}
 
 	if err := db.OnFileUpload(ctx, fileID, header, token, expiration, ipAddress); err != nil {
@@ -162,7 +160,7 @@ func processUpload(
 			logging.String("file_id", fileID),
 			logging.Error(err),
 		)
-		return "", fmt.Errorf("failed to record file upload: %w", err)
+		return uploadResponse{}, fmt.Errorf("failed to record file upload: %w", err)
 	}
 
 	logging.InfoCtx(ctx, "file uploaded successfully",
@@ -171,5 +169,12 @@ func processUpload(
 	)
 
 	safeFilename := url.PathEscape(header.Filename)
-	return config.ServerURL + "/d/" + fileID + "/" + safeFilename, nil
+
+	return uploadResponse{
+		Status:     "success",
+		Filename:   config.ServerURL + "/d/" + fileID + "/" + safeFilename,
+		ShortURL:   config.ServerURL + "/d/" + fileID,
+		Expiration: expiration.Format(time.RFC3339),
+		FileToken:  token,
+	}, nil
 }

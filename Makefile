@@ -19,6 +19,8 @@ BUILD_DATE ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 BUILD_GO_VERSION ?= $(shell go version | awk '{print $$3}')
 BUILD_PLATFORM ?= $(shell go env GOOS)/$(shell go env GOARCH)
 
+PNPM := $(shell command -v pnpm 2>/dev/null || echo $(HOME)/.local/share/pnpm/pnpm)
+
 # Linker flags to inject build information
 LDFLAGS := -ldflags "\
 	-X '$(BUILD_INFO_PKG).BuildVersion=$(BUILD_VERSION)' \
@@ -36,37 +38,25 @@ BUILD_ENV := CGO_ENABLED=0
 
 # Default target
 .PHONY: all
-all: clean build
+all: clean build-all
 
 # Build the application
-.PHONY: build
-build: $(BUILD_DIR)/$(APP_NAME)
+.PHONY: backend
+backend: $(BUILD_DIR)/$(APP_NAME)
 
 $(BUILD_DIR)/$(APP_NAME): clean-build
 	@echo "Building $(APP_NAME) for $(BUILD_PLATFORM) (static)..."
 	@mkdir -p $(BUILD_DIR)
-	$(BUILD_ENV) go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME) .
+	$(BUILD_ENV) go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME) ./cmd/isrv
 	@echo "Built $(APP_NAME) successfully!"
 
-# Build for multiple platforms
-.PHONY: build-all
-build-all: clean-build
-	@echo "Building for multiple platforms (static)..."
-	@mkdir -p $(BUILD_DIR)
-	
-	@echo "Building for Linux/amd64..."
-	$(BUILD_ENV) GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-amd64 .
-	
-	@echo "Building for Linux/arm64..."
-	$(BUILD_ENV) GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-arm64 .
-	
-	@echo "Building for macOS/amd64..."
-	$(BUILD_ENV) GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-amd64 .
-	
-	@echo "Building for macOS/arm64..."
-	$(BUILD_ENV) GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-arm64 .
-	
-	@echo "All builds completed!"
+.PHONY: frontend
+frontend:
+	@echo "Building frontend..."
+	cd web && $(PNPM) install --frozen-lockfile && $(PNPM) build
+
+.PHONY: build
+build: frontend backend
 
 # Build for a target platform and architecture (use TARGET=linux-amd64, etc.)
 .PHONY: build-target
@@ -180,9 +170,22 @@ info:
 	@echo "  Platform: $(BUILD_PLATFORM)"
 
 # Development workflow
+# Runs the frontend and backend concurrently
 .PHONY: dev
-dev: clean fmt vet lint test build
-	@echo "Development build completed successfully!"
+dev:
+	@echo "Starting dev environment -> open http://localhost:5173 (Ctrl-C to stop both)..."
+	@trap 'kill 0' EXIT INT TERM; \
+		(cd web && $(PNPM) dev) & \
+		go run ./cmd/isrv & \
+		wait
+
+.PHONY: dev-backend
+dev-backend:
+	go run ./cmd/isrv
+
+.PHONY: dev-frontend
+dev-frontend:
+	cd web && $(PNPM) dev
 
 # Release workflow
 .PHONY: release
