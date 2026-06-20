@@ -120,6 +120,7 @@ type FrontendConfig struct {
 	MaxFileSizeMB     int    `json:"maxFileSizeMb"`
 	MinAgeDays        int    `json:"minAgeDays"`
 	MaxAgeDays        int    `json:"maxAgeDays"`
+	Version           string `json:"version"`
 }
 
 // ToYaml returns the configuration marshalled as indented YAML.

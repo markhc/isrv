@@ -187,7 +187,14 @@ export default function HomePage() {
       )}
 
       <div className="w-full max-w-4xl flex items-center justify-between">
-        <ThemeSwitcher />
+        <div className="flex items-center gap-3">
+          <ThemeSwitcher />
+        </div>
+        <div className="flex items-center gap-3">
+          {config.version && (
+            <span className="text-xs text-muted-foreground">{config.version}</span>
+          )}
+        </div>
         <nav className="flex gap-4 text-sm text-muted-foreground">
           <Link to="/faq" className="hover:text-foreground transition-colors">
             {t("common:nav.faq")}

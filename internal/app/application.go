@@ -83,6 +83,7 @@ func NewApplication(
 			MaxFileSizeMB:     config.MaxFileSizeMB,
 			MinAgeDays:        config.MinAgeDays,
 			MaxAgeDays:        config.MaxAgeDays,
+			Version:           configuration.BuildVersion,
 		})
 	}
 

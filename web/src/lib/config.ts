@@ -4,6 +4,7 @@ export interface ServerConfig {
   maxFileSizeMb: number
   minAgeDays: number
   maxAgeDays: number
+  version: string
 }
 
 declare global {
@@ -19,5 +20,6 @@ export function getServerConfig(): ServerConfig {
     maxFileSizeMb: 100,
     minAgeDays: 1,
     maxAgeDays: 30,
+    version: "0.0.0-dev",
   }
 }
