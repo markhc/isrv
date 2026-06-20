@@ -64,6 +64,23 @@ build-target:
 	@echo "Building for target $(TARGET)..."
 	$(BUILD_ENV) GOOS=$(word 1,$(subst -, ,$(TARGET))) GOARCH=$(word 2,$(subst -, ,$(TARGET))) go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-$(TARGET) .
 
+.PHONY: build-all
+build-all: frontend
+	@echo "Building for multiple platforms..."
+	@mkdir -p $(BUILD_DIR)
+
+	@echo "Building for Linux/amd64..."
+	$(BUILD_ENV) GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-amd64 ./cmd/isrv
+
+	@echo "Building for Linux/arm64..."
+	$(BUILD_ENV) GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux-arm64 ./cmd/isrv
+
+	@echo "Building for macOS/amd64..."
+	$(BUILD_ENV) GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-amd64 ./cmd/isrv
+
+	@echo "Building for macOS/arm64..."
+	$(BUILD_ENV) GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(APP_NAME)-darwin-arm64 ./cmd/isrv
+
 # Install the application to GOPATH/bin
 .PHONY: install
 install:
