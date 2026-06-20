@@ -85,7 +85,7 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 		return utils.RespondWithSuccess(c, struct {
 			Status     string `json:"status"`
 			Filename   string `json:"filename"`
-			ShortURL   string `json:"short_url"`
+			ShortURL   string `json:"shortUrl"`
 			Expiration string `json:"expiration"`
 		}{
 			Status:     "success",

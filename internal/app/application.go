@@ -108,7 +108,7 @@ func fiberErrorHandler(c fiber.Ctx, err error) error {
 // Fiber server until ctx is cancelled (typically via signal.NotifyContext in
 // the caller).
 //
-//nolint:funlen,cyclop
+//nolint:funlen
 func StartApp(ctx context.Context) error {
 	config := configuration.Get()
 

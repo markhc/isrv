@@ -30,8 +30,6 @@ var infraEndpointPrefixes = []string{
 // SetupRoutes registers all application routes, handlers, and middleware on
 // the supplied fiber.App. Tracing is applied globally and skips the high-
 // volume infra endpoints listed in infraEndpointPrefixes.
-//
-//nolint:funlen
 func SetupRoutes(app *fiber.App, a *Application) {
 	// Tracing first so it captures even early aborts.
 	app.Use(telemetry.FiberTracing("isrv", infraEndpointPrefixes))
