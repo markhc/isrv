@@ -1,10 +1,10 @@
 {
   "title": "FAQ",
-  "subtitle": "Frequently asked questions about isrv.",
+  "subtitle": "Frequently asked questions",
   "items": [
     {
-      "question": "What is isrv?",
-      "answer": "isrv is a lightweight, self-hostable file sharing service. Upload any file and get a short link you can share with anyone."
+      "question": "What is {{config.serverName}}?",
+      "answer": "{{config.serverName}} is a lightweight, self-hostable temporary file sharing service. Upload any file and get a short link you can share with anyone."
     },
     {
       "question": "How do I upload a file?",
@@ -14,19 +14,24 @@
       "id": "command-line",
       "question": "Can I upload files without the web interface?",
       "answer": "Yes. Files can be uploaded via HTTP using any tool that supports multipart form uploads, such as curl. POST a multipart/form-data request with the file in a field named \"file\" to the server root. An optional \"expires\" field accepts a duration in hours or a UNIX timestamp to control when the file expires.",
-      "hasCode": true
+      "code": "commandLineUpload"
+    },
+    {
+      "question": "How do I delete a file?",
+      "answer": "A file token is provided after a successful upload. You can use this token to delete the file before it expires.",
+      "code": "commandLineDelete"
     },
     {
       "question": "Are there any file type restrictions?",
-      "answer": "No. isrv accepts any file type — images, documents, archives, binaries, and more."
+      "answer": "No. {{config.serverName}} accepts any file type — images, documents, archives, binaries... whatever you want to upload."
     },
     {
       "question": "Is there a file size limit?",
-      "answer": "The maximum allowed file size is set by the server administrator. If your upload exceeds the limit, you will see an error message."
+      "answer": "The maximum file size allowed by the administrator is {{config.maxFileSizeMb}} MB. If your upload exceeds the limit, you will see an error message."
     },
     {
       "question": "How long will my file be available?",
-      "answer": "File expiration is determined by the server configuration and may depend on the file size. The exact expiration date is shown after every successful upload."
+      "answer": "File expiration is determined by the file size. Smaller files last longer. The current configuration allows files to be stored for up to {{config.maxAgeDays}} days."
     },
     {
       "question": "How do I share a file?",
@@ -34,7 +39,7 @@
     },
     {
       "question": "Can I see a list of my uploaded files?",
-      "answer": "No. isrv is an anonymous service with no user accounts. There is no way to retrieve a list of files you have uploaded, so keep track of your links."
+      "answer": "No. {{config.serverName}} is an anonymous service with no user accounts. There is no way to retrieve a list of files you have uploaded, so keep track of your links."
     },
     {
       "question": "Is content scanned or monitored?",
@@ -47,15 +52,14 @@
     {
       "question": "What information is logged?",
       "answer": "Minimal information is logged for abuse investigation purposes, such as IP addresses. No personally identifiable information is stored beyond what is strictly necessary."
-    },
-    {
-      "question": "Can I delete a file before it expires?",
-      "answer": "File deletion support depends on the server configuration. If enabled, a deletion token is provided after upload. Contact the server administrator for details."
     }
   ],
   "code": {
     "simpleUpload": "# Simple upload",
     "expiresInHours": "# Set expiration in hours (e.g. 24 hours)",
-    "expiresAsTimestamp": "# Set expiration as a UNIX timestamp"
+    "expiresAsTimestamp": "# Set expiration as a UNIX timestamp",
+    "uploadReturnsToken": "# The upload response includes a file token for deletion",
+    "deleteFileHeaderToken": "# To delete a file, use the token as Authorization header",
+    "deleteFileQueryToken": "# Or send it as a query parameter"
   }
 }

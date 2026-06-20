@@ -1,0 +1,12 @@
+{
+  "Version": "12.4.1",
+  "Name": "iSRV (Image uploader)",
+  "RequestMethod": "POST",
+  "RequestURL": "https://isrv.it.com",
+  "Body": "MultipartFormData",
+  "FileFormName": "file",
+  "RegexList": [
+    "\"shortUrl\": \"(.+)\""
+  ],
+  "URL": "$regex:1$"
+}

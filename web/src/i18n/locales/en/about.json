@@ -1,10 +1,10 @@
 {
   "title": "About",
-  "subtitle": "What is isrv and how does it work?",
+  "subtitle": "What is iSRV and how does it work?",
   "sections": {
     "whatIs": {
-      "title": "What is isrv?",
-      "body": "isrv is a minimal, self-hostable file sharing service. It is designed to be simple: upload a file, get a link, share it. No accounts required, no tracking, no clutter."
+      "title": "What is iSRV?",
+      "body": "iSRV is a minimal, self-hostable file sharing service. It is designed to be simple: upload a file, get a link, share it. No accounts required, no tracking, no clutter."
     },
     "howItWorks": {
       "title": "How does it work?",
@@ -19,7 +19,7 @@
     },
     "selfHosting": {
       "title": "Self-hosting",
-      "body": "isrv is open source and designed to be self-hosted. You control where your files are stored, how long they are kept, and who can upload. Refer to the project repository for setup instructions."
+      "body": "iSRV is open source and designed to be self-hosted. You control where your files are stored, how long they are kept, and who can upload. Refer to the project repository for setup instructions."
     }
   }
 }

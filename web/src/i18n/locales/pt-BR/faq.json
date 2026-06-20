@@ -1,10 +1,10 @@
 {
   "title": "FAQ",
-  "subtitle": "Perguntas frequentes sobre o isrv.",
+  "subtitle": "Perguntas frequentes",
   "items": [
     {
-      "question": "O que é o isrv?",
-      "answer": "isrv é um serviço de compartilhamento de arquivos leve e auto-hospedável. Envie qualquer arquivo e obtenha um link curto para compartilhar com qualquer pessoa."
+      "question": "O que é o {{config.serverName}}?",
+      "answer": "{{config.serverName}} é um serviço de compartilhamento de arquivos temporários leve e auto-hospedável. Envie qualquer arquivo e obtenha um link curto para compartilhar com qualquer pessoa."
     },
     {
       "question": "Como faço para enviar um arquivo?",
@@ -14,19 +14,24 @@
       "id": "command-line",
       "question": "Posso enviar arquivos sem a interface web?",
       "answer": "Sim. Os arquivos podem ser enviados via HTTP usando qualquer ferramenta que suporte uploads multipart, como o curl. Envie uma requisição POST multipart/form-data com o arquivo no campo \"file\" para a raiz do servidor. Um campo opcional \"expires\" aceita uma duração em horas ou um timestamp UNIX para controlar quando o arquivo expira.",
-      "hasCode": true
+      "code": "commandLineUpload"
+    },
+    {
+      "question": "Posso deletar um arquivo antes que ele expire?",
+      "answer": "Um token de arquivo é fornecido após um envio bem-sucedido. Você pode usar esse token para excluir o arquivo antes que ele expire.",
+      "code": "commandLineDelete"
     },
     {
       "question": "Há restrições de tipo de arquivo?",
-      "answer": "Não. isrv aceita qualquer tipo de arquivo — imagens, documentos, arquivos compactados, binários e muito mais."
+      "answer": "Não. {{config.serverName}} aceita qualquer tipo de arquivo — imagens, documentos, arquivos compactados, binários e muito mais."
     },
     {
       "question": "Há um limite de tamanho de arquivo?",
-      "answer": "O tamanho máximo permitido é definido pelo administrador do servidor. Se o envio ultrapassar o limite, você verá uma mensagem de erro."
+      "answer": "O tamanho máximo permitido é {{config.maxFileSizeMb}} MB. Se o envio ultrapassar o limite, você verá uma mensagem de erro."
     },
     {
       "question": "Por quanto tempo meu arquivo ficará disponível?",
-      "answer": "A expiração do arquivo é determinada pela configuração do servidor e pode depender do tamanho do arquivo. A data exata de expiração é exibida após cada envio bem-sucedido."
+      "answer": "A expiração do arquivo é determinada pelo tamanho do arquivo. A configuração atual permite que os arquivos sejam armazenados por até {{config.maxAgeDays}} dias."
     },
     {
       "question": "Como compartilho um arquivo?",
@@ -34,7 +39,7 @@
     },
     {
       "question": "Posso ver a lista dos meus arquivos enviados?",
-      "answer": "Não. isrv é um serviço anônimo sem contas de usuário. Não há como recuperar a lista de arquivos que você enviou, portanto guarde seus links."
+      "answer": "Não. {{config.serverName}} é um serviço anônimo sem contas de usuário. Não há como recuperar a lista de arquivos que você enviou, portanto guarde seus links."
     },
     {
       "question": "O conteúdo é verificado ou monitorado?",
@@ -47,15 +52,14 @@
     {
       "question": "Quais informações são registradas?",
       "answer": "Informações mínimas são registradas para fins de investigação de abuso, como endereços IP. Nenhuma informação pessoal identificável é armazenada além do estritamente necessário."
-    },
-    {
-      "question": "Posso deletar um arquivo antes que ele expire?",
-      "answer": "O suporte à exclusão de arquivos depende da configuração do servidor. Se habilitado, um token de exclusão é fornecido após o envio. Entre em contato com o administrador do servidor para mais detalhes."
     }
   ],
   "code": {
     "simpleUpload": "# Envio simples",
     "expiresInHours": "# Definir expiração em horas (ex: 24 horas)",
-    "expiresAsTimestamp": "# Definir expiração como timestamp UNIX"
+    "expiresAsTimestamp": "# Definir expiração como timestamp UNIX",
+    "uploadReturnsToken": "# A resposta do envio inclui um token de arquivo para exclusão",
+    "deleteFileHeaderToken": "# Para excluir um arquivo, use o token como autorização",
+    "deleteFileQueryToken": "# Ou envie como um parâmetro de consulta"
   }
 }

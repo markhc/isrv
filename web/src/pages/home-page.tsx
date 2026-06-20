@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { getServerConfig } from "@/lib/config"
 
 interface UploadResponse {
   status: string
@@ -42,9 +43,10 @@ async function uploadFile(file: File): Promise<UploadResult> {
 }
 
 export default function HomePage() {
-  const { t, i18n } = useTranslation(["home", "common"])
+  const { t, i18n } = useTranslation(["home", "common", "faq"])
   const [result, setResult] = useState<UploadResult | null>(null)
   const [copied, setCopied] = useState(false)
+  const config = getServerConfig()
 
   const mutation = useMutation({
     mutationFn: uploadFile,
@@ -78,21 +80,45 @@ export default function HomePage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  function getCodeExamples(): string {
+    // Show extended examples if the upload page is disabled
+    if (config.disableUploadPage) {
+      return [
+        t("faq:code.simpleUpload"),
+        `$ curl -F file=@photo.jpg ${origin}/`,
+        "",
+        t("faq:code.expiresInHours"),
+        `$ curl -F file=@document.pdf -F expires=24 ${origin}/`,
+        "",
+        t("faq:code.expiresAsTimestamp"),
+        `$ curl -F file=@archive.zip -F expires=1767225600 ${origin}/`,
+      ].join("\n")
+    } else {
+      return [
+        `$ curl -F file=@example.txt ${window.location.origin}/`,
+      ].join("\n")
+    }
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-8">
       <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-4xl font-bold tracking-tight">isrv</h1>
+        <h1 className="text-4xl font-bold tracking-tight">iSRV</h1>
+        <p className="text-muted-foreground">{t("home:subtitle")}</p>
+      </div>
+      <div className={["flex flex-col items-center gap-2 text-center", config.disableUploadPage ? "hidden" : ""].join(" ")}>
         <p className="text-muted-foreground">{t("home:tagline")}</p>
       </div>
 
       <div
         {...getRootProps()}
         className={[
-          "w-full max-w-lg rounded-xl border-2 border-dashed px-8 py-14 text-center cursor-pointer transition-colors",
+          "w-full max-w-4xl rounded-xl border-2 border-dashed px-8 py-14 text-center cursor-pointer transition-colors",
           isDragActive
             ? "border-primary bg-primary/5"
             : "border-border hover:border-primary/50 hover:bg-muted/40",
           mutation.isPending ? "pointer-events-none opacity-60" : "",
+          config.disableUploadPage ? "hidden" : "",
         ].join(" ")}
       >
         <input {...getInputProps()} />
@@ -108,11 +134,12 @@ export default function HomePage() {
         )}
       </div>
 
-      <div className="w-full max-w-lg flex flex-col gap-1.5">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("home:upload.orViaHTTP")}</p>
+      <div className="w-full max-w-4xl flex flex-col gap-1.5">
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{
+          config.disableUploadPage ? t("home:upload.commandLine") : t("home:upload.orViaHTTP")
+        }</p>
         <pre className="rounded-lg bg-muted px-4 py-3 text-xs text-muted-foreground overflow-x-auto leading-relaxed">
-          <span className="select-none text-muted-foreground/50">$ </span>
-          {`curl -F file=@example.txt ${window.location.origin}/`}
+          {getCodeExamples()}
         </pre>
         <Link
           to="/faq"
@@ -124,7 +151,7 @@ export default function HomePage() {
       </div>
 
       {result && (
-        <div className="w-full max-w-lg rounded-lg border border-border bg-card px-5 py-4 flex flex-col gap-3">
+        <div className="w-full max-w-4xl rounded-lg border border-border bg-card px-5 py-4 flex flex-col gap-3">
           <p className="text-sm font-medium">{result.filename}</p>
           <div className="flex items-center gap-2">
             <a
@@ -154,7 +181,7 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="flex items-center gap-6">
+      <div className="w-full max-w-4xl flex items-center justify-between">
         <ThemeSwitcher />
         <nav className="flex gap-4 text-sm text-muted-foreground">
           <Link to="/faq" className="hover:text-foreground transition-colors">

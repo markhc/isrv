@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/logging"
+	"github.com/markhc/isrv/internal/models"
 )
 
 // Static returns a handler that serves embedded static files and rejects
@@ -38,7 +42,11 @@ func Static(staticFilesDir fs.FS) fiber.Handler {
 // Requests for files that exist in the FS (e.g. /assets/...) are served
 // directly with cache headers. All other requests fall back to index.html so
 // client-side routing can handle them.
-func SPA(distFS fs.FS) fiber.Handler {
+//
+// cfg is serialised as JSON and injected into the page as
+// window.__ISRV_CONFIG__ so the frontend can read server settings without an
+// extra round-trip.
+func SPA(distFS fs.FS, cfg models.FrontendConfig) fiber.Handler {
 	indexHTML, err := fs.ReadFile(distFS, "index.html")
 	if err != nil {
 		// Frontend has not been built yet — serve a minimal placeholder.
@@ -47,6 +55,14 @@ func SPA(distFS fs.FS) fiber.Handler {
 			return c.Status(fiber.StatusServiceUnavailable).SendString("frontend not built: run 'make frontend'")
 		}
 	}
+
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		// FrontendConfig contains only primitive types; this cannot happen.
+		panic(fmt.Errorf("marshal frontend config: %w", err))
+	}
+	script := append([]byte(`<script>window.__ISRV_CONFIG__=`+string(cfgJSON)+`;</script>`), []byte("</head>")...)
+	indexHTML = bytes.Replace(indexHTML, []byte("</head>"), script, 1)
 
 	serveIndex := func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, "text/html; charset=utf-8")

@@ -55,6 +55,9 @@ frontend:
 	@echo "Building frontend..."
 	cd web && $(PNPM) install --frozen-lockfile && $(PNPM) build
 
+.PHONY: build
+build: frontend backend
+
 # Build for a target platform and architecture (use TARGET=linux-amd64, etc.)
 .PHONY: build-target
 build-target:

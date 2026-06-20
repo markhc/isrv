@@ -6,7 +6,7 @@ export default function PrivacyPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center p-8 pt-16">
-      <div className="w-full max-w-2xl flex flex-col gap-10">
+      <div className="w-full max-w-4xl flex flex-col gap-10">
         <div className="flex flex-col gap-2">
           <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
             {t("common:back")}

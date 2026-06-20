@@ -77,7 +77,13 @@ func NewApplication(
 	}
 
 	if !config.DisableIndexPage {
-		a.SPAHandler = handlers.SPA(web.DistDirFS)
+		a.SPAHandler = handlers.SPA(web.DistDirFS, models.FrontendConfig{
+			ServerName:        config.ServerName,
+			DisableUploadPage: config.DisableUploadPage,
+			MaxFileSizeMB:     config.MaxFileSizeMB,
+			MinAgeDays:        config.MinAgeDays,
+			MaxAgeDays:        config.MaxAgeDays,
+		})
 	}
 
 	return a
