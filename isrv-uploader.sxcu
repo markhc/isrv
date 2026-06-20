@@ -1,12 +1,14 @@
 {
-  "Version": "12.4.1",
-  "Name": "iSRV (Image uploader)",
+  "Version": "19.0.2",
+  "Name": "iSRV",
+  "DestinationType": "ImageUploader, FileUploader",
   "RequestMethod": "POST",
-  "RequestURL": "https://isrv.it.com",
+  "RequestURL": "https://isrv.nl",
+  "Headers": {
+    "X-Uploader": "Sharex"
+  },
   "Body": "MultipartFormData",
   "FileFormName": "file",
-  "RegexList": [
-    "\"shortUrl\": \"(.+)\""
-  ],
-  "URL": "$regex:1$"
+  "URL": "{json:shortUrl}",
+  "ThumbnailURL": "[img]{json:shortUrl}[/img]"
 }
