@@ -4,13 +4,11 @@
 
 Simple anonymous and temporary file sharing service.
 
-Visit https://isrv.it.com to see it in action.
+Visit https://isrv.nl to see it in action.
 
 ## Description
 
 isrv is a lightweight file sharing service that provides anonymous temporary storage with customizable expiration times. Users can upload files and share them via generated links without requiring registration or personal information.
-
-Thanks for the folks of [0x0.st](https://0x0.st/) for the expiration formula and "frontend" (if you can call it that).
 
 ## Goals
 
