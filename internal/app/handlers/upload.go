@@ -30,8 +30,6 @@ type uploadResponse struct {
 
 // Upload returns a handler that accepts a multipart file upload and persists
 // it to storage along with a database record.
-//
-//nolint:funlen
 func Upload(config *models.Configuration, db database.Database, stor storage.Storage) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
