@@ -1,0 +1,25 @@
+{
+  "title": "Política de Abuso",
+  "subtitle": "Este serviço é fornecido para fins legítimos de compartilhamento de arquivos.",
+  "sections": {
+    "prohibited": {
+      "title": "Conteúdo proibido",
+      "intro": "Os seguintes tipos de conteúdo não são permitidos neste serviço:",
+      "items": [
+        "Conteúdo ilegal conforme definido pela lei aplicável",
+        "Malware, vírus ou outros softwares maliciosos",
+        "Conteúdo que viola os direitos de terceiros",
+        "Spam ou solicitações comerciais",
+        "Qualquer coisa destinada a prejudicar ou explorar outras pessoas"
+      ]
+    },
+    "enforcement": {
+      "title": "Aplicação",
+      "body": "As violações resultarão na remoção imediata do arquivo e poderão ser reportadas às autoridades competentes. Violações repetidas ou graves podem resultar no bloqueio do endereço IP de origem."
+    },
+    "reporting": {
+      "title": "Denunciar abuso",
+      "body": "Para denunciar conteúdo abusivo, entre em contato com o administrador do servidor. As denúncias de abuso são investigadas e tratadas prontamente."
+    }
+  }
+}

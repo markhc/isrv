@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/url"
+	"regexp"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -84,13 +85,25 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 		return utils.RespondWithSuccess(c, struct {
 			Status     string `json:"status"`
 			Filename   string `json:"filename"`
+			ShortURL   string `json:"short_url"`
 			Expiration string `json:"expiration"`
 		}{
 			Status:     "success",
 			Filename:   fileURL,
+			ShortURL:   shortenURL(fileURL),
 			Expiration: expiration.Format(time.RFC3339),
 		})
 	}
+}
+
+func shortenURL(fullURL string) string {
+	// Shorten download URLs to the minimum allowed format "BASE_URL/d/{fileID}" for display purposes.
+	re := regexp.MustCompile(`^(https?://[^/]+/d/([^/?]+))`)
+	matches := re.FindStringSubmatch(fullURL)
+	if len(matches) < 2 {
+		return fullURL
+	}
+	return matches[1]
 }
 
 func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int) error {

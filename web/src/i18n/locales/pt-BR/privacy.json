@@ -1,0 +1,18 @@
+{
+  "title": "Privacidade",
+  "subtitle": "Como este serviço trata seus dados.",
+  "sections": {
+    "anonymity": {
+      "title": "Anonimato",
+      "body": "Os envios de arquivos são anônimos. Não há contas de usuário, cadastro ou rastreamento entre sessões."
+    },
+    "logging": {
+      "title": "Registros",
+      "body": "Os registros do servidor contêm informações mínimas — principalmente endereços IP retidos para investigação de abuso. Nenhuma informação pessoal identificável é armazenada."
+    },
+    "storage": {
+      "title": "Armazenamento de arquivos",
+      "body": "Os arquivos são armazenados com segurança no servidor, mas não são criptografados em repouso. Use HTTPS ao enviar para proteger seus dados em trânsito. Se precisar de confidencialidade, criptografe os arquivos no seu dispositivo antes de enviar."
+    }
+  }
+}

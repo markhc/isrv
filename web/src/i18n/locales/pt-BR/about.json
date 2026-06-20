@@ -1,0 +1,25 @@
+{
+  "title": "Sobre",
+  "subtitle": "O que é o isrv e como funciona?",
+  "sections": {
+    "whatIs": {
+      "title": "O que é o isrv?",
+      "body": "isrv é um serviço de compartilhamento de arquivos minimalista e auto-hospedável. Foi projetado para ser simples: envie um arquivo, obtenha um link, compartilhe. Sem contas necessárias, sem rastreamento, sem complicações."
+    },
+    "howItWorks": {
+      "title": "Como funciona?",
+      "body": "Os arquivos são enviados por meio de uma interface de arrastar e soltar ou seletor de arquivos. Cada envio recebe um identificador curto e aleatório e é armazenado no servidor. Os arquivos expiram automaticamente após um período configurável e são removidos durante as limpezas periódicas."
+    },
+    "techStack": {
+      "title": "Tecnologias",
+      "backend": "Backend: Go com o framework web Fiber",
+      "frontend": "Frontend: React 19, Vite e Tailwind CSS",
+      "storage": "Armazenamento: sistema de arquivos local ou armazenamento compatível com S3",
+      "database": "Banco de dados: SQLite"
+    },
+    "selfHosting": {
+      "title": "Auto-hospedagem",
+      "body": "isrv é de código aberto e projetado para ser auto-hospedado. Você controla onde seus arquivos são armazenados, por quanto tempo são mantidos e quem pode enviar. Consulte o repositório do projeto para obter instruções de configuração."
+    }
+  }
+}

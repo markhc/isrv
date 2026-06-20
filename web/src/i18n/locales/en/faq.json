@@ -1,0 +1,61 @@
+{
+  "title": "FAQ",
+  "subtitle": "Frequently asked questions about isrv.",
+  "items": [
+    {
+      "question": "What is isrv?",
+      "answer": "isrv is a lightweight, self-hostable file sharing service. Upload any file and get a short link you can share with anyone."
+    },
+    {
+      "question": "How do I upload a file?",
+      "answer": "On the home page, drag and drop a file onto the upload area, or click it to open a file browser. Uploads start immediately after you select a file."
+    },
+    {
+      "id": "command-line",
+      "question": "Can I upload files without the web interface?",
+      "answer": "Yes. Files can be uploaded via HTTP using any tool that supports multipart form uploads, such as curl. POST a multipart/form-data request with the file in a field named \"file\" to the server root. An optional \"expires\" field accepts a duration in hours or a UNIX timestamp to control when the file expires.",
+      "hasCode": true
+    },
+    {
+      "question": "Are there any file type restrictions?",
+      "answer": "No. isrv accepts any file type — images, documents, archives, binaries, and more."
+    },
+    {
+      "question": "Is there a file size limit?",
+      "answer": "The maximum allowed file size is set by the server administrator. If your upload exceeds the limit, you will see an error message."
+    },
+    {
+      "question": "How long will my file be available?",
+      "answer": "File expiration is determined by the server configuration and may depend on the file size. The exact expiration date is shown after every successful upload."
+    },
+    {
+      "question": "How do I share a file?",
+      "answer": "After a successful upload, a short link is displayed. Click Copy to copy it to your clipboard, then share it however you like."
+    },
+    {
+      "question": "Can I see a list of my uploaded files?",
+      "answer": "No. isrv is an anonymous service with no user accounts. There is no way to retrieve a list of files you have uploaded, so keep track of your links."
+    },
+    {
+      "question": "Is content scanned or monitored?",
+      "answer": "Files are not scanned automatically. Abuse reports are investigated and files found to violate the service policy will be removed."
+    },
+    {
+      "question": "Are files encrypted on the server?",
+      "answer": "Files are stored securely but are not encrypted at rest. If you need confidentiality, encrypt the file on your device before uploading."
+    },
+    {
+      "question": "What information is logged?",
+      "answer": "Minimal information is logged for abuse investigation purposes, such as IP addresses. No personally identifiable information is stored beyond what is strictly necessary."
+    },
+    {
+      "question": "Can I delete a file before it expires?",
+      "answer": "File deletion support depends on the server configuration. If enabled, a deletion token is provided after upload. Contact the server administrator for details."
+    }
+  ],
+  "code": {
+    "simpleUpload": "# Simple upload",
+    "expiresInHours": "# Set expiration in hours (e.g. 24 hours)",
+    "expiresAsTimestamp": "# Set expiration as a UNIX timestamp"
+  }
+}

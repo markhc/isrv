@@ -1,0 +1,18 @@
+{
+  "title": "Privacy",
+  "subtitle": "How this service handles your data.",
+  "sections": {
+    "anonymity": {
+      "title": "Anonymity",
+      "body": "File uploads are anonymous. There are no user accounts, no sign-up, and no tracking across sessions."
+    },
+    "logging": {
+      "title": "Logging",
+      "body": "Server logs contain minimal information — primarily IP addresses retained for abuse investigation. No personally identifiable information is stored."
+    },
+    "storage": {
+      "title": "File storage",
+      "body": "Files are stored securely on the server but are not encrypted at rest. Use HTTPS when uploading to protect your data in transit. If you need confidentiality, encrypt files on your device before uploading."
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "tagline": "Solte um arquivo para obter um link compartilhável.",
+  "upload": {
+    "uploading": "Enviando…",
+    "dropToUpload": "Solte para enviar",
+    "dragOrClick": "Arraste e solte um arquivo aqui, ou",
+    "clickToBrowse": "clique para selecionar",
+    "orViaHTTP": "Ou envie via HTTP",
+    "moreExamples": "Mais exemplos →"
+  },
+  "result": {
+    "expires": "Expira em {{date}}"
+  }
+}

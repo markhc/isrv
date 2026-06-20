@@ -57,18 +57,6 @@ func SetupRoutes(app *fiber.App, a *Application) {
 	}))
 
 	// 404 handler — registered via the app's NotFound mechanism below.
-	if a.NotFoundHandler != nil {
-		app.Use(func(c fiber.Ctx) error {
-			// Defer to next routes first. If no route matches we land here via
-			// the catch-all at the end of registration.
-			return c.Next()
-		})
-	}
-
-	if a.IndexHandler != nil {
-		app.Get("/", a.IndexHandler)
-	}
-
 	if a.FaviconHandler != nil {
 		app.Get("/favicon.:format", a.FaviconHandler)
 	}
@@ -79,14 +67,8 @@ func SetupRoutes(app *fiber.App, a *Application) {
 	// Rate-limited group.
 	rateLimited := app.Group("", a.Middleware.RateLimit)
 	rateLimited.Post("/", a.UploadHandler)
-
-	protected := rateLimited.Group("", a.Middleware.RequireToken)
-	protected.Delete("/:id", a.DeleteHandler)
-	protected.Patch("/:id/expire", a.ExpireHandler)
-
-	if a.StaticHandler != nil {
-		app.Get("/static/*", a.StaticHandler)
-	}
+	rateLimited.Delete("/:id", a.Middleware.RequireToken, a.DeleteHandler)
+	rateLimited.Patch("/:id/expire", a.Middleware.RequireToken, a.ExpireHandler)
 
 	// Operational endpoints.
 	if a.HealthzHandler != nil {
@@ -104,9 +86,10 @@ func SetupRoutes(app *fiber.App, a *Application) {
 		app.Use("/debug/pprof", pprof.New())
 	}
 
-	// Catch-all 404 — registered last so explicit routes take precedence.
-	if a.NotFoundHandler != nil {
-		app.Use(a.NotFoundHandler)
+	// SPA catch-all: serves index.html for any unmatched path so that
+	// client-side routing works. Must be registered last.
+	if a.SPAHandler != nil {
+		app.Use(a.SPAHandler)
 	}
 }
 

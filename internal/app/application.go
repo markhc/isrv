@@ -2,12 +2,9 @@ package app
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
-	"text/template"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -21,6 +18,7 @@ import (
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
 	"github.com/markhc/isrv/internal/telemetry"
+	"github.com/markhc/isrv/web"
 )
 
 // AppMiddleware bundles the Fiber middleware functions wired into the router.
@@ -33,28 +31,20 @@ type AppMiddleware struct {
 // wired into the router. It is constructed once by NewApplication and passed
 // to SetupRoutes.
 type Application struct {
-	IndexHandler    fiber.Handler
 	FaviconHandler  fiber.Handler
 	DownloadHandler fiber.Handler
 	UploadHandler   fiber.Handler
 	DeleteHandler   fiber.Handler
 	ExpireHandler   fiber.Handler
-	NotFoundHandler fiber.Handler
 	HealthzHandler  fiber.Handler
 	ReadyzHandler   fiber.Handler
-	StaticHandler   fiber.Handler
+	SPAHandler      fiber.Handler
 
 	MetricsHandler http.Handler
 
 	Middleware AppMiddleware
 	Debug      bool
 }
-
-//go:embed templates
-var templatesFolderEmbedded embed.FS
-
-//go:embed static
-var staticFilesEmbedded embed.FS
 
 // NewApplication wires together handlers and middleware from the supplied
 // dependencies.
@@ -63,16 +53,13 @@ func NewApplication(
 	config *models.Configuration,
 	db database.Database,
 	stor storage.Storage,
-	tmpl *template.Template,
 	faviconData []byte,
-	staticFilesDir fs.FS,
 ) *Application {
 	a := &Application{
 		DownloadHandler: handlers.Download(db, stor),
 		UploadHandler:   handlers.Upload(config, db, stor),
 		DeleteHandler:   handlers.Delete(db, stor),
 		ExpireHandler:   handlers.Expire(config, db),
-		NotFoundHandler: handlers.NotFound(tmpl, config),
 		HealthzHandler:  handlers.Healthz(),
 		ReadyzHandler:   handlers.Readyz(db, stor),
 		MetricsHandler:  telemetry.MetricsHandler(),
@@ -85,16 +72,12 @@ func NewApplication(
 
 	a.Debug = config.DebugMode
 
-	if !config.DisableIndexPage {
-		a.IndexHandler = handlers.Index(tmpl, config)
-	}
-
 	if config.FaviconURL != "" && faviconData != nil {
 		a.FaviconHandler = handlers.Favicon(faviconData, config.FaviconFormat)
 	}
 
-	if !config.DisableUploadPage {
-		a.StaticHandler = handlers.Static(staticFilesDir)
+	if !config.DisableIndexPage {
+		a.SPAHandler = handlers.SPA(web.DistDirFS)
 	}
 
 	return a
@@ -127,8 +110,6 @@ func fiberErrorHandler(c fiber.Ctx, err error) error {
 //
 //nolint:funlen,cyclop
 func StartApp(ctx context.Context) error {
-	staticFilesDir, _ := fs.Sub(staticFilesEmbedded, "static")
-
 	config := configuration.Get()
 
 	storageClient, err := createStorage(ctx, config)
@@ -146,11 +127,6 @@ func StartApp(ctx context.Context) error {
 		}
 	}()
 
-	tmpl, err := initializeTemplates(templatesFolderEmbedded)
-	if err != nil {
-		return fmt.Errorf("initialise templates: %w", err)
-	}
-
 	cleanupService := cleanup.NewService(dbInstance, storageClient, config.Cleanup.Enabled, config.Cleanup.Interval)
 	cancelCleanup := cleanupService.Start(ctx)
 
@@ -160,7 +136,7 @@ func StartApp(ctx context.Context) error {
 		logging.LogError("failed to fetch favicon", logging.String("url", config.FaviconURL), logging.Error(err))
 	}
 
-	application := NewApplication(ctx, config, dbInstance, storageClient, tmpl, faviconData, staticFilesDir)
+	application := NewApplication(ctx, config, dbInstance, storageClient, faviconData)
 
 	// BodyLimit enforces a hard upload cap before handler code runs;
 	// derived from MaxFileSizeMB so the limit matches the upload handler.
@@ -268,15 +244,4 @@ func createStorage(ctx context.Context, config *models.Configuration) (storage.S
 	default:
 		return nil, fmt.Errorf("invalid storage type %q", config.Storage.Type)
 	}
-}
-
-func initializeTemplates(templatesFS embed.FS) (*template.Template, error) {
-	templateFolder, err := template.New("").ParseFS(templatesFS, "templates/*.tmpl")
-	if err != nil {
-		logging.LogError("failed to initialize templates", logging.Error(err))
-
-		return nil, fmt.Errorf("failed to parse templates: %w", err)
-	}
-
-	return templateFolder, nil
 }

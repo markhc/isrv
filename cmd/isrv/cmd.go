@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -156,4 +156,8 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func main() {
+	Execute()
 }

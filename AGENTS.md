@@ -32,6 +32,11 @@ internal/
   cleanup/                  # Background worker: deletes expired files
   telemetry/                # OpenTelemetry tracing + Prometheus metrics
   models/                   # Shared model types
+web/
+  src/                      # React frontend source
+    i18n/                   # Internationalization (i18next) setup and locale JSON
+  public/                   # Static assets (favicon, icons, etc.)
+
 ```
 
 ## Key Conventions
@@ -63,9 +68,28 @@ Wrap errors with `fmt.Errorf("context: %w", err)`. Do not log and return — cho
 ### Configuration
 Fields map to env vars via the `ISRV_` prefix (e.g., `server.port` → `ISRV_SERVER_PORT`). See [internal/configuration/default_config.yaml](internal/configuration/default_config.yaml) for all defaults.
 
+## Paths / Security
+
+isrv runs on Linux/Unix-like hosts primarily but should be portable.
+
+- Local filesystem paths: `filepath.Join`, `filepath.Clean`, `filepath.Rel`.
+- Slash-delimited formats only for URLs and API payloads.
+- Validate all external input at API boundaries.
+
 ## Potential Pitfalls
 
 - **Static builds**: `CGO_ENABLED=0` is required. Do not introduce CGO dependencies. The SQLite driver (`modernc.org/sqlite`) is CGO-free by design.
 - **Build info injection**: Version, commit, date are injected via ldflags at build time (see Makefile). Do not read them from files at runtime.
 - **GCS + S3 SDK**: If using Google Cloud Storage with the AWS S3 SDK, set `Region: "auto"` and `UsePathStyle: true`. See user memory for details.
 - **Manual rollback in Upload**: If storage succeeds but DB insert fails, the handler manually deletes the stored file. Keep this pattern consistent if adding new upload logic.
+
+## Frontend
+
+Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `web/`, React components, or frontend tests.
+
+## Commits / PRs
+
+- Conventional commits: `feat(scope):`, `fix(scope):`, etc.
+- Keep commits focused; split backend/frontend when practical.
+- Never add AI advertising/attribution/co-author lines.
+- PRs need clear summary, testing checklist, and screenshots for visual UI changes.

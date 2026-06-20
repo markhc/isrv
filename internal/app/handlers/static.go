@@ -34,6 +34,48 @@ func Static(staticFilesDir fs.FS) fiber.Handler {
 	}
 }
 
+// SPA returns a handler that serves a single-page application from distFS.
+// Requests for files that exist in the FS (e.g. /assets/...) are served
+// directly with cache headers. All other requests fall back to index.html so
+// client-side routing can handle them.
+func SPA(distFS fs.FS) fiber.Handler {
+	indexHTML, err := fs.ReadFile(distFS, "index.html")
+	if err != nil {
+		// Frontend has not been built yet — serve a minimal placeholder.
+		return func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
+			return c.Status(fiber.StatusServiceUnavailable).SendString("frontend not built: run 'make frontend'")
+		}
+	}
+
+	serveIndex := func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "text/html; charset=utf-8")
+		return c.Send(indexHTML)
+	}
+
+	return func(c fiber.Ctx) error {
+		path := strings.TrimPrefix(c.Path(), "/")
+
+		if path == "" {
+			return serveIndex(c)
+		}
+
+		if strings.Contains(path, "..") {
+			return c.Status(fiber.StatusBadRequest).SendString("invalid path")
+		}
+
+		data, err := fs.ReadFile(distFS, path)
+		if err != nil {
+			// Unknown path — let the SPA router handle it.
+			return serveIndex(c)
+		}
+
+		headers.AddCacheHeader(c)
+		c.Type(extOf(path))
+		return c.Send(data)
+	}
+}
+
 // Favicon returns a handler that serves the pre-fetched favicon bytes.
 func Favicon(data []byte, format string) fiber.Handler {
 	return func(c fiber.Ctx) error {

@@ -1,0 +1,14 @@
+{
+  "tagline": "Drop a file to get a shareable link.",
+  "upload": {
+    "uploading": "Uploading…",
+    "dropToUpload": "Drop to upload",
+    "dragOrClick": "Drag & drop a file here, or",
+    "clickToBrowse": "click to browse",
+    "orViaHTTP": "Or upload via HTTP",
+    "moreExamples": "More examples →"
+  },
+  "result": {
+    "expires": "Expires {{date}}"
+  }
+}
