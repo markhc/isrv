@@ -8,6 +8,8 @@ import (
 	"errors"
 	"mime/multipart"
 	"time"
+
+	"github.com/markhc/isrv/internal/models"
 )
 
 // Errors that may be returned by Database operations.
@@ -16,19 +18,6 @@ var (
 	ErrDatabase     = errors.New("database error")
 	ErrConnection   = errors.New("database connection error")
 )
-
-// FileRecord represents a stored file's metadata as persisted in the
-// database. The zero value is not useful; instances are produced by the
-// Database implementation.
-type FileRecord struct {
-	ID             string    `db:"id"`
-	FileName       string    `db:"file_name"`
-	Token          string    `db:"token"`
-	FileSize       int64     `db:"file_size"`
-	ExpirationTime time.Time `db:"expiration_time"`
-	IPAddress      string    `db:"ip_address"`
-	Metadata       map[string]string
-}
 
 // Database is the interface for all database operations used by the server.
 type Database interface { //nolint:interfacebloat
@@ -56,10 +45,6 @@ type Database interface { //nolint:interfacebloat
 	// OnFileDelete removes the record for the given file from the database.
 	// It returns ErrFileNotFound if no record exists for the ID.
 	OnFileDelete(ctx context.Context, fileID string) error
-
-	// GetFileMetadata returns the metadata map stored for the given file,
-	// or ErrFileNotFound if no record exists.
-	GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error)
 	// GetFileToken returns the token associated with the given file ID,
 	// or ErrFileNotFound if no record exists.
 	GetFileToken(ctx context.Context, fileID string) (string, error)
@@ -68,9 +53,9 @@ type Database interface { //nolint:interfacebloat
 	GetFileByToken(ctx context.Context, token string) (string, error)
 	// GetExpiredFiles returns the IDs of all files whose expiration time has passed.
 	GetExpiredFiles(ctx context.Context) ([]string, error)
-	// GetFileData returns the full file record for the given file ID,
+	// GetFile returns the full file record for the given file ID,
 	// or ErrFileNotFound if no record exists.
-	GetFileData(ctx context.Context, fileID string) (*FileRecord, error)
+	GetFile(ctx context.Context, fileID string) (*models.File, error)
 	// SetExpiration updates the expiration time of the given file.
 	// It returns ErrFileNotFound if no record exists.
 	SetExpiration(ctx context.Context, fileID string, expiration time.Time) error

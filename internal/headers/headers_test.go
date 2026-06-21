@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,19 +96,21 @@ func Test_SetContentType(t *testing.T) {
 func Test_SetHeaders(t *testing.T) {
 	tests := []struct {
 		name            string
-		filename        string
-		metadata        map[string]string
+		file            models.File
 		inline          bool
 		cache           bool
 		expectedHeaders map[string]string
 		absentHeaders   []string
 	}{
 		{
-			name:     "with metadata",
-			filename: "test.pdf",
-			metadata: map[string]string{"Content-Type": "application/pdf"},
-			inline:   false,
-			cache:    true,
+			name: "with metadata",
+			file: models.File{
+				ID:          "test-id",
+				Name:        "test.pdf",
+				ContentType: "application/pdf",
+			},
+			inline: false,
+			cache:  true,
 			expectedHeaders: map[string]string{
 				"Cache-Control":       "public, max-age=36000",
 				"Content-Type":        "application/pdf",
@@ -115,11 +118,14 @@ func Test_SetHeaders(t *testing.T) {
 			},
 		},
 		{
-			name:     "with spaces in filename",
-			filename: "my file.txt",
-			metadata: map[string]string{"Content-Type": "application/pdf"},
-			inline:   false,
-			cache:    true,
+			name: "with spaces in filename",
+			file: models.File{
+				ID:          "test-id",
+				Name:        "my file.txt",
+				ContentType: "application/pdf",
+			},
+			inline: false,
+			cache:  true,
 			expectedHeaders: map[string]string{
 				"Cache-Control":       "public, max-age=36000",
 				"Content-Type":        "application/pdf",
@@ -127,11 +133,14 @@ func Test_SetHeaders(t *testing.T) {
 			},
 		},
 		{
-			name:     "no cache",
-			filename: "image.jpg",
-			metadata: map[string]string{"Content-Type": "image/jpeg"},
-			inline:   true,
-			cache:    false,
+			name: "no cache",
+			file: models.File{
+				ID:          "test-id",
+				Name:        "image.jpg",
+				ContentType: "image/jpeg",
+			},
+			inline: true,
+			cache:  false,
 			expectedHeaders: map[string]string{
 				"Content-Type":        "image/jpeg",
 				"Content-Disposition": `inline; filename=image.jpg`,
@@ -139,11 +148,14 @@ func Test_SetHeaders(t *testing.T) {
 			absentHeaders: []string{"Cache-Control"},
 		},
 		{
-			name:     "no metadata",
-			filename: "unknown.bin",
-			metadata: map[string]string{},
-			inline:   false,
-			cache:    false,
+			name: "no metadata",
+			file: models.File{
+				ID:          "test-id",
+				Name:        "unknown.bin",
+				ContentType: "application/octet-stream",
+			},
+			inline: false,
+			cache:  false,
 			expectedHeaders: map[string]string{
 				"Content-Disposition": `attachment; filename=unknown.bin`,
 			},
@@ -153,7 +165,7 @@ func Test_SetHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := runCtx(t, func(c fiber.Ctx) {
-				SetHeaders(c, tt.filename, tt.metadata, tt.inline, tt.cache)
+				SetHeaders(c, tt.file.Name, tt.file.ContentType, tt.inline, tt.cache)
 			})
 
 			for header, expected := range tt.expectedHeaders {

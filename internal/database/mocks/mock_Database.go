@@ -9,7 +9,7 @@ import (
 	"mime/multipart"
 	"time"
 
-	"github.com/markhc/isrv/internal/database"
+	"github.com/markhc/isrv/internal/models"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -257,23 +257,23 @@ func (_c *MockDatabase_GetFileByToken_Call) RunAndReturn(run func(ctx context.Co
 }
 
 // GetFileData provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) GetFileData(ctx context.Context, fileID string) (*database.FileRecord, error) {
+func (_mock *MockDatabase) GetFileData(ctx context.Context, fileID string) (*models.File, error) {
 	ret := _mock.Called(ctx, fileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFileData")
 	}
 
-	var r0 *database.FileRecord
+	var r0 *models.File
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*database.FileRecord, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*models.File, error)); ok {
 		return returnFunc(ctx, fileID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *database.FileRecord); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *models.File); ok {
 		r0 = returnFunc(ctx, fileID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*database.FileRecord)
+			r0 = ret.Get(0).(*models.File)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -314,12 +314,12 @@ func (_c *MockDatabase_GetFileData_Call) Run(run func(ctx context.Context, fileI
 	return _c
 }
 
-func (_c *MockDatabase_GetFileData_Call) Return(fileRecord *database.FileRecord, err error) *MockDatabase_GetFileData_Call {
-	_c.Call.Return(fileRecord, err)
+func (_c *MockDatabase_GetFileData_Call) Return(file *models.File, err error) *MockDatabase_GetFileData_Call {
+	_c.Call.Return(file, err)
 	return _c
 }
 
-func (_c *MockDatabase_GetFileData_Call) RunAndReturn(run func(ctx context.Context, fileID string) (*database.FileRecord, error)) *MockDatabase_GetFileData_Call {
+func (_c *MockDatabase_GetFileData_Call) RunAndReturn(run func(ctx context.Context, fileID string) (*models.File, error)) *MockDatabase_GetFileData_Call {
 	_c.Call.Return(run)
 	return _c
 }

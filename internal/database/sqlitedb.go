@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -37,7 +36,7 @@ type SQLiteDB struct {
 
 const (
 	QUERY_INSERT_FILE = `
-		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, metadata) 
+		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, content_type)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 	QUERY_UPDATE_DOWNLOAD_COUNT = `
@@ -45,9 +44,6 @@ const (
 	`
 	QUERY_DELETE_FILE = `
 		DELETE FROM files WHERE id = ?
-	`
-	QUERY_SELECT_METADATA = `
-		SELECT metadata FROM files WHERE id = ?
 	`
 	QUERY_SELECT_TOKEN = `
 		SELECT token FROM files WHERE id = ?
@@ -59,7 +55,8 @@ const (
 		SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP
 	`
 	QUERY_SELECT_FILE_DATA = `
-		SELECT id, file_name, file_size, token, expiration_time, ip_address, metadata FROM files WHERE id = ?
+		SELECT id, file_name, file_size, content_type, expiration_time, download_count
+		FROM files WHERE id = ?
 	`
 	QUERY_UPDATE_EXPIRATION = `
 		UPDATE files SET expiration_time = ? WHERE id = ?
@@ -172,7 +169,7 @@ func (db *SQLiteDB) Migrate() error {
 	return nil
 }
 
-// OnFileUpload inserts a new file record with the given metadata and expiration time.
+// OnFileUpload inserts a new file record into the database.
 func (db *SQLiteDB) OnFileUpload(
 	ctx context.Context,
 	fileID string,
@@ -192,17 +189,9 @@ func (db *SQLiteDB) OnFileUpload(
 
 	defer span.End()
 
-	metadata := make(map[string]string)
-	if fileHeader.Header.Get("Content-Type") != "" {
-		metadata["Content-Type"] = fileHeader.Header.Get("Content-Type")
-	}
+	contentType := fileHeader.Header.Get("Content-Type")
 
-	jsonMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		jsonMetadata = []byte("{}")
-	}
-
-	_, err = db.sqldb.ExecContext(
+	_, err := db.sqldb.ExecContext(
 		ctx,
 		QUERY_INSERT_FILE,
 		fileID,
@@ -211,7 +200,7 @@ func (db *SQLiteDB) OnFileUpload(
 		token,
 		expirationTime,
 		ipAddress,
-		string(jsonMetadata))
+		contentType)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to insert file record")
@@ -291,41 +280,6 @@ func (db *SQLiteDB) OnFileDelete(ctx context.Context, fileID string) error {
 	}
 
 	return nil
-}
-
-// GetFileMetadata returns the metadata map for the given file ID.
-func (db *SQLiteDB) GetFileMetadata(ctx context.Context, fileID string) (map[string]string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileMetadata",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-		),
-	)
-
-	defer span.End()
-
-	var metadataStr string
-	err := db.sqldb.GetContext(ctx, &metadataStr, QUERY_SELECT_METADATA, fileID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrFileNotFound
-		}
-
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to query file metadata")
-
-		return nil, fmt.Errorf("failed to query file metadata: %w", err)
-	}
-
-	var metadata map[string]string
-	err = json.Unmarshal([]byte(metadataStr), &metadata)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to parse file metadata")
-
-		return nil, fmt.Errorf("failed to parse file metadata: %w", err)
-	}
-
-	return metadata, nil
 }
 
 // GetFileToken returns the token associated with the given file ID.
@@ -413,9 +367,9 @@ func (db *SQLiteDB) GetExpiredFiles(ctx context.Context) ([]string, error) {
 	return expiredFiles, nil
 }
 
-// GetFileData returns the file record for the given file ID.
-func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileData",
+// GetFile returns the file record for the given file ID.
+func (db *SQLiteDB) GetFile(ctx context.Context, id string) (*models.File, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFile",
 		trace.WithAttributes(
 			attribute.String(telemetry.AttrFileID, id),
 		),
@@ -423,18 +377,17 @@ func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, er
 	defer span.End()
 
 	var (
-		record      FileRecord
-		metadataStr string
+		file        models.File
+		contentType sql.NullString
 	)
 
 	row := db.sqldb.QueryRowContext(ctx, QUERY_SELECT_FILE_DATA, id)
-	err := row.Scan(&record.ID,
-		&record.FileName,
-		&record.FileSize,
-		&record.Token,
-		&record.ExpirationTime,
-		&record.IPAddress,
-		&metadataStr)
+	err := row.Scan(&file.ID,
+		&file.Name,
+		&file.Size,
+		&contentType,
+		&file.Expiration,
+		&file.Downloads)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFileNotFound
@@ -446,18 +399,9 @@ func (db *SQLiteDB) GetFileData(ctx context.Context, id string) (*FileRecord, er
 		return nil, fmt.Errorf("failed to query file data: %w", err)
 	}
 
-	if metadataStr != "" {
-		if err := json.Unmarshal([]byte(metadataStr), &record.Metadata); err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to parse file metadata")
+	file.ContentType = contentType.String
 
-			return nil, fmt.Errorf("failed to parse file metadata: %w", err)
-		}
-	} else {
-		record.Metadata = map[string]string{}
-	}
-
-	return &record, nil
+	return &file, nil
 }
 
 // SetExpiration updates the expiration time for the given file ID.

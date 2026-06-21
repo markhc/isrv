@@ -125,12 +125,8 @@ func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 // ServeFile sets response headers and serves the file directly from disk.
 func (ls *LocalStorage) ServeFile(
 	c fiber.Ctx,
-	fileID string,
-	fileName string,
-	metadata map[string]string,
-	inlineContent bool,
-	cachingEnabled bool,
+	file *models.File,
 ) error {
-	headers.SetHeaders(c, fileName, metadata, inlineContent, cachingEnabled)
-	return c.SendFile(path.Join(ls.BasePath, fileID), fiber.SendFile{ByteRange: true})
+	headers.SetHeaders(c, file.Name, file.ContentType, true, true)
+	return c.SendFile(path.Join(ls.BasePath, file.ID), fiber.SendFile{ByteRange: true})
 }

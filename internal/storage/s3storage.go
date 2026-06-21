@@ -191,28 +191,20 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 // ServeFile generates a pre-signed S3 URL and redirects the client to it.
 func (storage *S3Storage) ServeFile(
 	c fiber.Ctx,
-	fileID string,
-	fileName string,
-	metadata map[string]string,
-	inlineContent bool,
-	cachingEnabled bool,
+	file *models.File,
 ) error {
-	sanitizedFileName := url.PathEscape(fileName)
-	objectKey := path.Join(storage.BasePath, fileID)
+	sanitizedFileName := url.PathEscape(file.Name)
+	objectKey := path.Join(storage.BasePath, file.ID)
 
-	cacheControl := "no-cache"
-	if cachingEnabled {
-		cacheControl = "public, max-age=43200" // 12 hours
-	}
+	// cacheControl := "no-cache"
+	cacheControl := "public, max-age=43200" // 12 hours
 
-	contentDisposition := "attachment"
-	if inlineContent {
-		contentDisposition = "inline"
-	}
+	// contentDisposition := "attachment"
+	contentDisposition := "inline"
 
 	contentType := "application/octet-stream"
-	if ct, ok := metadata["Content-Type"]; ok {
-		contentType = ct
+	if file.ContentType != "" {
+		contentType = file.ContentType
 	}
 
 	presignedUrl, err := storage.presigner.PresignGetObject(c.Context(), &s3.GetObjectInput{

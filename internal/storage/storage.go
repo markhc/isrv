@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -69,9 +70,5 @@ type Storage interface {
 	// appropriate headers based on metadata and the inline/caching flags.
 	ServeFile(
 		c fiber.Ctx,
-		fileID string,
-		fileName string,
-		metadata map[string]string,
-		inlineContent bool,
-		cachingEnabled bool) error
+		file *models.File) error
 }

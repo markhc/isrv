@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -187,7 +188,7 @@ func Test_S3Storage_DeleteFile(t *testing.T) {
 func Test_S3Storage_ServeFile(t *testing.T) {
 	tests := []struct {
 		name           string
-		fileName       string
+		file           models.File
 		metadata       map[string]string
 		inlineContent  bool
 		cachingEnabled bool
@@ -197,17 +198,23 @@ func Test_S3Storage_ServeFile(t *testing.T) {
 		wantLocation   string
 	}{
 		{
-			name:         "attachment no cache",
-			fileName:     "file.bin",
+			name: "attachment no cache",
+			file: models.File{
+				ID:   "test-id",
+				Name: "file.bin",
+			},
 			metadata:     map[string]string{},
 			presignURL:   "https://s3.example.com/presigned",
 			wantStatus:   http.StatusFound,
 			wantLocation: "https://s3.example.com/presigned",
 		},
 		{
-			name:           "inline with cache and custom content type",
-			fileName:       "image.png",
-			metadata:       map[string]string{"Content-Type": "image/png"},
+			name: "inline with cache and custom content type",
+			file: models.File{
+				ID:          "test-id",
+				Name:        "image.png",
+				ContentType: "image/png",
+			},
 			inlineContent:  true,
 			cachingEnabled: true,
 			presignURL:     "https://s3.example.com/presigned-img",
@@ -215,8 +222,11 @@ func Test_S3Storage_ServeFile(t *testing.T) {
 			wantLocation:   "https://s3.example.com/presigned-img",
 		},
 		{
-			name:       "presign error returns 500",
-			fileName:   "file.bin",
+			name: "presign error returns 500",
+			file: models.File{
+				ID:   "test-id",
+				Name: "file.bin",
+			},
 			metadata:   map[string]string{},
 			presignErr: errors.New("sign failed"),
 			wantStatus: http.StatusInternalServerError,
@@ -238,7 +248,7 @@ func Test_S3Storage_ServeFile(t *testing.T) {
 
 			app := fiber.New()
 			app.Get("/", func(c fiber.Ctx) error {
-				return s.ServeFile(c, "test-id", tt.fileName, tt.metadata, tt.inlineContent, tt.cachingEnabled)
+				return s.ServeFile(c, &tt.file)
 			})
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)

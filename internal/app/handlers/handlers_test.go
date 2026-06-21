@@ -200,9 +200,9 @@ func Test_Download(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
 			stor := newMockStorage(t)
 
-			db.On("GetFileData", mock.Anything, tt.fileID).Return(&database.FileRecord{
+			db.On("GetFileData", mock.Anything, tt.fileID).Return(&models.File{
 				ID:       tt.fileID,
-				FileName: tt.resolvedName,
+				Name:     tt.resolvedName,
 				Metadata: tt.metadata,
 			}, nil)
 			db.On("OnFileDownload", mock.Anything, tt.fileID).Return(tt.downloadErr)
@@ -409,14 +409,14 @@ func Test_Delete(t *testing.T) {
 // Expire
 // ---------------------------------------------------------------------------
 
-// smallFileRecord returns a FileRecord for a 1 KB file, whose max expiry
+// smallFileRecord returns a File for a 1 KB file, whose max expiry
 // (relative to defaultConfig) is ~maxAgeDays from now.
-func smallFileRecord() *database.FileRecord {
-	return &database.FileRecord{
-		ID:             "abc123",
-		FileName:       "file.txt",
-		FileSize:       1024,
-		ExpirationTime: time.Now().Add(30 * 24 * time.Hour),
+func smallFileRecord() *models.File {
+	return &models.File{
+		ID:         "abc123",
+		Name:       "file.txt",
+		Size:       1024,
+		Expiration: time.Now().Add(30 * 24 * time.Hour),
 	}
 }
 

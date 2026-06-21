@@ -32,7 +32,7 @@ func Download(db database.Database, stor storage.Storage) fiber.Handler {
 		defer span.End()
 		c.SetContext(ctx)
 
-		fileData, err := db.GetFileData(ctx, fileID)
+		file, err := db.GetFile(ctx, fileID)
 		if err != nil {
 			if errors.Is(err, database.ErrFileNotFound) {
 				return c.Status(fiber.StatusNotFound).SendString("not found")
@@ -42,14 +42,14 @@ func Download(db database.Database, stor storage.Storage) fiber.Handler {
 			return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
 		}
 
-		if fileName == "" {
-			fileName = fileData.FileName
+		if fileName != "" {
+			file.Name = fileName
 		}
 
 		logging.DebugCtx(ctx,
 			"serving file",
-			logging.String("file_id", fileID),
-			logging.String("file_name", fileName),
+			logging.String("id", fileID),
+			logging.String("filename", file.Name),
 			logging.String("path", c.Path()))
 
 		if err := db.OnFileDownload(ctx, fileID); err != nil {
@@ -63,6 +63,6 @@ func Download(db database.Database, stor storage.Storage) fiber.Handler {
 			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
 		))
 
-		return stor.ServeFile(c, fileID, fileName, fileData.Metadata, true, true)
+		return stor.ServeFile(c, file)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/models"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -336,16 +337,16 @@ func (_c *MockStorage_SaveFileUpload_Call) RunAndReturn(run func(ctx context.Con
 }
 
 // ServeFile provides a mock function for the type MockStorage
-func (_mock *MockStorage) ServeFile(c fiber.Ctx, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) error {
-	ret := _mock.Called(c, fileID, fileName, metadata, inlineContent, cachingEnabled)
+func (_mock *MockStorage) ServeFile(c fiber.Ctx, file *models.File) error {
+	ret := _mock.Called(c, file)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ServeFile")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(fiber.Ctx, string, string, map[string]string, bool, bool) error); ok {
-		r0 = returnFunc(c, fileID, fileName, metadata, inlineContent, cachingEnabled)
+	if returnFunc, ok := ret.Get(0).(func(fiber.Ctx, *models.File) error); ok {
+		r0 = returnFunc(c, file)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -359,48 +360,24 @@ type MockStorage_ServeFile_Call struct {
 
 // ServeFile is a helper method to define mock.On call
 //   - c fiber.Ctx
-//   - fileID string
-//   - fileName string
-//   - metadata map[string]string
-//   - inlineContent bool
-//   - cachingEnabled bool
-func (_e *MockStorage_Expecter) ServeFile(c interface{}, fileID interface{}, fileName interface{}, metadata interface{}, inlineContent interface{}, cachingEnabled interface{}) *MockStorage_ServeFile_Call {
-	return &MockStorage_ServeFile_Call{Call: _e.mock.On("ServeFile", c, fileID, fileName, metadata, inlineContent, cachingEnabled)}
+//   - file *models.File
+func (_e *MockStorage_Expecter) ServeFile(c interface{}, file interface{}) *MockStorage_ServeFile_Call {
+	return &MockStorage_ServeFile_Call{Call: _e.mock.On("ServeFile", c, file)}
 }
 
-func (_c *MockStorage_ServeFile_Call) Run(run func(c fiber.Ctx, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool)) *MockStorage_ServeFile_Call {
+func (_c *MockStorage_ServeFile_Call) Run(run func(c fiber.Ctx, file *models.File)) *MockStorage_ServeFile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 fiber.Ctx
 		if args[0] != nil {
 			arg0 = args[0].(fiber.Ctx)
 		}
-		var arg1 string
+		var arg1 *models.File
 		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		var arg3 map[string]string
-		if args[3] != nil {
-			arg3 = args[3].(map[string]string)
-		}
-		var arg4 bool
-		if args[4] != nil {
-			arg4 = args[4].(bool)
-		}
-		var arg5 bool
-		if args[5] != nil {
-			arg5 = args[5].(bool)
+			arg1 = args[1].(*models.File)
 		}
 		run(
 			arg0,
 			arg1,
-			arg2,
-			arg3,
-			arg4,
-			arg5,
 		)
 	})
 	return _c
@@ -411,7 +388,7 @@ func (_c *MockStorage_ServeFile_Call) Return(err error) *MockStorage_ServeFile_C
 	return _c
 }
 
-func (_c *MockStorage_ServeFile_Call) RunAndReturn(run func(c fiber.Ctx, fileID string, fileName string, metadata map[string]string, inlineContent bool, cachingEnabled bool) error) *MockStorage_ServeFile_Call {
+func (_c *MockStorage_ServeFile_Call) RunAndReturn(run func(c fiber.Ctx, file *models.File) error) *MockStorage_ServeFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -88,13 +88,13 @@ func Test_SQLiteDB_OnFileUpload(t *testing.T) {
 			err := db.OnFileUpload(context.Background(), tt.fileID, header, tt.fileID, tt.expirationTime, tt.ipAddress)
 			require.NoError(t, err)
 
-			metadata, err := db.GetFileMetadata(context.Background(), tt.fileID)
+			file, err := db.GetFile(context.Background(), tt.fileID)
 			require.NoError(t, err)
 
 			if tt.contentType != "" {
-				assert.Equal(t, tt.contentType, metadata["Content-Type"])
+				assert.Equal(t, tt.contentType, file.ContentType)
 			} else {
-				assert.NotContains(t, metadata, "Content-Type")
+				assert.Empty(t, file.ContentType)
 			}
 		})
 	}
@@ -147,10 +147,10 @@ func Test_SQLiteDB_OnFileDelete(t *testing.T) {
 	err := db.OnFileDelete(context.Background(), "delete-test-1")
 	require.NoError(t, err)
 
-	_, err = db.GetFileMetadata(context.Background(), "delete-test-1")
-	assert.Error(t, err, "expected error when getting metadata for deleted file")
+	_, err = db.GetFile(context.Background(), "delete-test-1")
+	assert.Error(t, err, "expected error when getting deleted file")
 
-	_, err = db.GetFileMetadata(context.Background(), "delete-test-2")
+	_, err = db.GetFile(context.Background(), "delete-test-2")
 	assert.NoError(t, err, "other file should still exist")
 
 	err = db.OnFileDelete(context.Background(), "non-existing")
@@ -210,19 +210,19 @@ func Test_SQLiteDB_GetFileMetadata(t *testing.T) {
 		name        string
 		fileID      string
 		contentType string
-		expected    map[string]string
+		expected    string
 	}{
 		{
 			"file with content type",
 			"meta-test-1",
 			"application/pdf",
-			map[string]string{"Content-Type": "application/pdf"},
+			"application/pdf",
 		},
 		{
 			"file without content type",
 			"meta-test-2",
 			"",
-			map[string]string{},
+			"",
 		},
 	}
 
@@ -241,20 +241,12 @@ func Test_SQLiteDB_GetFileMetadata(t *testing.T) {
 			err := db.OnFileUpload(context.Background(), tt.fileID, header, tt.fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
 			require.NoError(t, err, "setup failed")
 
-			metadata, err := db.GetFileMetadata(context.Background(), tt.fileID)
+			file, err := db.GetFile(context.Background(), tt.fileID)
 			require.NoError(t, err)
 
-			assert.Equal(t, tt.expected, metadata)
+			assert.Equal(t, tt.expected, file.ContentType)
 		})
 	}
-}
-
-func Test_SQLiteDB_GetFileMetadata_nonExist(t *testing.T) {
-	db := setupTestDB(t)
-	defer db.Close()
-
-	_, err := db.GetFileMetadata(context.Background(), "non-existing-file")
-	assert.Error(t, err)
 }
 
 func Test_SQLiteDB_Connect_and_Migrate(t *testing.T) {

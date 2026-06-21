@@ -102,7 +102,7 @@ func applyExpire(c fiber.Ctx, config *models.Configuration, db database.Database
 		return respErr
 	}
 
-	record, err := db.GetFileData(c.Context(), fileID)
+	record, err := db.GetFile(c.Context(), fileID)
 	if err != nil {
 		if errors.Is(err, database.ErrFileNotFound) {
 			return utils.RespondWithError(c, fiber.StatusNotFound, "file not found")
@@ -114,7 +114,7 @@ func applyExpire(c fiber.Ctx, config *models.Configuration, db database.Database
 		return utils.RespondWithError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
-	maxExpiry := utils.MaxExpirationTime(record.FileSize, config)
+	maxExpiry := utils.MaxExpirationTime(record.Size, config)
 	if newExpiry.After(maxExpiry) {
 		return utils.RespondWithError(c, fiber.StatusUnprocessableEntity,
 			"expiration exceeds the maximum allowed time of "+maxExpiry.Format(time.RFC3339),

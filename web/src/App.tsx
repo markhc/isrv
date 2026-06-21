@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useEffect } from "react"
 import { initializeTheme } from "./utils/theme"
-import { TooltipProvider } from "./components/ui/tooltip"
+import { TooltipProvider } from "@radix-ui/react-tooltip"
 import { Toaster } from "@/components/ui/sonner"
 import { RouterProvider } from "@tanstack/react-router"
 import { router } from "./router"

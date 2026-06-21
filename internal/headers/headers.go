@@ -42,7 +42,7 @@ func SetContentType(c fiber.Ctx, contentType string) {
 func SetHeaders(
 	c fiber.Ctx,
 	fileName string,
-	fileMetadata map[string]string,
+	contentType string,
 	inlineContent bool,
 	cachingEnabled bool,
 ) {
@@ -50,7 +50,7 @@ func SetHeaders(
 		AddCacheHeader(c)
 	}
 
-	if contentType, ok := fileMetadata["Content-Type"]; ok {
+	if contentType != "" {
 		SetContentType(c, contentType)
 	}
 
