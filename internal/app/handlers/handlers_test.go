@@ -166,32 +166,37 @@ func Test_Static(t *testing.T) {
 func Test_Download(t *testing.T) {
 	tests := []struct {
 		name         string
-		fileID       string
-		fileName     string
+		file         models.File
 		resolvedName string
 		downloadErr  error
-		metadata     map[string]string
 	}{
 		{
-			name:         "happy path without filename",
-			fileID:       "abc123",
-			fileName:     "",
+			name: "happy path without filename",
+			file: models.File{
+				ID:          "abc123",
+				Name:        "",
+				ContentType: "image/png",
+			},
 			resolvedName: "stored.png",
-			metadata:     map[string]string{"Content-Type": "image/png"},
 		},
 		{
-			name:         "happy path with filename",
-			fileID:       "abc123",
-			fileName:     "photo.png",
+			name: "happy path with filename",
+			file: models.File{
+				ID:          "abc123",
+				Name:        "photo.png",
+				ContentType: "image/png",
+			},
 			resolvedName: "photo.png",
-			metadata:     map[string]string{"Content-Type": "image/png"},
 		},
 		{
-			name:         "OnFileDownload error is non-fatal",
-			fileID:       "abc123",
+			name: "OnFileDownload error is non-fatal",
+			file: models.File{
+				ID:          "abc123",
+				Name:        "",
+				ContentType: "",
+			},
 			resolvedName: "stored.png",
 			downloadErr:  errors.New("db error"),
-			metadata:     nil,
 		},
 	}
 
@@ -200,22 +205,18 @@ func Test_Download(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
 			stor := newMockStorage(t)
 
-			db.On("GetFileData", mock.Anything, tt.fileID).Return(&models.File{
-				ID:       tt.fileID,
-				Name:     tt.resolvedName,
-				Metadata: tt.metadata,
-			}, nil)
-			db.On("OnFileDownload", mock.Anything, tt.fileID).Return(tt.downloadErr)
-			stor.On("ServeFile", mock.Anything, tt.fileID, tt.resolvedName, tt.metadata, true, true).Return(nil)
+			db.On("GetFile", mock.Anything, tt.file.ID).Return(&tt.file, nil)
+			db.On("OnFileDownload", mock.Anything, tt.file.ID).Return(tt.downloadErr)
+			stor.On("ServeFile", mock.Anything, &tt.file).Return(nil)
 
 			app := newApp()
 			h := handlers.Download(db, stor)
 			app.Get("/d/:id", h)
 			app.Get("/d/:id/:filename", h)
 
-			path := "/d/" + tt.fileID
-			if tt.fileName != "" {
-				path += "/" + tt.fileName
+			path := "/d/" + tt.file.ID
+			if tt.file.Name != "" {
+				path += "/" + tt.file.Name
 			}
 
 			resp := doTest(t, app, httptest.NewRequest(http.MethodGet, path, nil))
@@ -441,7 +442,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON(unixMsIn(24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
@@ -452,7 +453,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON("48"),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
@@ -487,7 +488,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON(unixMsIn(400 * 24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 			},
 			expectedStatus: http.StatusUnprocessableEntity,
 			expectedBody:   "expiration exceeds the maximum allowed time",
@@ -497,17 +498,17 @@ func Test_Expire(t *testing.T) {
 			fileID: "missing",
 			body:   expiresJSON("24"),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFileData", mock.Anything, "missing").Return(nil, database.ErrFileNotFound)
+				db.On("GetFile", mock.Anything, "missing").Return(nil, database.ErrFileNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   "file not found",
 		},
 		{
-			name:   "database error on GetFileData returns 500",
+			name:   "database error on GetFile returns 500",
 			fileID: "abc123",
 			body:   expiresJSON("24"),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFileData", mock.Anything, "abc123").Return(nil, database.ErrDatabase)
+				db.On("GetFile", mock.Anything, "abc123").Return(nil, database.ErrDatabase)
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "internal server error",
@@ -517,7 +518,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON(unixMsIn(24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFileData", mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
 				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(errors.New("db error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
