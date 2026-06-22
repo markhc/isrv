@@ -1,7 +1,3 @@
-// Package telemetry initializes OpenTelemetry tracing, metrics, and logging
-// for the application and exposes the global instruments used throughout the
-// codebase. All exporter configuration is read from the standard OTEL_*
-// environment variables.
 package telemetry
 
 import (
@@ -30,19 +26,15 @@ import (
 )
 
 // InstrumentationName is the OpenTelemetry instrumentation scope name used
-// for all spans and metrics emitted directly by this application's code (as
-// opposed to the HTTP server spans from the FiberTracing middleware).
+// for all spans and metrics emitted directly by this application's code.
 const InstrumentationName = "github.com/markhc/isrv"
 
 // metricsHandler stores the Prometheus scrape handler installed by Setup so
-// MetricsHandler can return it from any goroutine. Before Setup runs it
-// returns a 503 handler, allowing callers to mount the route unconditionally.
+// MetricsHandler can return it from any goroutine.
 var metricsHandler atomic.Value //nolint:gochecknoglobals // bridges Setup() and MetricsHandler() across packages.
 
 // MetricsHandler returns the HTTP handler that serves the Prometheus scrape
-// endpoint. Before Setup runs (or when telemetry is disabled) it returns a
-// handler that responds with 503 Service Unavailable, so it remains safe to
-// mount on a route at startup.
+// endpoint.
 func MetricsHandler() http.Handler {
 	if h, ok := metricsHandler.Load().(http.Handler); ok && h != nil {
 		return h

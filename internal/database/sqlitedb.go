@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -61,7 +62,25 @@ const (
 	QUERY_UPDATE_EXPIRATION = `
 		UPDATE files SET expiration_time = ? WHERE id = ?
 	`
+	QUERY_LIST_FILES_SELECT = `
+		SELECT id, file_name, file_size, content_type, expiration_time,
+		       download_count, ip_address, created_at
+		FROM files
+	`
+	QUERY_LIST_FILES_COUNT = `SELECT COUNT(*) FROM files`
 )
+
+// listFilesSortColumns whitelists the columns that ListFiles may sort by,
+// mapping the public sort key to the underlying SQL column.
+//
+//nolint:gochecknoglobals
+var listFilesSortColumns = map[string]string{
+	"created_at": "created_at",
+	"size":       "file_size",
+	"downloads":  "download_count",
+	"expiration": "expiration_time",
+	"name":       "file_name",
+}
 
 // NewSQLiteDB creates a new SQLiteDB from the provided configuration.
 func NewSQLiteDB(config models.Configuration) *SQLiteDB {
@@ -212,11 +231,6 @@ func (db *SQLiteDB) OnFileUpload(
 }
 
 // OnFileDownload increments the download counter for the given file ID.
-//
-// ErrFileNotFound is returned for an unknown ID; it is treated as an
-// expected (info-level) outcome rather than a span error so it does not
-// pollute trace error-rate dashboards. Only real SQL failures set the span
-// status to Error.
 func (db *SQLiteDB) OnFileDownload(ctx context.Context, fileID string) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDownload",
 		trace.WithAttributes(
@@ -402,6 +416,115 @@ func (db *SQLiteDB) GetFile(ctx context.Context, id string) (*models.File, error
 	file.ContentType = contentType.String
 
 	return &file, nil
+}
+
+// ListFiles returns a page of file records matching filter along with the total
+// number of matching records. The WHERE clause is built from filter using bound
+// parameters; the ORDER BY column and direction are chosen from a whitelist to
+// avoid SQL injection.
+func (db *SQLiteDB) ListFiles(ctx context.Context, filter models.FileListFilter) ([]models.File, int, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.ListFiles")
+	defer span.End()
+
+	where, args := buildListFilesWhere(filter)
+
+	var total int
+	if err := db.sqldb.GetContext(ctx, &total, QUERY_LIST_FILES_COUNT+where, args...); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to count files")
+
+		return nil, 0, fmt.Errorf("failed to count files: %w", err)
+	}
+
+	query := QUERY_LIST_FILES_SELECT + where + buildListFilesOrderBy(filter) + " LIMIT ? OFFSET ?"
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	args = append(args, limit, filter.Offset)
+
+	rows, err := db.sqldb.QueryContext(ctx, query, args...)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to query files")
+
+		return nil, 0, fmt.Errorf("failed to query files: %w", err)
+	}
+	defer rows.Close()
+
+	files := make([]models.File, 0, limit)
+	for rows.Next() {
+		var (
+			file        models.File
+			contentType sql.NullString
+			ipAddress   sql.NullString
+		)
+
+		err := rows.Scan(&file.ID, &file.Name, &file.Size, &contentType,
+			&file.Expiration, &file.Downloads, &ipAddress, &file.CreatedAt)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to scan file row")
+
+			return nil, 0, fmt.Errorf("failed to scan file row: %w", err)
+		}
+
+		file.ContentType = contentType.String
+		file.IPAddress = ipAddress.String
+		files = append(files, file)
+	}
+
+	if err := rows.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to iterate file rows")
+
+		return nil, 0, fmt.Errorf("failed to iterate file rows: %w", err)
+	}
+
+	return files, total, nil
+}
+
+// buildListFilesWhere builds a parameterized WHERE clause (including the leading
+// " WHERE ") and its arguments from filter. It returns an empty string when no
+// filters are set.
+func buildListFilesWhere(filter models.FileListFilter) (string, []any) {
+	var (
+		conditions []string
+		args       []any
+	)
+
+	if filter.Search != "" {
+		conditions = append(conditions, "(file_name LIKE ? OR content_type LIKE ?)")
+		pattern := "%" + filter.Search + "%"
+		args = append(args, pattern, pattern)
+	}
+
+	if filter.IP != "" {
+		conditions = append(conditions, "ip_address LIKE ?")
+		args = append(args, "%"+filter.IP+"%")
+	}
+
+	if len(conditions) == 0 {
+		return "", nil
+	}
+
+	return " WHERE " + strings.Join(conditions, " AND "), args
+}
+
+// buildListFilesOrderBy returns a safe " ORDER BY ..." clause built from the
+// whitelisted sort column and direction.
+func buildListFilesOrderBy(filter models.FileListFilter) string {
+	column, ok := listFilesSortColumns[filter.SortBy]
+	if !ok {
+		column = "created_at"
+	}
+
+	direction := "DESC"
+	if strings.EqualFold(filter.SortDir, "asc") {
+		direction = "ASC"
+	}
+
+	return " ORDER BY " + column + " " + direction
 }
 
 // SetExpiration updates the expiration time for the given file ID.

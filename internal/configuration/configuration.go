@@ -1,12 +1,15 @@
 package configuration
 
 import (
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/markhc/isrv/internal/models"
@@ -56,6 +59,9 @@ func applyEnvOverrides() {
 		"ISRV_SERVER_URL":                "ServerURL",
 		"ISRV_SERVER_HOST":               "ServerHost",
 		"ISRV_SERVER_PORT":               "ServerPort",
+		"ISRV_ADMIN_USERNAME":            "Admin.Username",
+		"ISRV_ADMIN_PASSWORD":            "Admin.Password",
+		"ISRV_ADMIN_SESSION_SECRET":      "Admin.SessionSecret",
 		"ISRV_STORAGE_PATH":              "Storage.BasePath",
 		"ISRV_LOGGING_FILE_ENABLED":      "Logging.LogToFile",
 		"ISRV_LOGGING_PATH":              "Logging.Path",
@@ -144,6 +150,28 @@ func verifyConfiguration() {
 	verifyStorageConfig()
 	verifyCleanupConfig()
 	verifyRateLimitConfig()
+	verifyAdminConfig()
+}
+
+// verifyAdminConfig normalizes admin panel settings. When the panel is enabled
+// it generates a random session secret if none was provided and applies a
+// default session TTL.
+func verifyAdminConfig() {
+	if !config.Admin.Enabled() {
+		return
+	}
+
+	if config.Admin.SessionSecret == "" {
+		secret := make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			panic(fmt.Errorf("failed to generate admin session secret: %w", err))
+		}
+		config.Admin.SessionSecret = hex.EncodeToString(secret)
+	}
+
+	if config.Admin.SessionTTL <= 0 {
+		config.Admin.SessionTTL = 24 * time.Hour
+	}
 }
 
 func getDefaultConfig() models.Configuration {

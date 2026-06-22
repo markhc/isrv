@@ -21,6 +21,19 @@ type StorageConfiguration struct {
 	Endpoint   string `yaml:"endpoint"`
 }
 
+// AdminConfiguration holds settings for the single-administrator admin panel.
+type AdminConfiguration struct {
+	Username      string        `yaml:"username"`
+	Password      string        `yaml:"password"`
+	SessionSecret string        `yaml:"sessionSecret"`
+	SessionTTL    time.Duration `yaml:"sessionTtl"`
+}
+
+// Enabled reports whether the admin panel is configured and should be served.
+func (a AdminConfiguration) Enabled() bool {
+	return a.Username != "" && a.Password != ""
+}
+
 // DatabaseConfiguration holds settings for the database backend.
 type DatabaseConfiguration struct {
 	Type     string `yaml:"type"`     // "sqlite" and "postgres" supported
@@ -34,11 +47,6 @@ type DatabaseConfiguration struct {
 }
 
 // LoggingConfiguration holds settings for structured logging.
-//
-// When LogToFile is true the file sink is wrapped with lumberjack to provide
-// size-based rotation. Zero values for the rotation knobs fall back to
-// lumberjack's defaults (100 MiB per file, unlimited backups, no expiration,
-// no compression).
 type LoggingConfiguration struct {
 	LogToFile  bool          `yaml:"logToFile"`
 	LogUploads bool          `yaml:"logUploads"`
@@ -60,9 +68,6 @@ type CleanupConfiguration struct {
 }
 
 // TelemetryConfiguration holds settings for OpenTelemetry observability.
-// Exporter endpoint, authentication headers, service name, and other resource
-// attributes are configured via the standard OTEL_* environment variables
-// (e.g. OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS, OTEL_SERVICE_NAME).
 type TelemetryConfiguration struct {
 	Enabled bool `yaml:"enabled"`
 }
@@ -102,6 +107,7 @@ type Configuration struct {
 	DisableUploadPage    bool                   `yaml:"disableUploadPage"`
 	FaviconURL           string                 `yaml:"faviconUrl"`
 	FaviconFormat        string                 `yaml:"faviconFormat"`
+	Admin                AdminConfiguration     `yaml:"admin"`
 	Storage              StorageConfiguration   `yaml:"storage"`
 	Database             DatabaseConfiguration  `yaml:"database"`
 	RateLimit            RateLimitConfiguration `yaml:"rateLimit"`

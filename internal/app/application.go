@@ -24,6 +24,7 @@ import (
 // AppMiddleware bundles the Fiber middleware functions wired into the router.
 type AppMiddleware struct {
 	RequireToken fiber.Handler
+	RequireAdmin fiber.Handler
 	RateLimit    fiber.Handler
 }
 
@@ -39,6 +40,13 @@ type Application struct {
 	HealthzHandler  fiber.Handler
 	ReadyzHandler   fiber.Handler
 	SPAHandler      fiber.Handler
+
+	AdminLoginHandler   fiber.Handler
+	AdminLogoutHandler  fiber.Handler
+	AdminSessionHandler fiber.Handler
+	AdminListHandler    fiber.Handler
+	AdminDeleteHandler  fiber.Handler
+	AdminEnabled        bool
 
 	MetricsHandler http.Handler
 
@@ -71,6 +79,16 @@ func NewApplication(
 	}
 
 	a.Debug = config.DebugMode
+
+	if config.Admin.Enabled() {
+		a.AdminEnabled = true
+		a.AdminLoginHandler = handlers.AdminLogin(config.Admin)
+		a.AdminLogoutHandler = handlers.AdminLogout()
+		a.AdminSessionHandler = handlers.AdminSession(config.Admin)
+		a.AdminListHandler = handlers.AdminListFiles(db)
+		a.AdminDeleteHandler = handlers.AdminDeleteFile(db, stor)
+		a.Middleware.RequireAdmin = middleware.RequireAdmin(config.Admin)
+	}
 
 	if config.FaviconURL != "" && faviconData != nil {
 		a.FaviconHandler = handlers.Favicon(faviconData, config.FaviconFormat)
@@ -112,8 +130,7 @@ func fiberErrorHandler(c fiber.Ctx, err error) error {
 }
 
 // StartApp initialises all dependencies, registers routes, and runs the
-// Fiber server until ctx is cancelled (typically via signal.NotifyContext in
-// the caller).
+// Fiber server until ctx is cancelled
 //
 //nolint:funlen
 func StartApp(ctx context.Context) error {

@@ -390,6 +390,80 @@ func (_c *MockDatabase_GetFileToken_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
+// ListFiles provides a mock function for the type MockDatabase
+func (_mock *MockDatabase) ListFiles(ctx context.Context, filter models.FileListFilter) ([]models.File, int, error) {
+	ret := _mock.Called(ctx, filter)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListFiles")
+	}
+
+	var r0 []models.File
+	var r1 int
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, models.FileListFilter) ([]models.File, int, error)); ok {
+		return returnFunc(ctx, filter)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, models.FileListFilter) []models.File); ok {
+		r0 = returnFunc(ctx, filter)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]models.File)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, models.FileListFilter) int); ok {
+		r1 = returnFunc(ctx, filter)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, models.FileListFilter) error); ok {
+		r2 = returnFunc(ctx, filter)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockDatabase_ListFiles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListFiles'
+type MockDatabase_ListFiles_Call struct {
+	*mock.Call
+}
+
+// ListFiles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - filter models.FileListFilter
+func (_e *MockDatabase_Expecter) ListFiles(ctx interface{}, filter interface{}) *MockDatabase_ListFiles_Call {
+	return &MockDatabase_ListFiles_Call{Call: _e.mock.On("ListFiles", ctx, filter)}
+}
+
+func (_c *MockDatabase_ListFiles_Call) Run(run func(ctx context.Context, filter models.FileListFilter)) *MockDatabase_ListFiles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 models.FileListFilter
+		if args[1] != nil {
+			arg1 = args[1].(models.FileListFilter)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatabase_ListFiles_Call) Return(files []models.File, n int, err error) *MockDatabase_ListFiles_Call {
+	_c.Call.Return(files, n, err)
+	return _c
+}
+
+func (_c *MockDatabase_ListFiles_Call) RunAndReturn(run func(ctx context.Context, filter models.FileListFilter) ([]models.File, int, error)) *MockDatabase_ListFiles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Migrate provides a mock function for the type MockDatabase
 func (_mock *MockDatabase) Migrate() error {
 	ret := _mock.Called()

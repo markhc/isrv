@@ -1,0 +1,78 @@
+{
+  "title": "iSRV Admin",
+  "loading": "Carregando...",
+  "login": {
+    "title": "Acesso do Administrador",
+    "username": "Usuário",
+    "password": "Senha",
+    "submit": "Entrar",
+    "submitting": "Entrando...",
+    "invalidCredentials": "Usuário ou senha inválidos",
+    "failed": "Falha ao entrar"
+  },
+  "logout": "Sair",
+  "search": {
+    "query": "Buscar por nome ou tipo",
+    "ip": "Filtrar por endereço IP",
+    "clear": "Limpar filtros"
+  },
+  "table": {
+    "id": "ID",
+    "name": "Nome",
+    "ipAddress": "Endereço IP",
+    "size": "Tamanho",
+    "type": "Tipo",
+    "downloads": "Downloads",
+    "created": "Enviado",
+    "expires": "Expira",
+    "actions": "Ações",
+    "empty": "Nenhum arquivo encontrado"
+  },
+  "sort": {
+    "label": "Ordenar por",
+    "created_at": "Data de envio",
+    "size": "Tamanho",
+    "downloads": "Downloads",
+    "expiration": "Expiração",
+    "name": "Nome",
+    "asc": "Crescente",
+    "desc": "Decrescente"
+  },
+  "pagination": {
+    "previous": "Anterior",
+    "next": "Próximo",
+    "showing": "Mostrando {{from}}-{{to}} de {{total}}"
+  },
+  "actions": {
+    "preview": "Visualizar",
+    "download": "Baixar",
+    "delete": "Excluir"
+  },
+  "preview": {
+    "title": "Visualização",
+    "close": "Fechar",
+    "notSupported": "Este tipo de arquivo não pode ser visualizado.",
+    "loading": "Carregando visualização...",
+    "failed": "Falha ao carregar a visualização"
+  },
+  "detail": {
+    "empty": "Selecione um arquivo para ver os detalhes",
+    "url": "URL",
+    "uploadedBy": "Enviado por",
+    "copyUrl": "Copiar URL",
+    "urlCopied": "URL copiada",
+    "preview": "Visualização"
+  },
+  "delete": {
+    "title": "Excluir arquivo",
+    "description": "Tem certeza de que deseja excluir permanentemente \"{{name}}\"? Esta ação não pode ser desfeita.",
+    "cancel": "Cancelar",
+    "confirm": "Excluir",
+    "deleting": "Excluindo...",
+    "success": "Arquivo excluído",
+    "failed": "Falha ao excluir o arquivo"
+  },
+  "errors": {
+    "loadFailed": "Falha ao carregar os arquivos"
+  }
+}

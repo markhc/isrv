@@ -43,10 +43,6 @@ var (
 
 // Initialize sets up the global logger, writing to both the configured log
 // file and the console (stdout/stderr split by level).
-//
-// It is safe to call multiple times; subsequent calls are no-ops. To enable
-// forwarding of log records to the OpenTelemetry log pipeline, call
-// AttachOTelBridge after the global OTel logger provider has been registered.
 func Initialize() {
 	initOnce.Do(initializeLocked)
 }
@@ -119,10 +115,6 @@ func initializeLocked() {
 
 // AttachOTelBridge rewraps the global logger to additionally forward records
 // to the OpenTelemetry log pipeline via the otelzap bridge.
-//
-// Must be called after the global OTel logger provider has been registered.
-// The underlying file/console cores opened by Initialize are reused (no new
-// file descriptors are opened), and subsequent calls are no-ops.
 func AttachOTelBridge() {
 	bridgeOnce.Do(func() {
 		if baseCore == nil {
@@ -159,10 +151,6 @@ func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 // RequestLogger returns a Fiber middleware that logs each HTTP request/response
 // pair through the global zap logger. It is loosely based on chi-httplog,
 // simplified for this application.
-//
-// Panic recovery is intentionally NOT handled here; install a dedicated
-// recoverer middleware upstream so panics are recorded on the active
-// OpenTelemetry span before this middleware logs the request/response.
 func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if options.SkipFunc != nil && options.SkipFunc(c, 0) {
@@ -259,15 +247,6 @@ func LogWarn(message string, fields ...zap.Field) {
 // LogError logs a message at error level.
 func LogError(message string, fields ...zap.Field) {
 	logger.Error(message, fields...)
-}
-
-// LogFatal logs a message at fatal level and then exits the application.
-//
-// Deprecated: prefer returning errors up to main and letting deferred
-// shutdown code run. LogFatal skips deferred telemetry flush and log-file
-// close. Retained only for genuinely unrecoverable startup paths.
-func LogFatal(message string, fields ...zap.Field) {
-	logger.Fatal(message, fields...)
 }
 
 // Ctx returns a *zap.Logger annotated with the OpenTelemetry trace and span

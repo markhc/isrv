@@ -46,6 +46,22 @@ disableUploadPage: true
 faviconUrl: ""
 faviconFormat: "png"
 
+# admin panel configuration
+# The admin panel lets a single administrator view, search, preview and delete
+# uploaded files. It is reachable at /admin and is NOT linked from the home page.
+# The panel is enabled only when both username and password are set (here or via
+# the ISRV_ADMIN_USERNAME / ISRV_ADMIN_PASSWORD environment variables).
+admin:
+  # administrator credentials. Leave empty to disable the admin panel entirely.
+  username: ""
+  password: ""
+  # HMAC key used to sign session cookies. If empty, a random key is generated
+  # at startup, which invalidates existing sessions on every restart. Set a
+  # stable value to keep sessions valid across restarts.
+  sessionSecret: ""
+  # how long an admin login session remains valid
+  sessionTtl: 24h
+
 # storage configuration
 storage:
   # supported types: local, s3

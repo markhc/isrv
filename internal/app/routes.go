@@ -1,12 +1,8 @@
 package app
 
 import (
-	"net/http"
-	"strings"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
-	"github.com/gofiber/fiber/v3/middleware/pprof"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/telemetry"
@@ -14,10 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// infraEndpointPrefixes lists URL path prefixes for endpoints that should
-// not produce HTTP server spans. They are high-frequency and add no
-// operational value to tracing output.
-//
 //nolint:gochecknoglobals
 var infraEndpointPrefixes = []string{
 	"/healthz",
@@ -27,9 +19,7 @@ var infraEndpointPrefixes = []string{
 	"/static/",
 }
 
-// SetupRoutes registers all application routes, handlers, and middleware on
-// the supplied fiber.App. Tracing is applied globally and skips the high-
-// volume infra endpoints listed in infraEndpointPrefixes.
+// SetupRoutes registers all application routes, handlers, and middleware.
 func SetupRoutes(app *fiber.App, a *Application) {
 	// Tracing first so it captures even early aborts.
 	app.Use(telemetry.FiberTracing("isrv", infraEndpointPrefixes))
@@ -79,9 +69,17 @@ func SetupRoutes(app *fiber.App, a *Application) {
 		app.Get("/metrics", adaptor.HTTPHandler(a.MetricsHandler))
 	}
 
-	// pprof — only mounted when DebugMode is enabled.
-	if a.Debug {
-		app.Use("/debug/pprof", pprof.New())
+	adminAPI := app.Group("/admin/api")
+	if a.AdminEnabled {
+		adminAPI.Post("/login", a.Middleware.RateLimit, a.AdminLoginHandler)
+		adminAPI.Post("/logout", a.AdminLogoutHandler)
+		adminAPI.Get("/session", a.AdminSessionHandler)
+		adminAPI.Get("/files", a.Middleware.RequireAdmin, a.AdminListHandler)
+		adminAPI.Delete("/files/:id", a.Middleware.RequireAdmin, a.AdminDeleteHandler)
+	} else {
+		adminAPI.Use(func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusNotFound).JSON(map[string]string{"error": "not found"})
+		})
 	}
 
 	// SPA catch-all: serves index.html for any unmatched path so that
@@ -90,18 +88,3 @@ func SetupRoutes(app *fiber.App, a *Application) {
 		app.Use(a.SPAHandler)
 	}
 }
-
-// hasPathPrefix reports whether path begins with any of prefixes.
-//
-//nolint:unused // kept for parity with the legacy chi implementation
-func hasPathPrefix(path string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(path, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// Ensure the net/http import keeps a use; HTTPHandler accepts http.Handler.
-var _ http.Handler = http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})

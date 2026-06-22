@@ -56,6 +56,10 @@ type Database interface { //nolint:interfacebloat
 	// GetFile returns the full file record for the given file ID,
 	// or ErrFileNotFound if no record exists.
 	GetFile(ctx context.Context, fileID string) (*models.File, error)
+	// ListFiles returns a page of file records matching filter, ordered as
+	// requested, together with the total count of matching records (ignoring
+	// pagination). It is used by the admin panel.
+	ListFiles(ctx context.Context, filter models.FileListFilter) ([]models.File, int, error)
 	// SetExpiration updates the expiration time of the given file.
 	// It returns ErrFileNotFound if no record exists.
 	SetExpiration(ctx context.Context, fileID string, expiration time.Time) error
