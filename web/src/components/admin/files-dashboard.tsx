@@ -19,7 +19,7 @@ import {
   type AdminFile,
   type ListFilesParams,
 } from "@/lib/admin-api"
-import { formatBytes } from "@/lib/format"
+import { formatBytes, formatDate } from "@/lib/format"
 import { FileDetailPanel } from "@/components/admin/file-detail-panel"
 import { DeleteFileDialog } from "@/components/admin/delete-file-dialog"
 
@@ -29,6 +29,7 @@ const PAGE_SIZE = 25
 const SORT_KEYS: Record<string, string> = {
   name: "name",
   size: "size",
+  createdAt: "created_at",
 }
 
 function useDebounced<T>(value: T, delay: number): T {
@@ -47,12 +48,12 @@ interface FilesDashboardProps {
 }
 
 export function FilesDashboard({ localeKey }: FilesDashboardProps) {
-  const { t } = useTranslation("admin")
+  const { t, i18n } = useTranslation("admin")
   const queryClient = useQueryClient()
 
   const [search, setSearch] = useState("")
   const [ip, setIp] = useState("")
-  const [sorting, setSorting] = useState<SortingState>([{ id: "name", desc: false }])
+  const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
   const [pageIndex, setPageIndex] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AdminFile | null>(null)
@@ -118,6 +119,14 @@ export function FilesDashboard({ localeKey }: FilesDashboardProps) {
         cell: (info) => (
           <span className="block max-w-[10rem] truncate text-xs text-muted-foreground" title={info.getValue()}>
             {info.getValue() || "-"}
+          </span>
+        ),
+      }),
+      helper.accessor("createdAt", {
+        header: t("table.created"),
+        cell: (info) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {formatDate(info.getValue(), i18n.language)}
           </span>
         ),
       }),

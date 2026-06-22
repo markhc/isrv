@@ -167,14 +167,15 @@ func StartApp(ctx context.Context) error {
 	bodyLimit := config.MaxFileSizeMB * 1024 * 1024
 
 	app := fiber.New(fiber.Config{
-		ReadTimeout:      30 * time.Second,
-		WriteTimeout:     30 * time.Second,
-		IdleTimeout:      120 * time.Second,
-		BodyLimit:        bodyLimit,
-		ErrorHandler:     fiberErrorHandler,
-		ProxyHeader:      fiber.HeaderXForwardedFor,
-		TrustProxy:       len(config.TrustedProxies) > 0,
-		TrustProxyConfig: fiber.TrustProxyConfig{Proxies: config.TrustedProxies},
+		ReadTimeout:        30 * time.Second,
+		WriteTimeout:       30 * time.Second,
+		IdleTimeout:        120 * time.Second,
+		BodyLimit:          bodyLimit,
+		ErrorHandler:       fiberErrorHandler,
+		ProxyHeader:        fiber.HeaderXForwardedFor,
+		TrustProxy:         len(config.TrustedProxies) > 0,
+		TrustProxyConfig:   fiber.TrustProxyConfig{Proxies: config.TrustedProxies},
+		EnableIPValidation: true,
 	})
 
 	SetupRoutes(app, application)

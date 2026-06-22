@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	mathRand "math/rand"
-	"net"
 	"reflect"
 	"strconv"
 	"strings"
@@ -66,58 +65,6 @@ func ParseExpiresForm(expiresStr string) (time.Time, error) {
 	}
 
 	return time.UnixMilli(expires), nil
-}
-
-// GetIPAddress returns the resolved client IP for c. X-Forwarded-For and
-// X-Real-IP are consulted only when the immediate peer is contained in
-// trustedProxies; otherwise the peer address is returned.
-func GetIPAddress(c fiber.Ctx, trustedProxies []string) string {
-	return resolveIPAddress(c.IP(), func(k string) string { return c.Get(k) }, trustedProxies)
-}
-
-// resolveIPAddress is the testable core of GetIPAddress.
-func resolveIPAddress(remoteIP string, getHeader func(string) string, trustedProxies []string) string {
-	if len(trustedProxies) == 0 || !isInTrustedProxies(remoteIP, trustedProxies) {
-		return remoteIP
-	}
-
-	if xff := getHeader("X-Forwarded-For"); xff != "" {
-		// XFF may be a comma-separated list; the leftmost entry is the original client.
-		if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
-			return ip
-		}
-	}
-
-	if xri := strings.TrimSpace(getHeader("X-Real-IP")); xri != "" {
-		return xri
-	}
-
-	return remoteIP
-}
-
-// isInTrustedProxies reports whether ip matches any entry in the list.
-// Each entry may be a single IP address or a CIDR range (e.g. "10.0.0.0/8").
-func isInTrustedProxies(ip string, trustedProxies []string) bool {
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return false
-	}
-
-	for _, proxy := range trustedProxies {
-		if strings.ContainsRune(proxy, '/') {
-			_, network, err := net.ParseCIDR(proxy)
-			if err == nil && network.Contains(parsed) {
-				return true
-			}
-		} else {
-			proxyIP := net.ParseIP(proxy)
-			if proxyIP != nil && proxyIP.Equal(parsed) {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 // CalculateExpirationTime returns the expiration time for the uploaded file.

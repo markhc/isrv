@@ -23,7 +23,7 @@
     "size": "Size",
     "type": "Type",
     "downloads": "Downloads",
-    "created": "Uploaded",
+    "created": "Uploaded at",
     "expires": "Expires",
     "actions": "Actions",
     "empty": "No files found"

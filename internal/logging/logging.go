@@ -12,7 +12,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/configuration"
-	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -182,7 +181,7 @@ func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 		zapFields := []zap.Field{
 			zap.String("method", c.Method()),
 			zap.String("path", c.Path()),
-			MaybeIP("remote_addr", utils.GetIPAddress(c, configuration.Get().TrustedProxies)),
+			MaybeIP("remote_addr", c.IP()),
 			zap.String("host", c.Hostname()),
 			zap.String("scheme", c.Protocol()),
 			zap.String("proto", c.Protocol()),
