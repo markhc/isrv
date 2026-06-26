@@ -4,6 +4,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"github.com/google/uuid"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/telemetry"
 	"go.opentelemetry.io/otel/codes"
@@ -23,6 +25,14 @@ var infraEndpointPrefixes = []string{
 func SetupRoutes(app *fiber.App, a *Application) {
 	// Tracing first so it captures even early aborts.
 	app.Use(telemetry.FiberTracing("isrv", infraEndpointPrefixes))
+
+	app.Use(requestid.New(requestid.Config{
+		Header: fiber.HeaderXRequestID,
+		Generator: func() string {
+			id, _ := uuid.NewV7()
+			return id.String()
+		},
+	}))
 
 	// Request logger.
 	app.Use(logging.RequestLogger(&logging.RequestLoggerOptions{

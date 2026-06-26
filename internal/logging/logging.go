@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/markhc/isrv/internal/configuration"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/trace"
@@ -22,9 +23,6 @@ import (
 // instrumentationName mirrors telemetry.InstrumentationName. It is duplicated
 // here to avoid an import cycle once telemetry starts using the logger.
 const instrumentationName = "github.com/markhc/isrv"
-
-// requestIDContextKey is a typed key for storing a request ID in a context.Context.
-type requestIDContextKey struct{}
 
 // RequestLoggerOptions configures the per-request logger middleware.
 type RequestLoggerOptions struct {
@@ -60,11 +58,10 @@ func initializeLocked() {
 	consoleEncoderConfig := zap.NewProductionEncoderConfig()
 	consoleEncoderConfig.TimeKey = "ts"
 	consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	consoleEncoderConfig.EncodeLevel = customLevelEncoder
-	consoleEncoderConfig.ConsoleSeparator = " | "
+	consoleEncoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
 	consoleEncoderConfig.LevelKey = "level"
 
-	consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
+	consoleEncoder := zapcore.NewJSONEncoder(consoleEncoderConfig)
 
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
@@ -81,9 +78,6 @@ func initializeLocked() {
 			}
 		}
 
-		// Rotate the file sink so long-running servers do not fill the disk.
-		// Zero values fall back to lumberjack defaults (100 MiB / unlimited
-		// backups / no expiration / no compression).
 		rotator := &lumberjack.Logger{
 			Filename:   config.Logging.Path,
 			MaxSize:    config.Logging.MaxSizeMB,
@@ -143,10 +137,6 @@ func Shutdown() error {
 	return nil
 }
 
-func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
-}
-
 // RequestLogger returns a Fiber middleware that logs each HTTP request/response
 // pair through the global zap logger. It is loosely based on chi-httplog,
 // simplified for this application.
@@ -156,16 +146,9 @@ func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 			return c.Next()
 		}
 
+		// Run the request chain and capture the response status code and duration.
 		start := time.Now()
-
-		// Propagate the Fiber request ID into the standard context so Ctx()
-		// can attach it to structured log records.
-		if reqID := c.Get("X-Request-Id"); reqID != "" {
-			c.SetContext(context.WithValue(c.Context(), requestIDContextKey{}, reqID))
-		}
-
 		err := c.Next()
-
 		duration := time.Since(start)
 		statusCode := c.Response().StatusCode()
 
@@ -178,6 +161,8 @@ func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 			return err
 		}
 
+		// request_id is added by Ctx below via requestid.FromContext; adding it
+		// here would read the wrong (request) header and duplicate the key.
 		zapFields := []zap.Field{
 			zap.String("method", c.Method()),
 			zap.String("path", c.Path()),
@@ -186,7 +171,7 @@ func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 			zap.String("scheme", c.Protocol()),
 			zap.String("proto", c.Protocol()),
 			zap.Int64("length", int64(len(c.Body()))),
-			zap.String("user_agent", c.Get("User-Agent")),
+			zap.String("user_agent", c.Get(fiber.HeaderUserAgent)),
 			zap.Int("status", statusCode),
 			zap.Duration("duration", duration),
 			zap.Int("response_bytes", len(c.Response().Body())),
@@ -276,7 +261,7 @@ func Ctx(ctx context.Context) *zap.Logger {
 		)
 	}
 
-	if reqID, _ := ctx.Value(requestIDContextKey{}).(string); reqID != "" {
+	if reqID := requestid.FromContext(ctx); reqID != "" {
 		fields = append(fields, zap.String("request_id", reqID))
 	}
 
