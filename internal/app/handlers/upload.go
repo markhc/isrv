@@ -99,7 +99,6 @@ func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int) error {
 	return nil
 }
 
-//nolint:funlen
 func processUpload(
 	ctx context.Context,
 	config *models.Configuration,

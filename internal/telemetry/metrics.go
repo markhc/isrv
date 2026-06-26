@@ -49,7 +49,6 @@ func InitMetrics() error {
 	return nil
 }
 
-//nolint:funlen
 func registerMetrics(meter metric.Meter) error {
 	var err error
 

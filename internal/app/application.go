@@ -74,7 +74,7 @@ func NewApplication(
 
 		Middleware: AppMiddleware{
 			RequireToken: middleware.RequireToken(db),
-			RateLimit:    middleware.RateLimit(ctx, config.RateLimit),
+			RateLimit:    middleware.RateLimit(ctx, config.Security.RateLimit),
 		},
 	}
 
@@ -130,9 +130,7 @@ func fiberErrorHandler(c fiber.Ctx, err error) error {
 }
 
 // StartApp initialises all dependencies, registers routes, and runs the
-// Fiber server until ctx is cancelled
-//
-//nolint:funlen
+// Fiber server until ctx is cancelled.
 func StartApp(ctx context.Context) error {
 	config := configuration.Get()
 
@@ -166,6 +164,12 @@ func StartApp(ctx context.Context) error {
 	// derived from MaxFileSizeMB so the limit matches the upload handler.
 	bodyLimit := config.MaxFileSizeMB * 1024 * 1024
 
+	validateIpAddresses := config.Security.ValidateIpAddresses
+	if config.Security.RateLimit.Enabled && !validateIpAddresses {
+		logging.LogDebug("rate limiting enabled but IP address validation disabled; enabling IP address validation")
+		validateIpAddresses = true
+	}
+
 	app := fiber.New(fiber.Config{
 		ReadTimeout:        30 * time.Second,
 		WriteTimeout:       30 * time.Second,
@@ -173,9 +177,13 @@ func StartApp(ctx context.Context) error {
 		BodyLimit:          bodyLimit,
 		ErrorHandler:       fiberErrorHandler,
 		ProxyHeader:        fiber.HeaderXForwardedFor,
-		TrustProxy:         len(config.TrustedProxies) > 0,
-		TrustProxyConfig:   fiber.TrustProxyConfig{Proxies: config.TrustedProxies},
-		EnableIPValidation: true,
+		TrustProxy:         len(config.Security.TrustedProxies) > 0,
+		TrustProxyConfig:   fiber.TrustProxyConfig{Proxies: config.Security.TrustedProxies},
+		EnableIPValidation: validateIpAddresses,
+		// Required so values stored via fiber.StoreInContext (e.g. the request
+		// ID set by the requestid middleware) are reachable through
+		// context.Context in logging.Ctx and the *Ctx helpers.
+		PassLocalsToContext: true,
 	})
 
 	SetupRoutes(app, application)

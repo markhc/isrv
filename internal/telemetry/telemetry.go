@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync/atomic"
 
-	"github.com/markhc/isrv/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -74,14 +74,9 @@ type ShutdownFunc func(context.Context) error
 //
 // buildVersion is used as the default value for the service.version resource
 // attribute and can be overridden via OTEL_RESOURCE_ATTRIBUTES.
-//
-// When telemetry is disabled in cfg, Setup is a no-op and returns a no-op
-// shutdown function. The caller must invoke the returned ShutdownFunc before
-// process exit to flush buffered telemetry.
-//
-//nolint:funlen,cyclop // Exporter+provider+metric bootstrap is intentionally linear and unfolded.
-func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion string) (ShutdownFunc, error) {
-	if !cfg.Enabled {
+func Setup(ctx context.Context, buildVersion string) (ShutdownFunc, error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
 		return func(context.Context) error { return nil }, nil
 	}
 

@@ -121,8 +121,6 @@ func RespondWithSuccess(c fiber.Ctx, data any) error {
 // SetStructField assigns value to the field of target identified by the
 // dot-separated fieldPath, using reflection to walk into nested structs and
 // converting from string where needed.
-//
-//nolint:gocognit,cyclop,funlen
 func SetStructField(target any, fieldPath string, value any) error {
 	parts := strings.Split(fieldPath, ".")
 	current := target

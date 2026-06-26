@@ -16,7 +16,7 @@ func TestVerifyAdminConfig(t *testing.T) {
 		config = getDefaultConfig()
 		config.Admin = models.AdminConfiguration{}
 
-		verifyAdminConfig()
+		verifyAdminConfig(&config.Admin)
 
 		assert.False(t, config.Admin.Enabled())
 		assert.Empty(t, config.Admin.SessionSecret)
@@ -29,7 +29,7 @@ func TestVerifyAdminConfig(t *testing.T) {
 		config = getDefaultConfig()
 		config.Admin = models.AdminConfiguration{Username: "admin", Password: "secret"}
 
-		verifyAdminConfig()
+		verifyAdminConfig(&config.Admin)
 
 		assert.True(t, config.Admin.Enabled())
 		assert.NotEmpty(t, config.Admin.SessionSecret)
@@ -48,7 +48,7 @@ func TestVerifyAdminConfig(t *testing.T) {
 			SessionTTL:    2 * time.Hour,
 		}
 
-		verifyAdminConfig()
+		verifyAdminConfig(&config.Admin)
 
 		assert.Equal(t, "fixed-secret", config.Admin.SessionSecret)
 		assert.Equal(t, 2*time.Hour, config.Admin.SessionTTL)

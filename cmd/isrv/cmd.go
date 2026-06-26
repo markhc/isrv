@@ -81,7 +81,7 @@ func runServer(parentCtx context.Context) error {
 	defer stop()
 
 	// Telemetry is set up once at process start and torn down on exit.
-	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.Get().Telemetry, configuration.BuildVersion)
+	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.BuildVersion)
 	if err != nil {
 		logging.LogError("failed to initialise telemetry", logging.Error(err))
 

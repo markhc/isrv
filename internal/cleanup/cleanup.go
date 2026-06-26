@@ -84,7 +84,6 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 	}
 }
 
-//nolint:funlen // Linear cleanup-cycle code path with inline metric emission.
 func (s *Service) performCleanup(ctx context.Context) {
 	ctx, span := telemetry.Tracer().Start(ctx, "cleanup.cycle")
 	defer span.End()

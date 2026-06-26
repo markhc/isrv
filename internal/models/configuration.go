@@ -67,11 +67,6 @@ type CleanupConfiguration struct {
 	Interval time.Duration `yaml:"interval"`
 }
 
-// TelemetryConfiguration holds settings for OpenTelemetry observability.
-type TelemetryConfiguration struct {
-	Enabled bool `yaml:"enabled"`
-}
-
 type RateLimitExceededAction string
 
 const (
@@ -91,30 +86,34 @@ type RateLimitConfiguration struct {
 	TrustedProxies []string `yaml:"-"` // Populated from top-level TrustedProxies for use in middleware.
 }
 
+type SecurityConfiguration struct {
+	ValidateIpAddresses bool                   `yaml:"validateIpAddresses"`
+	TrustedProxies      []string               `yaml:"trustedProxies"`
+	RateLimit           RateLimitConfiguration `yaml:"rateLimit"`
+}
+
 // Configuration is the top-level application configuration.
 type Configuration struct {
-	ServerName           string                 `yaml:"serverName"`
-	ServerURL            string                 `yaml:"serverUrl"`
-	ServerHost           string                 `yaml:"serverHost"`
-	ServerPort           int                    `yaml:"serverPort"`
-	TrustedProxies       []string               `yaml:"trustedProxies"`
-	MaxFileSizeMB        int                    `yaml:"maxFileSizeMb"`
-	MinAgeDays           int                    `yaml:"minAgeDays"`
-	MaxAgeDays           int                    `yaml:"maxAgeDays"`
-	RandomIDLength       int                    `yaml:"randomIdLength"`
-	KeepOriginalFilename bool                   `yaml:"keepOriginalFilename"`
-	DisableIndexPage     bool                   `yaml:"disableIndexPage"`
-	DisableUploadPage    bool                   `yaml:"disableUploadPage"`
-	FaviconURL           string                 `yaml:"faviconUrl"`
-	FaviconFormat        string                 `yaml:"faviconFormat"`
-	Admin                AdminConfiguration     `yaml:"admin"`
-	Storage              StorageConfiguration   `yaml:"storage"`
-	Database             DatabaseConfiguration  `yaml:"database"`
-	RateLimit            RateLimitConfiguration `yaml:"rateLimit"`
-	Logging              LoggingConfiguration   `yaml:"logging"`
-	Cleanup              CleanupConfiguration   `yaml:"cleanup"`
-	Telemetry            TelemetryConfiguration `yaml:"telemetry"`
-	DebugMode            bool                   `yaml:"debug"`
+	ServerName           string                `yaml:"serverName"`
+	ServerURL            string                `yaml:"serverUrl"`
+	ServerHost           string                `yaml:"serverHost"`
+	ServerPort           int                   `yaml:"serverPort"`
+	MaxFileSizeMB        int                   `yaml:"maxFileSizeMb"`
+	MinAgeDays           int                   `yaml:"minAgeDays"`
+	MaxAgeDays           int                   `yaml:"maxAgeDays"`
+	RandomIDLength       int                   `yaml:"randomIdLength"`
+	KeepOriginalFilename bool                  `yaml:"keepOriginalFilename"`
+	DisableIndexPage     bool                  `yaml:"disableIndexPage"`
+	DisableUploadPage    bool                  `yaml:"disableUploadPage"`
+	FaviconURL           string                `yaml:"faviconUrl"`
+	FaviconFormat        string                `yaml:"faviconFormat"`
+	Security             SecurityConfiguration `yaml:"security"`
+	Admin                AdminConfiguration    `yaml:"admin"`
+	Storage              StorageConfiguration  `yaml:"storage"`
+	Database             DatabaseConfiguration `yaml:"database"`
+	Logging              LoggingConfiguration  `yaml:"logging"`
+	Cleanup              CleanupConfiguration  `yaml:"cleanup"`
+	DebugMode            bool                  `yaml:"debug"`
 }
 
 // FrontendConfig holds the subset of Configuration that is safe to expose to
