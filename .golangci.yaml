@@ -10,7 +10,10 @@ linters:
     - errcheck
     - exhaustruct
     - gochecknoglobals
+    - gocognit
     - gosec
+    - cyclop
+    - funlen
     - mnd
     - nestif
     - nlreturn # fiber handler chains generate many short returns
