@@ -48,11 +48,10 @@ type DatabaseConfiguration struct {
 
 // LoggingConfiguration holds settings for structured logging.
 type LoggingConfiguration struct {
-	LogToFile  bool          `yaml:"logToFile"`
-	LogUploads bool          `yaml:"logUploads"`
-	LogIps     bool          `yaml:"logIps"`
-	Level      zapcore.Level `yaml:"level"`
-	Path       string        `yaml:"path"`
+	LogToFile bool          `yaml:"logToFile"`
+	LogIps    bool          `yaml:"logIps"`
+	Level     zapcore.Level `yaml:"level"`
+	Path      string        `yaml:"path"`
 
 	// Rotation settings (file sink only).
 	MaxSizeMB  int  `yaml:"maxSizeMb"`  // Max size in MiB before a file is rotated.

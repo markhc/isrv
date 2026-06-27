@@ -55,32 +55,82 @@ func Load(configPath string, debug bool) {
 // untouched.
 func applyEnvOverrides() {
 	mapEnv := map[string]string{
-		"ISRV_SERVER_NAME":               "ServerName",
-		"ISRV_SERVER_URL":                "ServerURL",
-		"ISRV_SERVER_HOST":               "ServerHost",
-		"ISRV_SERVER_PORT":               "ServerPort",
-		"ISRV_ADMIN_USERNAME":            "Admin.Username",
-		"ISRV_ADMIN_PASSWORD":            "Admin.Password",
-		"ISRV_ADMIN_SESSION_SECRET":      "Admin.SessionSecret",
-		"ISRV_STORAGE_PATH":              "Storage.BasePath",
-		"ISRV_LOGGING_FILE_ENABLED":      "Logging.LogToFile",
-		"ISRV_LOGGING_PATH":              "Logging.Path",
-		"ISRV_LOGGING_IPS_ENABLED":       "Logging.LogIps",
-		"ISRV_LOGGING_UPLOADS_ENABLED":   "Logging.LogUploads",
-		"ISRV_RANDOM_ID_LENGTH":          "RandomIDLength",
-		"ISRV_KEEP_ORIGINAL_FILENAME":    "KeepOriginalFilename",
-		"ISRV_MAX_FILE_SIZE_MB":          "MaxFileSizeMB",
-		"ISRV_CLEANUP_ENABLED":           "Cleanup.Enabled",
-		"ISRV_CLEANUP_INTERVAL":          "Cleanup.Interval",
-		"ISRV_RATE_LIMIT_ENABLED":        "RateLimit.Enabled",
-		"ISRV_RATE_LIMIT_RPM":            "RateLimit.RequestsPerMinute",
-		"ISRV_RATE_LIMIT_BURST":          "RateLimit.BurstSize",
-		"ISRV_RATE_LIMIT_ACTION":         "RateLimit.OnLimitExceeded",
-		"ISRV_RATE_LIMIT_BLOCK_DURATION": "RateLimit.BlockDuration",
+		// Server and general settings.
+		"ISRV_SERVER_NAME":            "ServerName",
+		"ISRV_SERVER_URL":             "ServerURL",
+		"ISRV_SERVER_HOST":            "ServerHost",
+		"ISRV_SERVER_PORT":            "ServerPort",
+		"ISRV_MAX_FILE_SIZE_MB":       "MaxFileSizeMB",
+		"ISRV_MIN_AGE_DAYS":           "MinAgeDays",
+		"ISRV_MAX_AGE_DAYS":           "MaxAgeDays",
+		"ISRV_RANDOM_ID_LENGTH":       "RandomIDLength",
+		"ISRV_KEEP_ORIGINAL_FILENAME": "KeepOriginalFilename",
+		"ISRV_DISABLE_INDEX_PAGE":     "DisableIndexPage",
+		"ISRV_DISABLE_UPLOAD_PAGE":    "DisableUploadPage",
+		"ISRV_FAVICON_URL":            "FaviconURL",
+		"ISRV_FAVICON_FORMAT":         "FaviconFormat",
+		"ISRV_DEBUG":                  "DebugMode",
+
+		// Validate IP addresses and trusted proxies.
+		"ISRV_SECURITY_VALIDATE_IPS": "Security.ValidateIpAddresses",
+		// Comma-separated list of trusted proxy IPs.
+		"ISRV_SECURITY_TRUSTED_PROXIES": "Security.TrustedProxies",
+
+		// Rate limiting.
+		"ISRV_RATE_LIMIT_ENABLED":        "Security.RateLimit.Enabled",
+		"ISRV_RATE_LIMIT_RPM":            "Security.RateLimit.RequestsPerMinute",
+		"ISRV_RATE_LIMIT_BURST":          "Security.RateLimit.BurstSize",
+		"ISRV_RATE_LIMIT_ACTION":         "Security.RateLimit.OnLimitExceeded",
+		"ISRV_RATE_LIMIT_BLOCK_DURATION": "Security.RateLimit.BlockDuration",
+
+		// Admin panel.
+		"ISRV_ADMIN_USERNAME":       "Admin.Username",
+		"ISRV_ADMIN_PASSWORD":       "Admin.Password",
+		"ISRV_ADMIN_SESSION_SECRET": "Admin.SessionSecret",
+		"ISRV_ADMIN_SESSION_TTL":    "Admin.SessionTTL",
+
+		// Storage backend.
+		"ISRV_STORAGE_TYPE":        "Storage.Type",
+		"ISRV_STORAGE_PATH":        "Storage.BasePath",
+		"ISRV_STORAGE_ACCESS_KEY":  "Storage.AccessKey",
+		"ISRV_STORAGE_SECRET_KEY":  "Storage.SecretKey",
+		"ISRV_STORAGE_BUCKET_NAME": "Storage.BucketName",
+		"ISRV_STORAGE_REGION":      "Storage.Region",
+		"ISRV_STORAGE_ENDPOINT":    "Storage.Endpoint",
+
+		// Database backend.
+		"ISRV_DATABASE_TYPE":      "Database.Type",
+		"ISRV_DATABASE_DSN":       "Database.DSN",
+		"ISRV_DATABASE_HOST":      "Database.Host",
+		"ISRV_DATABASE_PORT":      "Database.Port",
+		"ISRV_DATABASE_USER":      "Database.User",
+		"ISRV_DATABASE_PASSWORD":  "Database.Password",
+		"ISRV_DATABASE_DBNAME":    "Database.DBName",
+		"ISRV_DATABASE_FILE_PATH": "Database.FilePath",
+
+		// Logging.
+		"ISRV_LOGGING_LEVEL":        "Logging.Level",
+		"ISRV_LOGGING_LOG_TO_FILE":  "Logging.LogToFile",
+		"ISRV_LOGGING_PATH":         "Logging.Path",
+		"ISRV_LOGGING_LOG_IPS":      "Logging.LogIps",
+		"ISRV_LOGGING_MAX_SIZE_MB":  "Logging.MaxSizeMB",
+		"ISRV_LOGGING_MAX_BACKUPS":  "Logging.MaxBackups",
+		"ISRV_LOGGING_MAX_AGE_DAYS": "Logging.MaxAgeDays",
+		"ISRV_LOGGING_COMPRESS":     "Logging.Compress",
+
+		// Cleanup routine.
+		"ISRV_CLEANUP_ENABLED":  "Cleanup.Enabled",
+		"ISRV_CLEANUP_INTERVAL": "Cleanup.Interval",
 	}
 
 	for envVar, configField := range mapEnv {
 		if v, ok := os.LookupEnv(envVar); ok {
+			// Special handling for trusted proxies, which is a list of strings.
+			// We need to split the comma-separated string into a slice of strings.
+			if envVar == "ISRV_SECURITY_TRUSTED_PROXIES" {
+				config.Security.TrustedProxies = strings.Split(v, ",")
+				continue
+			}
 			err := utils.SetStructField(&config, configField, v)
 			if err != nil {
 				panic(fmt.Errorf("failed to apply environment variable override for %s: %w", envVar, err))

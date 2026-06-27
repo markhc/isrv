@@ -238,6 +238,8 @@ func createDb(config *models.Configuration) (database.Database, error) {
 	switch config.Database.Type {
 	case "sqlite":
 		dbInstance = database.NewSQLiteDB(*config)
+	case "postgres":
+		dbInstance = database.NewPostgresDB(*config)
 	default:
 		return nil, fmt.Errorf("invalid database type %q", config.Database.Type)
 	}
