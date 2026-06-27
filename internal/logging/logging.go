@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/markhc/isrv/internal/configuration"
-	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -23,9 +23,6 @@ import (
 // instrumentationName mirrors telemetry.InstrumentationName. It is duplicated
 // here to avoid an import cycle once telemetry starts using the logger.
 const instrumentationName = "github.com/markhc/isrv"
-
-// requestIDContextKey is a typed key for storing a request ID in a context.Context.
-type requestIDContextKey struct{}
 
 // RequestLoggerOptions configures the per-request logger middleware.
 type RequestLoggerOptions struct {
@@ -43,10 +40,6 @@ var (
 
 // Initialize sets up the global logger, writing to both the configured log
 // file and the console (stdout/stderr split by level).
-//
-// It is safe to call multiple times; subsequent calls are no-ops. To enable
-// forwarding of log records to the OpenTelemetry log pipeline, call
-// AttachOTelBridge after the global OTel logger provider has been registered.
 func Initialize() {
 	initOnce.Do(initializeLocked)
 }
@@ -65,11 +58,10 @@ func initializeLocked() {
 	consoleEncoderConfig := zap.NewProductionEncoderConfig()
 	consoleEncoderConfig.TimeKey = "ts"
 	consoleEncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	consoleEncoderConfig.EncodeLevel = customLevelEncoder
-	consoleEncoderConfig.ConsoleSeparator = " | "
+	consoleEncoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
 	consoleEncoderConfig.LevelKey = "level"
 
-	consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
+	consoleEncoder := zapcore.NewJSONEncoder(consoleEncoderConfig)
 
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
@@ -86,9 +78,6 @@ func initializeLocked() {
 			}
 		}
 
-		// Rotate the file sink so long-running servers do not fill the disk.
-		// Zero values fall back to lumberjack defaults (100 MiB / unlimited
-		// backups / no expiration / no compression).
 		rotator := &lumberjack.Logger{
 			Filename:   config.Logging.Path,
 			MaxSize:    config.Logging.MaxSizeMB,
@@ -119,10 +108,6 @@ func initializeLocked() {
 
 // AttachOTelBridge rewraps the global logger to additionally forward records
 // to the OpenTelemetry log pipeline via the otelzap bridge.
-//
-// Must be called after the global OTel logger provider has been registered.
-// The underlying file/console cores opened by Initialize are reused (no new
-// file descriptors are opened), and subsequent calls are no-ops.
 func AttachOTelBridge() {
 	bridgeOnce.Do(func() {
 		if baseCore == nil {
@@ -152,33 +137,18 @@ func Shutdown() error {
 	return nil
 }
 
-func customLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(fmt.Sprintf("%-5s", l.CapitalString()))
-}
-
 // RequestLogger returns a Fiber middleware that logs each HTTP request/response
 // pair through the global zap logger. It is loosely based on chi-httplog,
 // simplified for this application.
-//
-// Panic recovery is intentionally NOT handled here; install a dedicated
-// recoverer middleware upstream so panics are recorded on the active
-// OpenTelemetry span before this middleware logs the request/response.
 func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if options.SkipFunc != nil && options.SkipFunc(c, 0) {
 			return c.Next()
 		}
 
+		// Run the request chain and capture the response status code and duration.
 		start := time.Now()
-
-		// Propagate the Fiber request ID into the standard context so Ctx()
-		// can attach it to structured log records.
-		if reqID := c.Get("X-Request-Id"); reqID != "" {
-			c.SetContext(context.WithValue(c.Context(), requestIDContextKey{}, reqID))
-		}
-
 		err := c.Next()
-
 		duration := time.Since(start)
 		statusCode := c.Response().StatusCode()
 
@@ -191,15 +161,17 @@ func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 			return err
 		}
 
+		// request_id is added by Ctx below via requestid.FromContext; adding it
+		// here would read the wrong (request) header and duplicate the key.
 		zapFields := []zap.Field{
 			zap.String("method", c.Method()),
 			zap.String("path", c.Path()),
-			MaybeIP("remote_addr", utils.GetIPAddress(c, configuration.Get().TrustedProxies)),
+			MaybeIP("remote_addr", c.IP()),
 			zap.String("host", c.Hostname()),
 			zap.String("scheme", c.Protocol()),
 			zap.String("proto", c.Protocol()),
 			zap.Int64("length", int64(len(c.Body()))),
-			zap.String("user_agent", c.Get("User-Agent")),
+			zap.String("user_agent", c.Get(fiber.HeaderUserAgent)),
 			zap.Int("status", statusCode),
 			zap.Duration("duration", duration),
 			zap.Int("response_bytes", len(c.Response().Body())),
@@ -261,15 +233,6 @@ func LogError(message string, fields ...zap.Field) {
 	logger.Error(message, fields...)
 }
 
-// LogFatal logs a message at fatal level and then exits the application.
-//
-// Deprecated: prefer returning errors up to main and letting deferred
-// shutdown code run. LogFatal skips deferred telemetry flush and log-file
-// close. Retained only for genuinely unrecoverable startup paths.
-func LogFatal(message string, fields ...zap.Field) {
-	logger.Fatal(message, fields...)
-}
-
 // Ctx returns a *zap.Logger annotated with the OpenTelemetry trace and span
 // IDs (when ctx carries a valid span context) and the chi request ID (when
 // present). Use it inside request handlers, middleware, and any other code
@@ -298,7 +261,7 @@ func Ctx(ctx context.Context) *zap.Logger {
 		)
 	}
 
-	if reqID, _ := ctx.Value(requestIDContextKey{}).(string); reqID != "" {
+	if reqID := requestid.FromContext(ctx); reqID != "" {
 		fields = append(fields, zap.String("request_id", reqID))
 	}
 

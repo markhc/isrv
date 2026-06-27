@@ -1,16 +1,12 @@
-// Package telemetry initializes OpenTelemetry tracing, metrics, and logging
-// for the application and exposes the global instruments used throughout the
-// codebase. All exporter configuration is read from the standard OTEL_*
-// environment variables.
 package telemetry
 
 import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync/atomic"
 
-	"github.com/markhc/isrv/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -30,19 +26,15 @@ import (
 )
 
 // InstrumentationName is the OpenTelemetry instrumentation scope name used
-// for all spans and metrics emitted directly by this application's code (as
-// opposed to the HTTP server spans from the FiberTracing middleware).
+// for all spans and metrics emitted directly by this application's code.
 const InstrumentationName = "github.com/markhc/isrv"
 
 // metricsHandler stores the Prometheus scrape handler installed by Setup so
-// MetricsHandler can return it from any goroutine. Before Setup runs it
-// returns a 503 handler, allowing callers to mount the route unconditionally.
+// MetricsHandler can return it from any goroutine.
 var metricsHandler atomic.Value //nolint:gochecknoglobals // bridges Setup() and MetricsHandler() across packages.
 
 // MetricsHandler returns the HTTP handler that serves the Prometheus scrape
-// endpoint. Before Setup runs (or when telemetry is disabled) it returns a
-// handler that responds with 503 Service Unavailable, so it remains safe to
-// mount on a route at startup.
+// endpoint.
 func MetricsHandler() http.Handler {
 	if h, ok := metricsHandler.Load().(http.Handler); ok && h != nil {
 		return h
@@ -82,14 +74,9 @@ type ShutdownFunc func(context.Context) error
 //
 // buildVersion is used as the default value for the service.version resource
 // attribute and can be overridden via OTEL_RESOURCE_ATTRIBUTES.
-//
-// When telemetry is disabled in cfg, Setup is a no-op and returns a no-op
-// shutdown function. The caller must invoke the returned ShutdownFunc before
-// process exit to flush buffered telemetry.
-//
-//nolint:funlen,cyclop // Exporter+provider+metric bootstrap is intentionally linear and unfolded.
-func Setup(ctx context.Context, cfg models.TelemetryConfiguration, buildVersion string) (ShutdownFunc, error) {
-	if !cfg.Enabled {
+func Setup(ctx context.Context, buildVersion string) (ShutdownFunc, error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
 		return func(context.Context) error { return nil }, nil
 	}
 

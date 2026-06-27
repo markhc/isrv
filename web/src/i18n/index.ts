@@ -52,7 +52,9 @@ export async function initI18n(): Promise<void> {
   await i18n.use(initReactI18next).init({
     lng: "en",
     fallbackLng: "en",
-    ns: namespaces,
+    // "admin" is declared but not in `namespaces`: it is loaded on demand by the
+    // admin route (see i18n/admin.ts) so its strings stay out of the home bundle.
+    ns: [...namespaces, "admin"],
     defaultNS: "common",
     resources: {
       en: {

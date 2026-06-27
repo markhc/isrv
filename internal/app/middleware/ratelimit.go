@@ -10,7 +10,6 @@ import (
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/telemetry"
-	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/time/rate"
@@ -78,7 +77,7 @@ func RateLimit(ctx context.Context, config models.RateLimitConfiguration) fiber.
 			return c.Next()
 		}
 
-		ipAddress := utils.GetIPAddress(c, config.TrustedProxies)
+		ipAddress := c.IP()
 
 		if slices.Contains(config.WhitelistIPs, ipAddress) {
 			telemetry.RateLimitDecisions.Add(c.Context(), 1, decisionAllowAttrs)

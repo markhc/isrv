@@ -71,6 +71,9 @@ export default defineConfig({
         changeOrigin: true,
         bypass: (req) => (req.method === "GET" ? req.url : undefined),
       },
+      // Admin API is backend-owned. Note: only "/admin/api" is proxied, not
+      // "/admin" itself, so the SPA route keeps serving with HMR in dev.
+      "/admin/api": { target: backend, changeOrigin: true },
       // Backend-owned routes: downloads and operational endpoints.
       "/d": { target: backend, changeOrigin: true },
       "/healthz": { target: backend, changeOrigin: true },

@@ -27,12 +27,9 @@ var (
 	StorageOpDuration     metric.Float64Histogram
 )
 
-// init binds the application metric vars to no-op instruments via the global
-// Meter (which itself defaults to a no-op MeterProvider before Setup runs).
-// This keeps unit tests that exercise instrumented code paths from panicking
-// when Setup has not been called, without forcing every call site to nil-check.
+// init binds the application metric vars to no-op instruments via the global Meter
 //
-//nolint:gochecknoinits // Required to keep package-level instrument vars non-nil before Setup runs.
+//nolint:gochecknoinits
 func init() {
 	if err := registerMetrics(otel.Meter(InstrumentationName)); err != nil {
 		// The no-op meter never returns an error; the panic guards against a
@@ -52,7 +49,6 @@ func InitMetrics() error {
 	return nil
 }
 
-//nolint:funlen
 func registerMetrics(meter metric.Meter) error {
 	var err error
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,42 +21,73 @@ import (
 // userDeleteSource labels FilesDeleted observations originating from a user-initiated delete.
 var userDeleteSource = attribute.String(telemetry.AttrSource, "user")
 
+// deleteFileError distinguishes the failed stage of a file deletion so callers
+// can map it to an appropriate response.
+type deleteFileError struct {
+	stage string // "storage" or "database"
+	err   error
+}
+
+func (e *deleteFileError) Error() string { return e.err.Error() }
+func (e *deleteFileError) Unwrap() error { return e.err }
+
+// deleteFile removes a stored file from both storage and the database, emitting
+// the FilesDeleted metric labelled with source. It is shared by the user-facing
+// Delete handler and the admin delete handler.
+func deleteFile(
+	ctx context.Context,
+	db database.Database,
+	st storage.Storage,
+	fileID string,
+	source attribute.KeyValue,
+) error {
+	if err := st.DeleteFile(ctx, fileID); err != nil {
+		logging.ErrorCtx(ctx, "failed to delete file from storage",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+			source,
+			attribute.String(telemetry.AttrResult, telemetry.ResultError),
+		))
+
+		return &deleteFileError{stage: "storage", err: err}
+	}
+
+	if err := db.OnFileDelete(ctx, fileID); err != nil {
+		logging.ErrorCtx(ctx, "failed to remove file record from database",
+			logging.String("file_id", fileID),
+			logging.Error(err),
+		)
+		telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+			source,
+			attribute.String(telemetry.AttrResult, telemetry.ResultError),
+		))
+
+		return &deleteFileError{stage: "database", err: err}
+	}
+
+	telemetry.FilesDeleted.Add(ctx, 1, metric.WithAttributes(
+		source,
+		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
+	))
+
+	return nil
+}
+
 // Delete returns a handler that removes a stored file by its ID from both
 // storage and the database.
 func Delete(db database.Database, st storage.Storage) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		fileID := c.Params("id")
 
-		err := st.DeleteFile(c.Context(), fileID)
-		if err != nil {
-			logging.ErrorCtx(c.Context(), "failed to delete file from storage",
-				logging.String("file_id", fileID),
-				logging.Error(err),
-			)
-			telemetry.FilesDeleted.Add(c.Context(), 1, metric.WithAttributes(
-				userDeleteSource,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
+		var delErr *deleteFileError
+		if err := deleteFile(c.Context(), db, st, fileID, userDeleteSource); err != nil {
+			if errors.As(err, &delErr) && delErr.stage == "database" {
+				return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file record")
+			}
 			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file")
 		}
-
-		err = db.OnFileDelete(c.Context(), fileID)
-		if err != nil {
-			logging.ErrorCtx(c.Context(), "failed to remove file record from database",
-				logging.String("file_id", fileID),
-				logging.Error(err),
-			)
-			telemetry.FilesDeleted.Add(c.Context(), 1, metric.WithAttributes(
-				userDeleteSource,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
-			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to delete file record")
-		}
-
-		telemetry.FilesDeleted.Add(c.Context(), 1, metric.WithAttributes(
-			userDeleteSource,
-			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
-		))
 
 		return c.SendStatus(fiber.StatusNoContent)
 	}

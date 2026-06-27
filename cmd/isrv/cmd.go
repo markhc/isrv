@@ -66,9 +66,7 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// runServer is the long-running entrypoint invoked by the root command. It
-// loads configuration, initialises logging and telemetry exactly once, and
-// supervises the application loop until the process is signalled.
+// runServer is the long-running entrypoint invoked by the root command.
 func runServer(parentCtx context.Context) error {
 	configuration.Load(configPath, debugFlag)
 	logging.Initialize()
@@ -78,15 +76,12 @@ func runServer(parentCtx context.Context) error {
 		}
 	}()
 
-	// Install signal handling once for the whole process. The resulting
-	// context is propagated down through the supervisor and StartApp.
+	// Install signal handling once for the whole process.
 	ctx, stop := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry is set up once at process start and torn down on exit. The
-	// supervisor-driven restarts of the app loop reuse the same exporters
-	// and provider instances rather than re-creating them on every restart.
-	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.Get().Telemetry, configuration.BuildVersion)
+	// Telemetry is set up once at process start and torn down on exit.
+	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.BuildVersion)
 	if err != nil {
 		logging.LogError("failed to initialise telemetry", logging.Error(err))
 
@@ -100,9 +95,6 @@ func runServer(parentCtx context.Context) error {
 		}
 	}()
 
-	// Once the OTel logger provider is registered globally, the otelzap
-	// bridge can forward records. AttachOTelBridge swaps the global logger
-	// in place without re-opening any file descriptors.
 	logging.AttachOTelBridge()
 
 	// In debug mode or when the supervisor is disabled, run the webserver

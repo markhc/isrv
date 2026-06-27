@@ -61,7 +61,7 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 		}
 		defer file.Close()
 
-		ipAddress := utils.GetIPAddress(c, config.TrustedProxies)
+		ipAddress := c.IP()
 		expiration := utils.CalculateExpirationTime(c, header.Size, config)
 
 		logging.InfoCtx(c.Context(), "file upload requested",
@@ -99,7 +99,6 @@ func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int) error {
 	return nil
 }
 
-//nolint:funlen
 func processUpload(
 	ctx context.Context,
 	config *models.Configuration,

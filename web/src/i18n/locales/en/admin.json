@@ -1,0 +1,78 @@
+{
+  "title": "iSRV Admin",
+  "loading": "Loading...",
+  "login": {
+    "title": "Administrator Sign In",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign In",
+    "submitting": "Signing in...",
+    "invalidCredentials": "Invalid username or password",
+    "failed": "Sign in failed"
+  },
+  "logout": "Log out",
+  "search": {
+    "query": "Search name or type",
+    "ip": "Filter by IP address",
+    "clear": "Clear filters"
+  },
+  "table": {
+    "id": "ID",
+    "name": "Name",
+    "ipAddress": "IP Address",
+    "size": "Size",
+    "type": "Type",
+    "downloads": "Downloads",
+    "created": "Uploaded at",
+    "expires": "Expires",
+    "actions": "Actions",
+    "empty": "No files found"
+  },
+  "sort": {
+    "label": "Sort by",
+    "created_at": "Upload date",
+    "size": "Size",
+    "downloads": "Downloads",
+    "expiration": "Expiration",
+    "name": "Name",
+    "asc": "Ascending",
+    "desc": "Descending"
+  },
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next",
+    "showing": "Showing {{from}}-{{to}} of {{total}}"
+  },
+  "actions": {
+    "preview": "Preview",
+    "download": "Download",
+    "delete": "Delete"
+  },
+  "preview": {
+    "title": "Preview",
+    "close": "Close",
+    "notSupported": "This file type cannot be previewed.",
+    "loading": "Loading preview...",
+    "failed": "Failed to load preview"
+  },
+  "detail": {
+    "empty": "Select a file to view its details",
+    "url": "URL",
+    "uploadedBy": "Uploaded by",
+    "copyUrl": "Copy URL",
+    "urlCopied": "URL copied",
+    "preview": "Preview"
+  },
+  "delete": {
+    "title": "Delete file",
+    "description": "Are you sure you want to permanently delete \"{{name}}\"? This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "deleting": "Deleting...",
+    "success": "File deleted",
+    "failed": "Failed to delete file"
+  },
+  "errors": {
+    "loadFailed": "Failed to load files"
+  }
+}

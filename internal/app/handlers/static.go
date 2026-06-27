@@ -43,10 +43,6 @@ func Static(staticFilesDir fs.FS) fiber.Handler {
 // Requests for files that exist in the FS (e.g. /assets/...) are served
 // directly with cache headers. All other requests fall back to index.html so
 // client-side routing can handle them.
-//
-// cfg is serialised as JSON and injected into the page as
-// window.__ISRV_CONFIG__ so the frontend can read server settings without an
-// extra round-trip.
 func SPA(distFS fs.FS, cfg models.FrontendConfig) fiber.Handler {
 	indexHTML, err := fs.ReadFile(distFS, "index.html")
 	if err != nil {
@@ -105,8 +101,6 @@ func Favicon(data []byte, format string) fiber.Handler {
 	}
 }
 
-// extOf returns the lowercase extension (without the leading dot) of path,
-// or an empty string if the path has no extension.
 func extOf(path string) string {
 	i := strings.LastIndex(path, ".")
 	if i < 0 {

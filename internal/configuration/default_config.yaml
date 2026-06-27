@@ -10,16 +10,6 @@ serverUrl: http://localhost:8080
 serverHost: 0.0.0.0
 serverPort: 8080
 
-# list of trusted proxy IPs or CIDR ranges for correctly identifying client IPs behind proxies.
-# This is important for accurate rate limiting and logging.
-# If your server is behind a reverse proxy (like NGINX, Cloudflare, etc.), 
-# you should add the proxy's IP address or CIDR range here.
-# example:
-# trustedProxies:
-#   - "127.0.0.1"
-#   - "10.0.0.0/8"
-trustedProxies: []
-
 # maximum file size in megabytes for uploads
 maxFileSizeMb: 512
 
@@ -45,6 +35,22 @@ disableUploadPage: true
 # The URL will be fetched and cached on startup. 
 faviconUrl: ""
 faviconFormat: "png"
+
+# admin panel configuration
+# The admin panel lets a single administrator view, search, preview and delete
+# uploaded files. It is reachable at /admin and is NOT linked from the home page.
+# The panel is enabled only when both username and password are set (here or via
+# the ISRV_ADMIN_USERNAME / ISRV_ADMIN_PASSWORD environment variables).
+admin:
+  # administrator credentials. Leave empty to disable the admin panel entirely.
+  username: ""
+  password: ""
+  # HMAC key used to sign session cookies. If empty, a random key is generated
+  # at startup, which invalidates existing sessions on every restart. Set a
+  # stable value to keep sessions valid across restarts.
+  sessionSecret: ""
+  # how long an admin login session remains valid
+  sessionTtl: 24h
 
 # storage configuration
 storage:
@@ -79,30 +85,50 @@ database:
   password: ""
   dbName: ""
 
-# rate limit configuration
-# applies to upload, expire and delete endpoints, but not to download or index page
-rateLimit:
-  enabled: true
-  requestsPerMinute: 30
-  burstSize: 10 # number of requests allowed in a short burst before enforcing the rate limit
-  whitelistIps: []
-  # supported actions: 
-  # "throttle" (respond with 429 Too Many Requests and a Retry-After header)
-  # "block" (respond with 403 Forbidden and block the IP for a certain duration)
-  # "none" (no action, just log the event)
-  onLimitExceeded: "throttle"
-  blockDuration: 15m # duration to block IPs that exceed the limit, only applicable if action is "block"
-  blockExponentialBackoff: true # block duration will increase exponentially for repeated offenses
+security:
+  # Whether to validate IP addresses in requests.
+  #
+  # If true, we will attempt to parse and validate headers to find the real
+  # client IP, even if the request is coming through a proxy.
+  #
+  # If you don't care about rate limiting or logging the real client IP, 
+  # you can set this to false for a small performance gain.
+  validateIpAddresses: true
+
+  # list of trusted proxy IPs or CIDR ranges for correctly identifying client IPs behind proxies.
+  # This is important for accurate rate limiting and logging.
+  # If your server is behind a reverse proxy (like NGINX, Cloudflare, etc.), 
+  # you should add the proxy's IP address or CIDR range here.
+  # example:
+  # trustedProxies:
+  #   - "127.0.0.1"
+  #   - "10.0.0.0/8"
+  trustedProxies: []
+
+  # rate limit configuration
+  # applies to upload, expire and delete endpoints, but not to download or index page
+  rateLimit:
+    enabled: true
+    requestsPerMinute: 30
+    burstSize: 10 # number of requests allowed in a short burst before enforcing the rate limit
+    whitelistIps: []
+    # supported actions: 
+    # "throttle" (respond with 429 Too Many Requests and a Retry-After header)
+    # "block" (respond with 403 Forbidden and block the IP for a certain duration)
+    # "none" (no action, just log the event)
+    onLimitExceeded: "throttle"
+    # duration to block IPs that exceed the limit, only applicable if action is "block"
+    blockDuration: 15m
+    # block duration will increase exponentially for repeated offenses
+    blockExponentialBackoff: true
 
 # logging configuration
 logging:
-  level: info
-  logToFile: false
-  path: ./isrv.log
-  logIps: true
-  logUploads: true
-  # File-sink rotation (lumberjack). Zero values use lumberjack defaults
-  # (100 MiB per file, unlimited backups, no expiration, no compression).
+  level: info      # log level: debug, info, warn, error
+  logToFile: false # whether to log to a file alongside stdout.
+  path: ./isrv.log # path to the log file if logToFile is true
+  logIps: true     # log the client IP address for each request
+  # File rotation
   maxSizeMb: 100   # rotate when the active file reaches this many MiB
   maxBackups: 7    # retain at most this many rotated files (0 = unlimited)
   maxAgeDays: 30   # delete rotated files older than this (0 = never)
@@ -115,22 +141,3 @@ cleanup:
 
 # enable debug mode for more verbose logging and additional information in responses
 debug: false
-
-# OpenTelemetry observability configuration
-# When enabled, RED metrics (rate, errors, duration) and APM traces are exported
-# via OTLP to any compatible backend (Grafana Cloud, Datadog, Dynatrace, New Relic, etc.).
-#
-# All exporter and resource settings are controlled through the standard OTEL_*
-# environment variables rather than this config file:
-#
-#   OTEL_EXPORTER_OTLP_ENDPOINT     Base URL of the OTLP receiver
-#                                    e.g. https://otlp-gateway-prod-us-east-0.grafana.net/otlp
-#   OTEL_EXPORTER_OTLP_HEADERS      Comma-separated key=value auth headers
-#                                    e.g. Authorization=Basic <base64(id:token)>
-#   OTEL_SERVICE_NAME                Overrides the service.name resource attribute (default: isrv)
-#   OTEL_RESOURCE_ATTRIBUTES         Additional resource attributes, e.g. deployment.environment=production
-#   OTEL_TRACES_SAMPLER              Trace sampler (default parentbased_always_on).
-#                                    Use parentbased_traceidratio for ratio-based sampling.
-#   OTEL_TRACES_SAMPLER_ARG          Sampler argument, e.g. 0.1 for 10% sampling.
-telemetry:
-  enabled: false
