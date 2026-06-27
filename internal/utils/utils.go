@@ -2,6 +2,7 @@ package utils
 
 import (
 	cryptoRand "crypto/rand"
+	"encoding"
 	"encoding/hex"
 	"fmt"
 	mathRand "math/rand"
@@ -133,6 +134,18 @@ func SetStructField(target any, fieldPath string, value any) error {
 		}
 
 		if i == len(parts)-1 {
+			// Types that know how to parse themselves from text take precedence
+			// over the kind-based handling below, so that values like "info" are decoded correctly.
+			if s, ok := value.(string); ok && field.CanAddr() {
+				if u, ok := field.Addr().Interface().(encoding.TextUnmarshaler); ok {
+					if err := u.UnmarshalText([]byte(s)); err != nil {
+						return fmt.Errorf("failed to parse value for field %s: %w", fieldPath, err)
+					}
+
+					return nil
+				}
+			}
+
 			//nolint:exhaustive
 			switch field.Kind() {
 			case reflect.String:

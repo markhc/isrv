@@ -210,17 +210,15 @@ func TestApplyEnvOverrides(t *testing.T) {
 		{
 			name: "logging configuration overrides",
 			envVars: map[string]string{
-				"ISRV_LOGGING_FILE_ENABLED":    "true",
-				"ISRV_LOGGING_PATH":            "/env/log/path",
-				"ISRV_LOGGING_IPS_ENABLED":     "false",
-				"ISRV_LOGGING_UPLOADS_ENABLED": "false",
+				"ISRV_LOGGING_LOG_TO_FILE": "true",
+				"ISRV_LOGGING_PATH":        "/env/log/path",
+				"ISRV_LOGGING_LOG_IPS":     "false",
 			},
 			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.True(t, cfg.Logging.LogToFile)
 				assert.Equal(t, "/env/log/path", cfg.Logging.Path)
 				assert.False(t, cfg.Logging.LogIps)
-				assert.False(t, cfg.Logging.LogUploads)
 			},
 		},
 		{
@@ -245,6 +243,58 @@ func TestApplyEnvOverrides(t *testing.T) {
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.False(t, cfg.Cleanup.Enabled)
 				assert.Equal(t, 5*time.Minute, cfg.Cleanup.Interval)
+			},
+		},
+		{
+			name: "database configuration overrides",
+			envVars: map[string]string{
+				"ISRV_DATABASE_TYPE":      "postgres",
+				"ISRV_DATABASE_HOST":      "db.example.com",
+				"ISRV_DATABASE_PORT":      "5432",
+				"ISRV_DATABASE_USER":      "isrv",
+				"ISRV_DATABASE_PASSWORD":  "secret",
+				"ISRV_DATABASE_DBNAME":    "files",
+				"ISRV_DATABASE_DSN":       "postgres://u:p@db/files",
+				"ISRV_DATABASE_FILE_PATH": "/data/isrv.db",
+			},
+			expectPanic: false,
+			expected: func(t *testing.T, cfg models.Configuration) {
+				assert.Equal(t, "postgres", cfg.Database.Type)
+				assert.Equal(t, "db.example.com", cfg.Database.Host)
+				assert.Equal(t, 5432, cfg.Database.Port)
+				assert.Equal(t, "isrv", cfg.Database.User)
+				assert.Equal(t, "secret", cfg.Database.Password)
+				assert.Equal(t, "files", cfg.Database.DBName)
+				assert.Equal(t, "postgres://u:p@db/files", cfg.Database.DSN)
+				assert.Equal(t, "/data/isrv.db", cfg.Database.FilePath)
+			},
+		},
+		{
+			name: "rate limit configuration overrides",
+			envVars: map[string]string{
+				"ISRV_RATE_LIMIT_ENABLED":        "true",
+				"ISRV_RATE_LIMIT_RPM":            "120",
+				"ISRV_RATE_LIMIT_BURST":          "20",
+				"ISRV_RATE_LIMIT_ACTION":         "block",
+				"ISRV_RATE_LIMIT_BLOCK_DURATION": "30m",
+			},
+			expectPanic: false,
+			expected: func(t *testing.T, cfg models.Configuration) {
+				assert.True(t, cfg.Security.RateLimit.Enabled)
+				assert.Equal(t, 120, cfg.Security.RateLimit.RequestsPerMinute)
+				assert.Equal(t, 20, cfg.Security.RateLimit.BurstSize)
+				assert.Equal(t, models.RateLimitActionBlock, cfg.Security.RateLimit.OnLimitExceeded)
+				assert.Equal(t, 30*time.Minute, cfg.Security.RateLimit.BlockDuration)
+			},
+		},
+		{
+			name: "logging level override parses named level",
+			envVars: map[string]string{
+				"ISRV_LOGGING_LEVEL": "warn",
+			},
+			expectPanic: false,
+			expected: func(t *testing.T, cfg models.Configuration) {
+				assert.Equal(t, zap.WarnLevel, cfg.Logging.Level)
 			},
 		},
 		{
@@ -530,7 +580,6 @@ func TestGetDefaultConfig(t *testing.T) {
 	assert.Equal(t, "file:isrv.db?cache=shared&mode=rwc", cfg.Database.DSN)
 
 	// Verify logging defaults
-	assert.True(t, cfg.Logging.LogUploads)
 	assert.True(t, cfg.Logging.LogIps)
 	assert.Equal(t, zap.InfoLevel, cfg.Logging.Level)
 	assert.Equal(t, "./isrv.log", cfg.Logging.Path)

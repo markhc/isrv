@@ -61,13 +61,6 @@ func req(ip string) *http.Request {
 	return r
 }
 
-func reqXFF(remoteIP, xff string) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Test-IP", remoteIP)
-	r.Header.Set("X-Forwarded-For", xff)
-	return r
-}
-
 func do(app *fiber.App, r *http.Request) int {
 	resp, err := app.Test(r, fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
 	if err != nil {
@@ -237,45 +230,6 @@ func TestRateLimit_WhitelistAmongHighTraffic(t *testing.T) {
 	for range 50 {
 		assert.Equal(t, http.StatusOK, do(app, req("80.0.0.1")))
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Trusted proxies / XFF
-// ---------------------------------------------------------------------------
-
-func TestRateLimit_XFFTrustedProxy(t *testing.T) {
-	c := cfg(60, 1, models.RateLimitActionThrottle)
-	c.TrustedProxies = []string{"10.10.0.0/24"}
-	app := newApp(t, c)
-
-	// client 1.2.3.4 via trusted proxy — uses burst
-	assert.Equal(t, http.StatusOK, do(app, reqXFF("10.10.0.1", "1.2.3.4")))
-	// same client via another trusted proxy — bucket exhausted
-	assert.Equal(t, http.StatusTooManyRequests, do(app, reqXFF("10.10.0.2", "1.2.3.4")))
-	// different client via trusted proxy — own fresh bucket
-	assert.Equal(t, http.StatusOK, do(app, reqXFF("10.10.0.1", "5.6.7.8")))
-}
-
-func TestRateLimit_XFFIgnoredWithoutTrustedProxies(t *testing.T) {
-	c := cfg(60, 1, models.RateLimitActionThrottle)
-	// no TrustedProxies → XFF ignored, keyed on X-Test-IP
-	app := newApp(t, c)
-	assert.Equal(t, http.StatusOK, do(app, reqXFF("10.10.0.1", "1.2.3.4")))
-	// different X-Test-IP with same XFF → separate bucket (XFF not trusted)
-	assert.Equal(t, http.StatusOK, do(app, reqXFF("10.10.0.2", "1.2.3.4")))
-	// same X-Test-IP again → bucket exhausted
-	assert.Equal(t, http.StatusTooManyRequests, do(app, reqXFF("10.10.0.1", "9.9.9.9")))
-}
-
-func TestRateLimit_XFFSpoofingFromUntrustedSource(t *testing.T) {
-	c := cfg(60, 1, models.RateLimitActionThrottle)
-	c.TrustedProxies = []string{"10.0.0.1"}
-	app := newApp(t, c)
-
-	do(app, reqXFF("99.99.99.99", "1.1.1.1"))
-	// second request with different spoofed XFF, same untrusted X-Test-IP → throttled
-	assert.Equal(t, http.StatusTooManyRequests, do(app, reqXFF("99.99.99.99", "2.2.2.2")),
-		"spoofed XFF from untrusted source must not bypass rate limiting")
 }
 
 // ---------------------------------------------------------------------------

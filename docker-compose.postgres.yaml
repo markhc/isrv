@@ -13,15 +13,44 @@ services:
       # These can be used to override configuration settings or provide additional parameters.
       - ISRV_LOGGING_LEVEL=info                   # Set the log level (e.g., debug, info, warn, error)
       - ISRV_LOGGING_FILE_ENABLED=false           # Disable logging to a file
+      - ISRV_LOGGING_FILE_PATH=/logs/isrv.log     # Set the log file path (if file logging is enabled)
       - ISRV_LOGGING_IPS_ENABLED=true             # Disable logging of client IP addresses
       - ISRV_CLEANUP_ENABLED=true                 # Enable automatic cleanup of old uploads
       - ISRV_CLEANUP_INTERVAL=1m                  # Set the cleanup interval (e.g., 1m for 1 minute)
       - ISRV_STORAGE_PATH=/data/upload_data       # Set the data directory for uploads
-      - ISRV_DATABASE_TYPE=sqlite
-      - ISRV_DATABASE_DSN=file:/data/isrv.db?cache=shared&mode=rwc
+      - ISRV_DATABASE_TYPE=postgres
+      - ISRV_DATABASE_HOST=postgres
+      - ISRV_DATABASE_PORT=5432
+      - ISRV_DATABASE_USER=${POSTGRES_USER:-isrv}
+      - ISRV_DATABASE_PASSWORD=${POSTGRES_PASSWORD:-isrv}
+      - ISRV_DATABASE_NAME=${POSTGRES_DB:-isrv}
     volumes:
       # Mount the configuration file
       - ./config.yaml:/config/config.yaml
       # Mount the data directory for uploads
       - ./data:/data:rw
     command: ["./isrv", "--disable-supervisor"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: isrv-postgres
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - POSTGRES_USER=${POSTGRES_USER:-isrv}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-isrv}
+      - POSTGRES_DB=${POSTGRES_DB:-isrv}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-isrv} -d ${POSTGRES_DB:-isrv}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+

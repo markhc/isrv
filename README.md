@@ -21,7 +21,6 @@ isrv is a lightweight file sharing service that provides anonymous temporary sto
 This project is a work in progress, here's a list of things I am working on in no particular order:
 
 - More remote storage options (GCS, FTP)
-- Support PostgreSQL database
 - Compress files at rest to save storage when convenient (text and other highly compressible formats)
 - Optional file encryption at rest
 - Storage tiers (namely "hot" and "cold") to optimize costs and performance based on file access patterns
@@ -106,33 +105,22 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_STORAGE_PATH` | - | Sets the storage base path |
 | `ISRV_LOGGING_FILE_ENABLED` | `true` | Whether we should log to a file |
 | `ISRV_LOGGING_IPS_ENABLED` | `true` | Log uploaders IP |
-| `ISRV_LOGGING_UPLOADS_ENABLED` | `true` | Log uploads |
 | `ISRV_LOGGING_PATH` | - | Sets the log file path |
 | `ISRV_RANDOM_ID_LENGTH` | `12` | Sets the length of randomly generated file IDs |
 | `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
 | `ISRV_CLEANUP_ENABLED` | `true` | Enable the job that removes expired files |
 | `ISRV_CLEANUP_INTERVAL` | `1m` | The interval at which the cleanup job runs |
-| `ISRV_TELEMETRY_ENABLED` | `false` | Enable OpenTelemetry traces and metrics export |
 | `ISRV_ADMIN_USERNAME` | - | Admin panel username (enables the panel when set together with the password) |
 | `ISRV_ADMIN_PASSWORD` | - | Admin panel password |
 | `ISRV_ADMIN_SESSION_SECRET` | - | HMAC key for signing admin session cookies (random if unset) |
 
-When telemetry is enabled, configure the exporter using the standard [OTEL environment variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/):
+### Telemetry
 
-| Variable | Description |
-|----------|-------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL of the OTLP receiver (e.g. `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` auth headers (e.g. `Authorization=Basic <base64(id:token)>`) |
-| `OTEL_SERVICE_NAME` | Overrides the `service.name` resource attribute |
-| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes (e.g. `deployment.environment=production`) |
-| `OTEL_TRACES_SAMPLER` | Trace sampler. Defaults to `parentbased_always_on`; set to `parentbased_traceidratio` for head-based sampling |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampling ratio in `[0.0, 1.0]` used by ratio samplers (e.g. `0.1` for 10%) |
-
-> Beyond `ISRV_TELEMETRY_ENABLED`, all telemetry-related tuning (endpoint, auth headers, sampling, resource attributes, etc.) is controlled exclusively through the `OTEL_*` environment variables above — the YAML `telemetry` section intentionally exposes nothing else.
+The service is made to work with the OpenTelemetry standard. To enable telemetry, set `OTEL_EXPORTER_OTLP_ENDPOINT` to a valid OTLP endpoint. More information available in the [OpenTelemetry documentation](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/):
 
 ### Observability endpoints
 
-When the server is running, the following infrastructure endpoints are always available and excluded from tracing/RED-metrics noise:
+When the server is running, the following infrastructure endpoints are always available:
 
 | Endpoint | Description |
 |----------|-------------|
@@ -140,13 +128,11 @@ When the server is running, the following infrastructure endpoints are always av
 | `GET /readyz` | Readiness probe; returns `200` when the database and storage backend are both reachable, otherwise `503` with a per-check error map |
 | `GET /metrics` | Prometheus scrape endpoint exposing all OpenTelemetry-recorded metrics in OpenMetrics format |
 
-When `debug: true` is set in the configuration, the standard Go `net/http/pprof` handlers are additionally mounted under `/debug/pprof/`. This endpoint exposes process internals and **must not** be reachable in untrusted environments without an upstream authentication layer.
-
 ## Admin Panel
 
-A single-administrator panel lets you view, search, preview and delete uploaded files. It is reachable at `/admin` and is intentionally **not** linked from the home page.
+A single-administrator panel lets you view, search, preview and delete uploaded files. It is reachable at `/admin`
 
-The panel is disabled unless both an admin username and password are configured, either in the `admin` section of the configuration file or via the `ISRV_ADMIN_USERNAME` / `ISRV_ADMIN_PASSWORD` environment variables. When disabled, all `/admin/api/*` routes return `404`.
+The panel is disabled unless both an admin username and password are configured.
 
 ```yaml
 admin:
@@ -158,14 +144,6 @@ admin:
   # Optional: how long a login session stays valid (default 24h).
   sessionTtl: 24h
 ```
-
-Features:
-
-- Sign in with the configured credentials; the backend issues a signed, HTTP-only session cookie.
-- List, search (by file name, content type or uploader IP address), sort and paginate uploaded files.
-- Preview images and text files inline; delete files with confirmation.
-
-The admin interface is code-split from the main bundle, so its JavaScript and translations are only downloaded when the `/admin` route is visited.
 
 ## Development
 
