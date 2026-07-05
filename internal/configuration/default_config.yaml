@@ -62,18 +62,16 @@ storage:
   accessKey: ""
   secretKey: ""
   bucketName: ""
-  # AWS region. Required when no endpoint is set (the SDK derives the AWS
-  # endpoint from it). With a custom endpoint it defaults to "auto".
+  # AWS region. Required when no endpoint is set
   region: ""
-  # custom endpoint for S3-compatible stores (MinIO, GCS, ...). Leave empty
-  # for AWS S3. When set, path-style addressing is used automatically.
+  # custom endpoint for S3-compatible stores (MinIO, GCS, ...). Leave empty for AWS S3.
   endpoint: ""
   # when true, downloads are streamed through the server instead of
   # redirecting the client to a pre-signed S3 URL. Uses server bandwidth but
   # hides the storage endpoint and keeps download URLs stable.
   proxyDownloads: false
   # multipart upload tuning. Large uploads are split into parts of
-  # uploadPartSizeMb MiB (minimum 5) and uploaded with uploadConcurrency
+  # uploadPartSizeMb MiB (minimum 5MiB) and uploaded with uploadConcurrency
   # parallel workers. Zero values use the SDK defaults.
   uploadPartSizeMb: 0
   uploadConcurrency: 0

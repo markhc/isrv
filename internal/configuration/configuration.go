@@ -280,8 +280,7 @@ func verifyStorageConfig(storageConfig *models.StorageConfiguration) {
 		}
 	case "s3":
 		// Without a custom endpoint the SDK derives the AWS endpoint from the
-		// region, so the region is mandatory. S3-compatible stores (MinIO,
-		// GCS, ...) mostly ignore the region, so default it to "auto" there.
+		// region, so the region is mandatory.
 		if storageConfig.Region == "" {
 			if storageConfig.Endpoint == "" {
 				panic("Invalid configuration: region must be provided for S3 storage")

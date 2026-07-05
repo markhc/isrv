@@ -25,14 +25,7 @@ services:
       - ISRV_STORAGE_BUCKET_NAME=${ISRV_S3_BUCKET:-isrv}
       - ISRV_STORAGE_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - ISRV_STORAGE_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
-      # Stream downloads through isrv instead of redirecting to a pre-signed URL.
-      # Keep this true for host-browser validation: in redirect mode the browser
-      # receives a URL pointing at "minio:9000", which only resolves inside the
-      # compose network. Set to false only if MinIO is reachable from the client
-      # under the same hostname.
       - ISRV_STORAGE_PROXY_DOWNLOADS=${ISRV_STORAGE_PROXY_DOWNLOADS:-true}
-      # Multipart upload tuning. Lower the part size (min 5 MiB) to exercise the
-      # multipart/concurrent upload path with smaller files.
       - ISRV_STORAGE_UPLOAD_PART_SIZE_MB=${ISRV_STORAGE_UPLOAD_PART_SIZE_MB:-0}
       - ISRV_STORAGE_UPLOAD_CONCURRENCY=${ISRV_STORAGE_UPLOAD_CONCURRENCY:-0}
     volumes:
