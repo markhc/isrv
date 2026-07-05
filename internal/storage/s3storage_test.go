@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -62,16 +66,23 @@ func (m *MockS3Presigner) PresignGetObject(_ context.Context, params *s3.GetObje
 	return req, args.Error(1)
 }
 
+type MockS3Uploader struct{ mock.Mock }
+
+func (m *MockS3Uploader) UploadObject(_ context.Context, input *transfermanager.UploadObjectInput, _ ...func(*transfermanager.Options)) (*transfermanager.UploadObjectOutput, error) {
+	args := m.Called(input)
+	out, _ := args.Get(0).(*transfermanager.UploadObjectOutput)
+	return out, args.Error(1)
+}
+
 // ---- test helpers ----
 
-func newTestS3Storage(client s3api, presigner s3presigner) *S3Storage {
+func newTestS3Storage(client s3api, presigner s3presigner, uploader s3uploader) *S3Storage {
 	return &S3Storage{
-		Endpoint:  "http://test",
 		Bucket:    "test-bucket",
-		Region:    "us-east-1",
 		BasePath:  "files",
 		client:    client,
 		presigner: presigner,
+		uploader:  uploader,
 	}
 }
 
@@ -106,7 +117,7 @@ func Test_S3Storage_FileExists(t *testing.T) {
 				return p.Key != nil && *p.Key == "files/test-id"
 			})).Return((*s3.HeadObjectOutput)(nil), tt.headErr)
 
-			s := newTestS3Storage(client, nil)
+			s := newTestS3Storage(client, nil, nil)
 			got, err := s.FileExists(context.Background(), "test-id")
 
 			if tt.wantErr {
@@ -132,12 +143,13 @@ func Test_S3Storage_SaveFileUpload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &MockS3Client{}
-			client.On("PutObject", mock.MatchedBy(func(p *s3.PutObjectInput) bool {
-				return p.Key != nil && *p.Key == "files/test-id"
-			})).Return((*s3.PutObjectOutput)(nil), tt.putErr)
+			uploader := &MockS3Uploader{}
+			uploader.On("UploadObject", mock.MatchedBy(func(p *transfermanager.UploadObjectInput) bool {
+				return p.Key != nil && *p.Key == "files/test-id" &&
+					p.ContentType != nil && *p.ContentType == "text/plain"
+			})).Return((*transfermanager.UploadObjectOutput)(nil), tt.putErr)
 
-			s := newTestS3Storage(client, nil)
+			s := newTestS3Storage(nil, nil, uploader)
 			header := &multipart.FileHeader{
 				Filename: "test.txt",
 				Header:   textproto.MIMEHeader{"Content-Type": []string{"text/plain"}},
@@ -150,7 +162,7 @@ func Test_S3Storage_SaveFileUpload(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, "test-id", gotID)
 			}
-			client.AssertExpectations(t)
+			uploader.AssertExpectations(t)
 		})
 	}
 }
@@ -172,7 +184,7 @@ func Test_S3Storage_DeleteFile(t *testing.T) {
 				return p.Key != nil && *p.Key == "files/test-id"
 			})).Return((*s3.DeleteObjectOutput)(nil), tt.deleteErr)
 
-			s := newTestS3Storage(client, nil)
+			s := newTestS3Storage(client, nil, nil)
 			err := s.DeleteFile(context.Background(), "test-id")
 
 			if tt.wantErr {
@@ -244,7 +256,7 @@ func Test_S3Storage_ServeFile(t *testing.T) {
 				return p.Key != nil && *p.Key == "files/test-id"
 			})).Return(returnReq, tt.presignErr)
 
-			s := newTestS3Storage(nil, presigner)
+			s := newTestS3Storage(nil, presigner, nil)
 
 			app := fiber.New()
 			app.Get("/", func(c fiber.Ctx) error {
@@ -263,4 +275,161 @@ func Test_S3Storage_ServeFile(t *testing.T) {
 			presigner.AssertExpectations(t)
 		})
 	}
+}
+
+type invalidRangeError struct{}
+
+func (e *invalidRangeError) Error() string     { return "InvalidRange: range not satisfiable" }
+func (e *invalidRangeError) ErrorCode() string { return "InvalidRange" }
+func (e *invalidRangeError) ErrorMessage() string {
+	return "The requested range is not satisfiable"
+}
+func (e *invalidRangeError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+func Test_S3Storage_ServeFile_Proxy(t *testing.T) {
+	content := []byte("hello proxy world")
+
+	tests := []struct {
+		name            string
+		file            models.File
+		rangeHeader     string
+		output          *s3.GetObjectOutput
+		getErr          error
+		wantStatus      int
+		wantBody        string
+		wantContentType string
+		wantRange       string
+	}{
+		{
+			name: "full download",
+			file: models.File{ID: "test-id", Name: "file.txt", ContentType: "text/plain"},
+			output: &s3.GetObjectOutput{
+				Body:          io.NopCloser(bytes.NewReader(content)),
+				ContentLength: aws.Int64(int64(len(content))),
+			},
+			wantStatus:      http.StatusOK,
+			wantBody:        string(content),
+			wantContentType: "text/plain",
+		},
+		{
+			name: "content type falls back to object metadata",
+			file: models.File{ID: "test-id", Name: "file.bin"},
+			output: &s3.GetObjectOutput{
+				Body:          io.NopCloser(bytes.NewReader(content)),
+				ContentLength: aws.Int64(int64(len(content))),
+				ContentType:   aws.String("application/pdf"),
+			},
+			wantStatus:      http.StatusOK,
+			wantBody:        string(content),
+			wantContentType: "application/pdf",
+		},
+		{
+			name:        "range request returns partial content",
+			file:        models.File{ID: "test-id", Name: "file.txt", ContentType: "text/plain"},
+			rangeHeader: "bytes=0-4",
+			output: &s3.GetObjectOutput{
+				Body:          io.NopCloser(bytes.NewReader(content[:5])),
+				ContentLength: aws.Int64(5),
+				ContentRange:  aws.String("bytes 0-4/17"),
+			},
+			wantStatus:      http.StatusPartialContent,
+			wantBody:        string(content[:5]),
+			wantContentType: "text/plain",
+			wantRange:       "bytes 0-4/17",
+		},
+		{
+			name:       "missing object returns 404",
+			file:       models.File{ID: "test-id", Name: "file.txt"},
+			getErr:     &types.NoSuchKey{},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:        "invalid range returns 416",
+			file:        models.File{ID: "test-id", Name: "file.txt"},
+			rangeHeader: "bytes=999-",
+			getErr:      &invalidRangeError{},
+			wantStatus:  http.StatusRequestedRangeNotSatisfiable,
+		},
+		{
+			name:       "other error returns 500",
+			file:       models.File{ID: "test-id", Name: "file.txt"},
+			getErr:     errors.New("connection refused"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &MockS3Client{}
+			client.On("GetObject", mock.MatchedBy(func(p *s3.GetObjectInput) bool {
+				if p.Key == nil || *p.Key != "files/test-id" {
+					return false
+				}
+				if tt.rangeHeader == "" {
+					return p.Range == nil
+				}
+				return p.Range != nil && *p.Range == tt.rangeHeader
+			})).Return(tt.output, tt.getErr)
+
+			s := newTestS3Storage(client, nil, nil)
+			s.ProxyDownloads = true
+
+			app := fiber.New()
+			app.Get("/", func(c fiber.Ctx) error {
+				return s.ServeFile(c, &tt.file)
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.rangeHeader != "" {
+				req.Header.Set("Range", tt.rangeHeader)
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			resp.Body.Close()
+
+			assert.Equal(t, tt.wantStatus, resp.StatusCode)
+			if tt.wantBody != "" {
+				assert.Equal(t, tt.wantBody, string(body))
+				assert.Equal(t, "bytes", resp.Header.Get("Accept-Ranges"))
+			}
+			if tt.wantContentType != "" {
+				assert.Equal(t, tt.wantContentType, resp.Header.Get("Content-Type"))
+			}
+			if tt.wantRange != "" {
+				assert.Equal(t, tt.wantRange, resp.Header.Get("Content-Range"))
+			}
+			client.AssertExpectations(t)
+		})
+	}
+}
+
+func Test_newS3Options(t *testing.T) {
+	t.Run("aws endpoint resolved from region", func(t *testing.T) {
+		opts := newS3Options(models.StorageConfiguration{
+			Region:    "us-east-1",
+			AccessKey: "key",
+			SecretKey: "secret",
+		})
+
+		assert.Equal(t, "us-east-1", opts.Region)
+		assert.Nil(t, opts.BaseEndpoint)
+		assert.False(t, opts.UsePathStyle)
+	})
+
+	t.Run("custom endpoint uses path style", func(t *testing.T) {
+		opts := newS3Options(models.StorageConfiguration{
+			Region:    "auto",
+			Endpoint:  "http://minio:9000",
+			AccessKey: "key",
+			SecretKey: "secret",
+		})
+
+		assert.Equal(t, "auto", opts.Region)
+		require.NotNil(t, opts.BaseEndpoint)
+		assert.Equal(t, "http://minio:9000", *opts.BaseEndpoint)
+		assert.True(t, opts.UsePathStyle)
+	})
 }

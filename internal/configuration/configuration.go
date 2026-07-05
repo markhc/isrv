@@ -98,6 +98,11 @@ func applyEnvOverrides() {
 		"ISRV_STORAGE_REGION":      "Storage.Region",
 		"ISRV_STORAGE_ENDPOINT":    "Storage.Endpoint",
 
+		// S3-specific behaviour.
+		"ISRV_STORAGE_PROXY_DOWNLOADS":     "Storage.ProxyDownloads",
+		"ISRV_STORAGE_UPLOAD_PART_SIZE_MB": "Storage.UploadPartSizeMB",
+		"ISRV_STORAGE_UPLOAD_CONCURRENCY":  "Storage.UploadConcurrency",
+
 		// Database backend.
 		"ISRV_DATABASE_TYPE":      "Database.Type",
 		"ISRV_DATABASE_DSN":       "Database.DSN",
@@ -274,15 +279,21 @@ func verifyStorageConfig(storageConfig *models.StorageConfiguration) {
 			storageConfig.BasePath += string(os.PathSeparator)
 		}
 	case "s3":
+		// Without a custom endpoint the SDK derives the AWS endpoint from the
+		// region, so the region is mandatory.
 		if storageConfig.Region == "" {
-			panic("Invalid configuration: region must be provided for S3 storage")
+			if storageConfig.Endpoint == "" {
+				panic("Invalid configuration: region must be provided for S3 storage")
+			}
+			storageConfig.Region = "auto"
 		}
 
-		if storageConfig.Endpoint == "" {
-			// Default the endpoint to the regional AWS S3 host.
-			if storageConfig.Region != "" {
-				storageConfig.Endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", storageConfig.Region)
-			}
+		if storageConfig.UploadPartSizeMB != 0 && storageConfig.UploadPartSizeMB < 5 {
+			panic("Invalid configuration: storage.upload_part_size_mb must be at least 5 (S3 minimum part size)")
+		}
+
+		if storageConfig.UploadConcurrency < 0 {
+			panic("Invalid configuration: storage.upload_concurrency cannot be negative")
 		}
 	}
 }

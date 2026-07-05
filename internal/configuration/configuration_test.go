@@ -517,7 +517,7 @@ func TestVerifyConfiguration(t *testing.T) {
 			},
 		},
 		{
-			name: "s3 storage gets default endpoint when region provided",
+			name: "s3 storage leaves endpoint empty for SDK resolution",
 			setupFunc: func() models.Configuration {
 				cfg := getDefaultConfig()
 				cfg.Storage.Type = "s3"
@@ -527,8 +527,46 @@ func TestVerifyConfiguration(t *testing.T) {
 			},
 			expectPanic: false,
 			postCheck: func(t *testing.T, cfg models.Configuration) {
-				assert.Equal(t, "https://s3.us-west-2.amazonaws.com", cfg.Storage.Endpoint)
+				assert.Empty(t, cfg.Storage.Endpoint)
 			},
+		},
+		{
+			name: "s3 storage with custom endpoint defaults region to auto",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.Storage.Type = "s3"
+				cfg.Storage.Region = ""
+				cfg.Storage.Endpoint = "http://minio:9000"
+				return cfg
+			},
+			expectPanic: false,
+			postCheck: func(t *testing.T, cfg models.Configuration) {
+				assert.Equal(t, "auto", cfg.Storage.Region)
+			},
+		},
+		{
+			name: "s3 storage with too small upload part size",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.Storage.Type = "s3"
+				cfg.Storage.Region = "us-east-1"
+				cfg.Storage.UploadPartSizeMB = 4
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: storage.upload_part_size_mb must be at least 5 (S3 minimum part size)",
+		},
+		{
+			name: "s3 storage with negative upload concurrency",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.Storage.Type = "s3"
+				cfg.Storage.Region = "us-east-1"
+				cfg.Storage.UploadConcurrency = -1
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: storage.upload_concurrency cannot be negative",
 		},
 	}
 

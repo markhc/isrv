@@ -12,9 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/models"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 )
@@ -31,11 +34,6 @@ type s3api interface {
 		params *s3.HeadObjectInput,
 		optFns ...func(*s3.Options),
 	) (*s3.HeadObjectOutput, error)
-	PutObject(
-		ctx context.Context,
-		params *s3.PutObjectInput,
-		optFns ...func(*s3.Options),
-	) (*s3.PutObjectOutput, error)
 	GetObject(
 		ctx context.Context,
 		params *s3.GetObjectInput,
@@ -57,19 +55,36 @@ type s3presigner interface {
 	) (*v4.PresignedHTTPRequest, error)
 }
 
-// S3Storage implements the Storage interface using an S3-compatible object store.
-type S3Storage struct {
-	Endpoint  string
-	Bucket    string
-	Region    string
-	BasePath  string
-	client    s3api
-	presigner s3presigner
+// s3uploader is the subset of *transfermanager.Client operations used by
+// S3Storage. The transfer manager splits large objects into parts and uploads
+// them concurrently.
+type s3uploader interface {
+	UploadObject(
+		ctx context.Context,
+		input *transfermanager.UploadObjectInput,
+		opts ...func(*transfermanager.Options),
+	) (*transfermanager.UploadObjectOutput, error)
 }
 
-// NewS3Storage creates an S3Storage from the provided configuration and verifies
-// bucket access. It returns an error if the bucket cannot be reached.
-func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3Storage, error) {
+// S3Storage implements the Storage interface using an S3-compatible object store.
+type S3Storage struct {
+	Bucket   string
+	BasePath string
+	// ProxyDownloads streams objects through the server on download instead
+	// of redirecting the client to a pre-signed URL.
+	ProxyDownloads bool
+
+	client    s3api
+	presigner s3presigner
+	uploader  s3uploader
+}
+
+// newS3Options builds the S3 client options from the storage configuration.
+// When no custom endpoint is configured, the SDK resolves the AWS endpoint
+// from the region and uses virtual-hosted-style addressing. A custom endpoint
+// (MinIO, GCS, ...) is used as-is with path-style addressing, which
+// S3-compatible stores generally require.
+func newS3Options(config models.StorageConfiguration) s3.Options {
 	options := s3.Options{
 		Region: config.Region,
 		Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
@@ -77,15 +92,24 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3S
 			config.SecretKey,
 			"",
 		)),
-		UsePathStyle: true,
-		BaseEndpoint: aws.String(config.Endpoint),
+	}
+
+	if config.Endpoint != "" {
+		options.BaseEndpoint = aws.String(config.Endpoint)
+		options.UsePathStyle = true
 	}
 
 	// Register AWS SDK middleware that emits an OTel span per API call with
 	// the standard rpc.system / rpc.service / rpc.method attributes.
 	otelaws.AppendMiddlewares(&options.APIOptions)
 
-	awsClient := s3.New(options)
+	return options
+}
+
+// NewS3Storage creates an S3Storage from the provided configuration and verifies
+// bucket access. It returns an error if the bucket cannot be reached.
+func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3Storage, error) {
+	awsClient := s3.New(newS3Options(config))
 
 	// HeadBucket verifies connectivity without requiring any specific object to exist.
 	_, err := awsClient.HeadBucket(ctx, &s3.HeadBucketInput{
@@ -95,13 +119,22 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3S
 		return nil, fmt.Errorf("access s3 bucket %q: %w", config.BucketName, err)
 	}
 
+	uploader := transfermanager.New(awsClient, func(options *transfermanager.Options) {
+		if config.UploadPartSizeMB > 0 {
+			options.PartSizeBytes = int64(config.UploadPartSizeMB) * 1024 * 1024
+		}
+		if config.UploadConcurrency > 0 {
+			options.Concurrency = config.UploadConcurrency
+		}
+	})
+
 	return &S3Storage{
-		Endpoint:  config.Endpoint,
-		Bucket:    config.BucketName,
-		Region:    config.Region,
-		BasePath:  config.BasePath,
-		client:    awsClient,
-		presigner: s3.NewPresignClient(awsClient),
+		Bucket:         config.BucketName,
+		BasePath:       config.BasePath,
+		ProxyDownloads: config.ProxyDownloads,
+		client:         awsClient,
+		presigner:      s3.NewPresignClient(awsClient),
+		uploader:       uploader,
 	}, nil
 }
 
@@ -146,6 +179,8 @@ func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, 
 }
 
 // SaveFileUpload uploads the file to the S3 bucket and returns the object key.
+// Large objects are split into parts and uploaded concurrently by the S3
+// transfer manager.
 func (storage *S3Storage) SaveFileUpload(
 	ctx context.Context,
 	fileID string,
@@ -158,7 +193,7 @@ func (storage *S3Storage) SaveFileUpload(
 	sanitizedFileName := url.PathEscape(fileHeader.Filename)
 	contentDisposition := "inline; filename=\"" + sanitizedFileName + "\""
 
-	_, err = storage.client.PutObject(ctx, &s3.PutObjectInput{
+	_, err = storage.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket:             aws.String(storage.Bucket),
 		Key:                aws.String(path.Join(storage.BasePath, fileID)),
 		Body:               file,
@@ -188,11 +223,85 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 	return nil
 }
 
-// ServeFile generates a pre-signed S3 URL and redirects the client to it.
+// ServeFile delivers the file to the client. In proxy mode the object is
+// streamed through the server; otherwise the client is redirected to a
+// pre-signed S3 URL.
 func (storage *S3Storage) ServeFile(
 	c fiber.Ctx,
 	file *models.File,
 ) error {
+	if storage.ProxyDownloads {
+		return storage.proxyFile(c, file)
+	}
+
+	return storage.redirectPresigned(c, file)
+}
+
+// proxyFile fetches the object from S3 and streams it to the client. Range
+// requests are forwarded to S3 so partial downloads work without buffering
+// the whole object.
+func (storage *S3Storage) proxyFile(c fiber.Ctx, file *models.File) error {
+	var err error
+	defer recordOpDuration(c.Context(), BackendS3, OperationServe, time.Now(), &err)
+
+	input := &s3.GetObjectInput{
+		Bucket: aws.String(storage.Bucket),
+		Key:    aws.String(path.Join(storage.BasePath, file.ID)),
+	}
+
+	if rangeHeader := c.Get(fiber.HeaderRange); rangeHeader != "" {
+		input.Range = aws.String(rangeHeader)
+	}
+
+	var object *s3.GetObjectOutput
+	object, err = storage.client.GetObject(c.Context(), input)
+	if err != nil {
+		var noSuchKey *types.NoSuchKey
+		if errors.As(err, &noSuchKey) {
+			return c.Status(fiber.StatusNotFound).SendString("not found")
+		}
+
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidRange" {
+			return c.Status(fiber.StatusRequestedRangeNotSatisfiable).SendString("invalid range")
+		}
+
+		return c.Status(fiber.StatusInternalServerError).SendString("failed to fetch file")
+	}
+
+	contentType := file.ContentType
+	if contentType == "" && object.ContentType != nil {
+		contentType = *object.ContentType
+	}
+
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	headers.SetHeaders(c, file.Name, contentType, true, true)
+	c.Set(fiber.HeaderAcceptRanges, "bytes")
+
+	if object.ContentRange != nil {
+		c.Set(fiber.HeaderContentRange, *object.ContentRange)
+		c.Status(fiber.StatusPartialContent)
+	}
+
+	// SendStream closes the body once the response has been written.
+	if object.ContentLength != nil {
+		// manually assign to err instead of returning directly
+		// to ensure the deferred recordOpDuration captures the error
+		err = c.SendStream(object.Body, int(*object.ContentLength))
+		return err
+	}
+
+	// manually assign to err instead of returning directly
+	// to ensure the deferred recordOpDuration captures the error
+	err = c.SendStream(object.Body)
+	return err
+}
+
+// redirectPresigned generates a pre-signed S3 URL and redirects the client to it.
+func (storage *S3Storage) redirectPresigned(c fiber.Ctx, file *models.File) error {
 	sanitizedFileName := url.PathEscape(file.Name)
 	objectKey := path.Join(storage.BasePath, file.ID)
 

@@ -19,6 +19,16 @@ type StorageConfiguration struct {
 	BucketName string `yaml:"bucketName"`
 	Region     string `yaml:"region"`
 	Endpoint   string `yaml:"endpoint"`
+
+	// ProxyDownloads streams S3 objects through the server instead of
+	// redirecting clients to a pre-signed URL.
+	ProxyDownloads bool `yaml:"proxyDownloads"`
+	// UploadPartSizeMB is the part size in MiB for multipart S3 uploads.
+	// Zero uses the SDK default. S3 requires parts of at least 5 MiB.
+	UploadPartSizeMB int `yaml:"uploadPartSizeMb"`
+	// UploadConcurrency is the number of parts uploaded in parallel for
+	// multipart S3 uploads. Zero uses the SDK default.
+	UploadConcurrency int `yaml:"uploadConcurrency"`
 }
 
 // AdminConfiguration holds settings for the single-administrator admin panel.
