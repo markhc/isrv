@@ -6,7 +6,7 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/markhc/isrv/internal/logging"
@@ -60,7 +60,7 @@ func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, er
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationExists, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 	_, err = os.Stat(filePath)
 
 	if os.IsNotExist(err) {
@@ -86,7 +86,7 @@ func (ls *LocalStorage) SaveFileUpload(
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationSave, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 
 	dst, err := os.Create(filePath)
 	if err != nil {
@@ -111,7 +111,7 @@ func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationDelete, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 	err = os.Remove(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to delete file: %w", err)
@@ -126,7 +126,7 @@ func (ls *LocalStorage) Open(ctx context.Context, fileID string, brange *ByteRan
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationServe, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 
 	file, err := os.Open(filePath)
 	if err != nil {
