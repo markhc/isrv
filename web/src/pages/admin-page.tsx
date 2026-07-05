@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { LanguageSwitcher } from "@/components/language-switcher"
@@ -50,7 +51,11 @@ export default function AdminPage() {
   return (
     <main className="flex h-screen w-full flex-col gap-4 p-4">
       <header className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          <Link to="/" className="transition-colors hover:text-muted-foreground">
+            {t("title")}
+          </Link>
+        </h1>
         <div className="flex items-center gap-3">
           {authenticated && session.data?.username && (
             <span className="text-sm text-muted-foreground">{session.data.username}</span>
