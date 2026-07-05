@@ -20,6 +20,11 @@
     "selfHosting": {
       "title": "Auto-hospedagem",
       "body": "iSRV é de código aberto e projetado para ser auto-hospedado. Você controla onde seus arquivos são armazenados, por quanto tempo são mantidos e quem pode enviar. Consulte o repositório do projeto para obter instruções de configuração."
+    },
+    "sourceCode": {
+      "title": "Código-fonte",
+      "body": "iSRV é de código aberto. Explore o código, relate problemas ou contribua no GitHub.",
+      "link": "Ver no GitHub"
     }
   }
 }
