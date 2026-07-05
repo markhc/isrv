@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
+import { REPOSITORY_URL } from "@/lib/constants"
 
 export default function AboutPage() {
   const { t } = useTranslation(["about", "common"])
@@ -45,7 +46,7 @@ export default function AboutPage() {
             <h2 className="text-base font-semibold text-foreground">{t("about:sections.sourceCode.title")}</h2>
             <p>{t("about:sections.sourceCode.body")}</p>
             <a
-              href="https://github.com/markhc/isrv"
+              href={REPOSITORY_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors w-fit"
