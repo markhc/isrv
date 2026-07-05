@@ -12,7 +12,7 @@ RUN pnpm install --frozen-lockfile
 COPY web ./
 RUN pnpm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS go-builder
 
 WORKDIR /app
 
