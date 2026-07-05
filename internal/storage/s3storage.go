@@ -289,13 +289,13 @@ func (storage *S3Storage) proxyFile(c fiber.Ctx, file *models.File) error {
 	// SendStream closes the body once the response has been written.
 	if object.ContentLength != nil {
 		// manually assign to err instead of returning directly
-		// to ensure the deferred recordOpDuration runs
+		// to ensure the deferred recordOpDuration captures the error
 		err = c.SendStream(object.Body, int(*object.ContentLength))
 		return err
 	}
 
 	// manually assign to err instead of returning directly
-	// to ensure the deferred recordOpDuration runs
+	// to ensure the deferred recordOpDuration captures the error
 	err = c.SendStream(object.Body)
 	return err
 }
