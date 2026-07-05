@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -38,13 +39,17 @@ func TestValidate_TamperedToken(t *testing.T) {
 	secret := []byte("test-secret")
 	token := IssueToken(secret, "admin", time.Hour)
 
-	// Flip the last character of the signature.
-	tampered := token[:len(token)-1]
-	if token[len(token)-1] == 'A' {
-		tampered += "B"
+	// Flip the first character of the signature. The final base64 character of
+	// the signature carries unused trailing bits, so flipping it can decode to
+	// the same bytes; the first character is always fully meaningful.
+	b := []byte(token)
+	i := strings.LastIndexByte(token, '.') + 1
+	if b[i] == 'A' {
+		b[i] = 'B'
 	} else {
-		tampered += "A"
+		b[i] = 'A'
 	}
+	tampered := string(b)
 
 	_, ok := Validate(secret, tampered)
 	assert.False(t, ok)
