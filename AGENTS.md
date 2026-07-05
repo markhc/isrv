@@ -9,9 +9,7 @@ make build          # build static binary → build/isrv
 make test           # run all tests
 make lint           # golangci-lint
 make fmt            # gofmt
-make dev            # fmt + lint + test + build (pre-commit workflow)
 make test-coverage  # generates coverage.html
-make bench          # run benchmarks (see docs/benchmarking.md)
 ```
 
 Run tests for a specific package: `go test ./internal/app/handlers/...`

@@ -1,0 +1,83 @@
+services:
+  isrv:
+    build: .
+    image: markhc/isrv:latest
+    container_name: isrv
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=UTC
+      # Custom environment variables for the application
+      # These can be used to override configuration settings or provide additional parameters.
+      - ISRV_LOGGING_LEVEL=debug                   # Verbose logging to observe the S3 operations
+      - ISRV_LOGGING_FILE_ENABLED=false           # Disable logging to a file
+      - ISRV_LOGGING_IPS_ENABLED=true             # Disable logging of client IP addresses
+      - ISRV_CLEANUP_ENABLED=true                 # Enable automatic cleanup of old uploads
+      - ISRV_CLEANUP_INTERVAL=1m                  # Set the cleanup interval (e.g., 1m for 1 minute)
+      - ISRV_DATABASE_TYPE=sqlite
+      - ISRV_DATABASE_DSN=file:/data/isrv.db?cache=shared&mode=rwc
+      # S3 storage backend pointed at the bundled MinIO service.
+      - ISRV_STORAGE_TYPE=s3
+      - ISRV_STORAGE_ENDPOINT=http://minio:9000
+      - ISRV_STORAGE_REGION=us-east-1
+      - ISRV_STORAGE_BUCKET_NAME=${ISRV_S3_BUCKET:-isrv}
+      - ISRV_STORAGE_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - ISRV_STORAGE_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      # Stream downloads through isrv instead of redirecting to a pre-signed URL.
+      # Keep this true for host-browser validation: in redirect mode the browser
+      # receives a URL pointing at "minio:9000", which only resolves inside the
+      # compose network. Set to false only if MinIO is reachable from the client
+      # under the same hostname.
+      - ISRV_STORAGE_PROXY_DOWNLOADS=${ISRV_STORAGE_PROXY_DOWNLOADS:-true}
+      # Multipart upload tuning. Lower the part size (min 5 MiB) to exercise the
+      # multipart/concurrent upload path with smaller files.
+      - ISRV_STORAGE_UPLOAD_PART_SIZE_MB=${ISRV_STORAGE_UPLOAD_PART_SIZE_MB:-0}
+      - ISRV_STORAGE_UPLOAD_CONCURRENCY=${ISRV_STORAGE_UPLOAD_CONCURRENCY:-0}
+    volumes:
+      # Mount the configuration file
+      - ./config.yaml:/config/config.yaml
+      # Mount the data directory for the sqlite database
+      - ./data:/data:rw
+    command: ["./isrv", "--disable-supervisor"]
+    depends_on:
+      createbuckets:
+        condition: service_completed_successfully
+
+  minio:
+    image: minio/minio:latest
+    container_name: isrv-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - TZ=UTC
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # One-shot init container that creates the bucket before isrv starts.
+  createbuckets:
+    image: minio/mc:latest
+    container_name: isrv-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
+      mc mb --ignore-existing local/${ISRV_S3_BUCKET:-isrv} &&
+      echo 'bucket ${ISRV_S3_BUCKET:-isrv} ready';
+      "
+
+volumes:
+  minio_data:

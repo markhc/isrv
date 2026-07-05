@@ -25,6 +25,7 @@ const (
 	OperationSave   = "save"
 	OperationDelete = "delete"
 	OperationExists = "exists"
+	OperationServe  = "serve"
 )
 
 // recordOpDuration emits an isrv.storage.operation.duration observation for
