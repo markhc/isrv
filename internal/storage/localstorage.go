@@ -6,11 +6,9 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 )
@@ -62,7 +60,7 @@ func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, er
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationExists, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 	_, err = os.Stat(filePath)
 
 	if os.IsNotExist(err) {
@@ -88,7 +86,7 @@ func (ls *LocalStorage) SaveFileUpload(
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationSave, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 
 	dst, err := os.Create(filePath)
 	if err != nil {
@@ -113,7 +111,7 @@ func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationDelete, time.Now(), &err)
 
-	filePath := path.Join(ls.BasePath, fileID)
+	filePath := filepath.Join(ls.BasePath, fileID)
 	err = os.Remove(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to delete file: %w", err)
@@ -122,11 +120,115 @@ func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	return nil
 }
 
-// ServeFile sets response headers and serves the file directly from disk.
-func (ls *LocalStorage) ServeFile(
-	c fiber.Ctx,
-	file *models.File,
-) error {
-	headers.SetHeaders(c, file.Name, file.ContentType, true, true)
-	return c.SendFile(path.Join(ls.BasePath, file.ID), fiber.SendFile{ByteRange: true})
+// Open opens the stored file and returns a reader over its bytes. When brange is
+// non-nil the reader is positioned to serve only the requested byte range.
+func (ls *LocalStorage) Open(ctx context.Context, fileID string, brange *ByteRange) (*Object, error) {
+	var err error
+	defer recordOpDuration(ctx, BackendLocal, OperationServe, time.Now(), &err)
+
+	filePath := filepath.Join(ls.BasePath, fileID)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = ErrObjectNotFound
+
+			return nil, err
+		}
+
+		err = fmt.Errorf("failed to open file: %w", err)
+
+		return nil, err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		err = fmt.Errorf("failed to stat file: %w", err)
+
+		return nil, err
+	}
+
+	size := info.Size()
+
+	if brange == nil {
+		return &Object{Body: file, Size: size, Length: size}, nil
+	}
+
+	start, end, err := resolveRange(brange, size)
+	if err != nil {
+		_ = file.Close()
+
+		return nil, err
+	}
+
+	if _, err = file.Seek(start, io.SeekStart); err != nil {
+		_ = file.Close()
+		err = fmt.Errorf("failed to seek file: %w", err)
+
+		return nil, err
+	}
+
+	length := end - start + 1
+
+	return &Object{
+		Body:         sectionReadCloser{Reader: io.LimitReader(file, length), closer: file},
+		Size:         size,
+		Length:       length,
+		Partial:      true,
+		ContentRange: fmt.Sprintf("bytes %d-%d/%d", start, end, size),
+	}, nil
+}
+
+// PresignedURL reports that local storage cannot offload delivery: the caller
+// must stream the bytes returned by Open.
+func (ls *LocalStorage) PresignedURL(_ context.Context, _ *models.File) (string, bool, error) {
+	return "", false, nil
+}
+
+// sectionReadCloser adapts a bounded Reader (an io.LimitReader over an open
+// file) into an io.ReadCloser that closes the underlying file.
+type sectionReadCloser struct {
+	io.Reader
+
+	closer io.Closer
+}
+
+func (s sectionReadCloser) Close() error {
+	if err := s.closer.Close(); err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+
+	return nil
+}
+
+// resolveRange resolves a requested ByteRange against the actual object size,
+// returning inclusive [start, end] bounds. It returns ErrInvalidRange when the
+// range cannot be satisfied.
+func resolveRange(brange *ByteRange, size int64) (int64, int64, error) {
+	if size == 0 {
+		return 0, 0, ErrInvalidRange
+	}
+
+	if brange.Suffix > 0 {
+		n := min(brange.Suffix, size)
+
+		return size - n, size - 1, nil
+	}
+
+	start := brange.Start
+	if start < 0 || start >= size {
+		return 0, 0, ErrInvalidRange
+	}
+
+	end := brange.End
+	if end < 0 || end >= size {
+		end = size - 1
+	}
+
+	if end < start {
+		return 0, 0, ErrInvalidRange
+	}
+
+	return start, end, nil
 }

@@ -163,7 +163,7 @@ type MockDatabase_GetExpiredFiles_Call struct {
 
 // GetExpiredFiles is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockDatabase_Expecter) GetExpiredFiles(ctx interface{}) *MockDatabase_GetExpiredFiles_Call {
+func (_e *MockDatabase_Expecter) GetExpiredFiles(ctx any) *MockDatabase_GetExpiredFiles_Call {
 	return &MockDatabase_GetExpiredFiles_Call{Call: _e.mock.On("GetExpiredFiles", ctx)}
 }
 
@@ -226,7 +226,7 @@ type MockDatabase_GetFile_Call struct {
 // GetFile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) GetFile(ctx interface{}, fileID interface{}) *MockDatabase_GetFile_Call {
+func (_e *MockDatabase_Expecter) GetFile(ctx any, fileID any) *MockDatabase_GetFile_Call {
 	return &MockDatabase_GetFile_Call{Call: _e.mock.On("GetFile", ctx, fileID)}
 }
 
@@ -292,7 +292,7 @@ type MockDatabase_GetFileByToken_Call struct {
 // GetFileByToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token string
-func (_e *MockDatabase_Expecter) GetFileByToken(ctx interface{}, token interface{}) *MockDatabase_GetFileByToken_Call {
+func (_e *MockDatabase_Expecter) GetFileByToken(ctx any, token any) *MockDatabase_GetFileByToken_Call {
 	return &MockDatabase_GetFileByToken_Call{Call: _e.mock.On("GetFileByToken", ctx, token)}
 }
 
@@ -358,7 +358,7 @@ type MockDatabase_GetFileToken_Call struct {
 // GetFileToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) GetFileToken(ctx interface{}, fileID interface{}) *MockDatabase_GetFileToken_Call {
+func (_e *MockDatabase_Expecter) GetFileToken(ctx any, fileID any) *MockDatabase_GetFileToken_Call {
 	return &MockDatabase_GetFileToken_Call{Call: _e.mock.On("GetFileToken", ctx, fileID)}
 }
 
@@ -432,7 +432,7 @@ type MockDatabase_ListFiles_Call struct {
 // ListFiles is a helper method to define mock.On call
 //   - ctx context.Context
 //   - filter models.FileListFilter
-func (_e *MockDatabase_Expecter) ListFiles(ctx interface{}, filter interface{}) *MockDatabase_ListFiles_Call {
+func (_e *MockDatabase_Expecter) ListFiles(ctx any, filter any) *MockDatabase_ListFiles_Call {
 	return &MockDatabase_ListFiles_Call{Call: _e.mock.On("ListFiles", ctx, filter)}
 }
 
@@ -533,7 +533,7 @@ type MockDatabase_OnFileDelete_Call struct {
 // OnFileDelete is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) OnFileDelete(ctx interface{}, fileID interface{}) *MockDatabase_OnFileDelete_Call {
+func (_e *MockDatabase_Expecter) OnFileDelete(ctx any, fileID any) *MockDatabase_OnFileDelete_Call {
 	return &MockDatabase_OnFileDelete_Call{Call: _e.mock.On("OnFileDelete", ctx, fileID)}
 }
 
@@ -590,7 +590,7 @@ type MockDatabase_OnFileDownload_Call struct {
 // OnFileDownload is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-func (_e *MockDatabase_Expecter) OnFileDownload(ctx interface{}, fileID interface{}) *MockDatabase_OnFileDownload_Call {
+func (_e *MockDatabase_Expecter) OnFileDownload(ctx any, fileID any) *MockDatabase_OnFileDownload_Call {
 	return &MockDatabase_OnFileDownload_Call{Call: _e.mock.On("OnFileDownload", ctx, fileID)}
 }
 
@@ -651,7 +651,7 @@ type MockDatabase_OnFileUpload_Call struct {
 //   - token string
 //   - expirationTime time.Time
 //   - ipAddress string
-func (_e *MockDatabase_Expecter) OnFileUpload(ctx interface{}, fileID interface{}, fileHeader interface{}, token interface{}, expirationTime interface{}, ipAddress interface{}) *MockDatabase_OnFileUpload_Call {
+func (_e *MockDatabase_Expecter) OnFileUpload(ctx any, fileID any, fileHeader any, token any, expirationTime any, ipAddress any) *MockDatabase_OnFileUpload_Call {
 	return &MockDatabase_OnFileUpload_Call{Call: _e.mock.On("OnFileUpload", ctx, fileID, fileHeader, token, expirationTime, ipAddress)}
 }
 
@@ -727,7 +727,7 @@ type MockDatabase_Ping_Call struct {
 
 // Ping is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockDatabase_Expecter) Ping(ctx interface{}) *MockDatabase_Ping_Call {
+func (_e *MockDatabase_Expecter) Ping(ctx any) *MockDatabase_Ping_Call {
 	return &MockDatabase_Ping_Call{Call: _e.mock.On("Ping", ctx)}
 }
 
@@ -780,7 +780,7 @@ type MockDatabase_SetExpiration_Call struct {
 //   - ctx context.Context
 //   - fileID string
 //   - expiration time.Time
-func (_e *MockDatabase_Expecter) SetExpiration(ctx interface{}, fileID interface{}, expiration interface{}) *MockDatabase_SetExpiration_Call {
+func (_e *MockDatabase_Expecter) SetExpiration(ctx any, fileID any, expiration any) *MockDatabase_SetExpiration_Call {
 	return &MockDatabase_SetExpiration_Call{Call: _e.mock.On("SetExpiration", ctx, fileID, expiration)}
 }
 

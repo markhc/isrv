@@ -7,7 +7,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/http/httptest"
 	"net/textproto"
 	"testing"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -197,80 +195,68 @@ func Test_S3Storage_DeleteFile(t *testing.T) {
 	}
 }
 
-func Test_S3Storage_ServeFile(t *testing.T) {
+func Test_S3Storage_PresignedURL(t *testing.T) {
 	tests := []struct {
-		name           string
-		file           models.File
-		metadata       map[string]string
-		inlineContent  bool
-		cachingEnabled bool
-		presignErr     error
-		presignURL     string
-		wantStatus     int
-		wantLocation   string
+		name       string
+		proxy      bool
+		file       models.File
+		presignErr error
+		presignURL string
+		wantURL    string
+		wantOK     bool
+		wantErr    bool
 	}{
 		{
-			name: "attachment no cache",
-			file: models.File{
-				ID:   "test-id",
-				Name: "file.bin",
-			},
-			metadata:     map[string]string{},
-			presignURL:   "https://s3.example.com/presigned",
-			wantStatus:   http.StatusFound,
-			wantLocation: "https://s3.example.com/presigned",
+			name:       "presigned url returned",
+			file:       models.File{ID: "test-id", Name: "file.bin"},
+			presignURL: "https://s3.example.com/presigned",
+			wantURL:    "https://s3.example.com/presigned",
+			wantOK:     true,
 		},
 		{
-			name: "inline with cache and custom content type",
-			file: models.File{
-				ID:          "test-id",
-				Name:        "image.png",
-				ContentType: "image/png",
-			},
-			inlineContent:  true,
-			cachingEnabled: true,
-			presignURL:     "https://s3.example.com/presigned-img",
-			wantStatus:     http.StatusFound,
-			wantLocation:   "https://s3.example.com/presigned-img",
+			name:       "custom content type",
+			file:       models.File{ID: "test-id", Name: "image.png", ContentType: "image/png"},
+			presignURL: "https://s3.example.com/presigned-img",
+			wantURL:    "https://s3.example.com/presigned-img",
+			wantOK:     true,
 		},
 		{
-			name: "presign error returns 500",
-			file: models.File{
-				ID:   "test-id",
-				Name: "file.bin",
-			},
-			metadata:   map[string]string{},
+			name:       "presign error",
+			file:       models.File{ID: "test-id", Name: "file.bin"},
 			presignErr: errors.New("sign failed"),
-			wantStatus: http.StatusInternalServerError,
+			wantErr:    true,
+		},
+		{
+			name:  "proxy mode does not presign",
+			proxy: true,
+			file:  models.File{ID: "test-id", Name: "file.bin"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var returnReq *v4.PresignedHTTPRequest
-			if tt.presignErr == nil {
-				returnReq = &v4.PresignedHTTPRequest{URL: tt.presignURL, Method: http.MethodGet}
-			}
 			presigner := &MockS3Presigner{}
-			presigner.On("PresignGetObject", mock.MatchedBy(func(p *s3.GetObjectInput) bool {
-				return p.Key != nil && *p.Key == "files/test-id"
-			})).Return(returnReq, tt.presignErr)
+			if !tt.proxy {
+				var returnReq *v4.PresignedHTTPRequest
+				if tt.presignErr == nil {
+					returnReq = &v4.PresignedHTTPRequest{URL: tt.presignURL, Method: http.MethodGet}
+				}
+				presigner.On("PresignGetObject", mock.MatchedBy(func(p *s3.GetObjectInput) bool {
+					return p.Key != nil && *p.Key == "files/test-id"
+				})).Return(returnReq, tt.presignErr)
+			}
 
 			s := newTestS3Storage(nil, presigner, nil)
+			s.ProxyDownloads = tt.proxy
 
-			app := fiber.New()
-			app.Get("/", func(c fiber.Ctx) error {
-				return s.ServeFile(c, &tt.file)
-			})
+			gotURL, gotOK, err := s.PresignedURL(context.Background(), &tt.file)
 
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			resp.Body.Close()
-
-			assert.Equal(t, tt.wantStatus, resp.StatusCode)
-			if tt.wantLocation != "" {
-				assert.Equal(t, tt.wantLocation, resp.Header.Get("Location"))
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantURL, gotURL)
+				assert.Equal(t, tt.wantOK, gotOK)
 			}
 			presigner.AssertExpectations(t)
 		})
@@ -286,75 +272,77 @@ func (e *invalidRangeError) ErrorMessage() string {
 }
 func (e *invalidRangeError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-func Test_S3Storage_ServeFile_Proxy(t *testing.T) {
+func Test_S3Storage_Open(t *testing.T) {
 	content := []byte("hello proxy world")
 
 	tests := []struct {
-		name            string
-		file            models.File
-		rangeHeader     string
-		output          *s3.GetObjectOutput
-		getErr          error
-		wantStatus      int
-		wantBody        string
-		wantContentType string
-		wantRange       string
+		name         string
+		brange       *ByteRange
+		output       *s3.GetObjectOutput
+		getErr       error
+		wantRange    string
+		wantErr      bool
+		wantSentinel error
+		wantBody     string
+		wantCT       string
+		wantLength   int64
+		wantPartial  bool
+		wantCRange   string
 	}{
 		{
 			name: "full download",
-			file: models.File{ID: "test-id", Name: "file.txt", ContentType: "text/plain"},
 			output: &s3.GetObjectOutput{
 				Body:          io.NopCloser(bytes.NewReader(content)),
 				ContentLength: aws.Int64(int64(len(content))),
+				ContentType:   aws.String("text/plain"),
 			},
-			wantStatus:      http.StatusOK,
-			wantBody:        string(content),
-			wantContentType: "text/plain",
+			wantBody:   string(content),
+			wantCT:     "text/plain",
+			wantLength: int64(len(content)),
 		},
 		{
-			name: "content type falls back to object metadata",
-			file: models.File{ID: "test-id", Name: "file.bin"},
+			name: "content type from object metadata",
 			output: &s3.GetObjectOutput{
 				Body:          io.NopCloser(bytes.NewReader(content)),
 				ContentLength: aws.Int64(int64(len(content))),
 				ContentType:   aws.String("application/pdf"),
 			},
-			wantStatus:      http.StatusOK,
-			wantBody:        string(content),
-			wantContentType: "application/pdf",
+			wantBody:   string(content),
+			wantCT:     "application/pdf",
+			wantLength: int64(len(content)),
 		},
 		{
-			name:        "range request returns partial content",
-			file:        models.File{ID: "test-id", Name: "file.txt", ContentType: "text/plain"},
-			rangeHeader: "bytes=0-4",
+			name:   "range request returns partial content",
+			brange: &ByteRange{Start: 0, End: 4},
 			output: &s3.GetObjectOutput{
 				Body:          io.NopCloser(bytes.NewReader(content[:5])),
 				ContentLength: aws.Int64(5),
 				ContentRange:  aws.String("bytes 0-4/17"),
 			},
-			wantStatus:      http.StatusPartialContent,
-			wantBody:        string(content[:5]),
-			wantContentType: "text/plain",
-			wantRange:       "bytes 0-4/17",
+			wantRange:   "bytes=0-4",
+			wantBody:    string(content[:5]),
+			wantLength:  5,
+			wantPartial: true,
+			wantCRange:  "bytes 0-4/17",
 		},
 		{
-			name:       "missing object returns 404",
-			file:       models.File{ID: "test-id", Name: "file.txt"},
-			getErr:     &types.NoSuchKey{},
-			wantStatus: http.StatusNotFound,
+			name:         "missing object maps to ErrObjectNotFound",
+			getErr:       &types.NoSuchKey{},
+			wantErr:      true,
+			wantSentinel: ErrObjectNotFound,
 		},
 		{
-			name:        "invalid range returns 416",
-			file:        models.File{ID: "test-id", Name: "file.txt"},
-			rangeHeader: "bytes=999-",
-			getErr:      &invalidRangeError{},
-			wantStatus:  http.StatusRequestedRangeNotSatisfiable,
+			name:         "invalid range maps to ErrInvalidRange",
+			brange:       &ByteRange{Start: 999, End: -1},
+			getErr:       &invalidRangeError{},
+			wantRange:    "bytes=999-",
+			wantErr:      true,
+			wantSentinel: ErrInvalidRange,
 		},
 		{
-			name:       "other error returns 500",
-			file:       models.File{ID: "test-id", Name: "file.txt"},
-			getErr:     errors.New("connection refused"),
-			wantStatus: http.StatusInternalServerError,
+			name:    "other error returns error",
+			getErr:  errors.New("connection refused"),
+			wantErr: true,
 		},
 	}
 
@@ -365,41 +353,36 @@ func Test_S3Storage_ServeFile_Proxy(t *testing.T) {
 				if p.Key == nil || *p.Key != "files/test-id" {
 					return false
 				}
-				if tt.rangeHeader == "" {
+				if tt.wantRange == "" {
 					return p.Range == nil
 				}
-				return p.Range != nil && *p.Range == tt.rangeHeader
+				return p.Range != nil && *p.Range == tt.wantRange
 			})).Return(tt.output, tt.getErr)
 
 			s := newTestS3Storage(client, nil, nil)
-			s.ProxyDownloads = true
 
-			app := fiber.New()
-			app.Get("/", func(c fiber.Ctx) error {
-				return s.ServeFile(c, &tt.file)
-			})
+			obj, err := s.Open(context.Background(), "test-id", tt.brange)
 
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			if tt.rangeHeader != "" {
-				req.Header.Set("Range", tt.rangeHeader)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantSentinel != nil {
+					assert.ErrorIs(t, err, tt.wantSentinel)
+				}
+				client.AssertExpectations(t)
+				return
 			}
 
-			resp, err := app.Test(req)
 			require.NoError(t, err)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			resp.Body.Close()
+			body, readErr := io.ReadAll(obj.Body)
+			require.NoError(t, readErr)
+			require.NoError(t, obj.Body.Close())
 
-			assert.Equal(t, tt.wantStatus, resp.StatusCode)
-			if tt.wantBody != "" {
-				assert.Equal(t, tt.wantBody, string(body))
-				assert.Equal(t, "bytes", resp.Header.Get("Accept-Ranges"))
-			}
-			if tt.wantContentType != "" {
-				assert.Equal(t, tt.wantContentType, resp.Header.Get("Content-Type"))
-			}
-			if tt.wantRange != "" {
-				assert.Equal(t, tt.wantRange, resp.Header.Get("Content-Range"))
+			assert.Equal(t, tt.wantBody, string(body))
+			assert.Equal(t, tt.wantLength, obj.Length)
+			assert.Equal(t, tt.wantPartial, obj.Partial)
+			assert.Equal(t, tt.wantCT, obj.ContentType)
+			if tt.wantCRange != "" {
+				assert.Equal(t, tt.wantCRange, obj.ContentRange)
 			}
 			client.AssertExpectations(t)
 		})

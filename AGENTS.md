@@ -39,6 +39,10 @@ web/
 
 ## Key Conventions
 
+### Comments
+Keep comments concise and relevant. Avoid repeating what the code does; focus on why it does it.
+Do not use `// TODO` or `// FIXME` comments; instead, create a GitHub issue and reference it in the comment. 
+
 ### Handler Pattern
 Handlers are closures that return `http.HandlerFunc`, enabling dependency injection:
 ```go
