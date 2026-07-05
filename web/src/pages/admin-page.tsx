@@ -51,9 +51,11 @@ export default function AdminPage() {
   return (
     <main className="flex h-screen w-full flex-col gap-4 p-4">
       <header className="flex items-center justify-between gap-4">
-        <Link to="/" className="text-2xl font-bold tracking-tight transition-colors hover:text-muted-foreground">
-          {t("title")}
-        </Link>
+        <h1 className="text-2xl font-bold tracking-tight">
+          <Link to="/" className="transition-colors hover:text-muted-foreground">
+            {t("title")}
+          </Link>
+        </h1>
         <div className="flex items-center gap-3">
           {authenticated && session.data?.username && (
             <span className="text-sm text-muted-foreground">{session.data.username}</span>
