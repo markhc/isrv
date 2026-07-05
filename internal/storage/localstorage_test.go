@@ -156,63 +156,95 @@ func Test_LocalStorage_Open(t *testing.T) {
 	content := []byte("hello local world") // 17 bytes
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "file.txt"), content, 0o644))
 
-	t.Run("full read", func(t *testing.T) {
-		obj, err := ls.Open(ctx, "file.txt", nil)
-		require.NoError(t, err)
-		defer obj.Body.Close()
+	tests := []struct {
+		name         string
+		fileID       string
+		brange       *ByteRange
+		wantBody     []byte
+		wantSize     int64
+		wantLength   int64
+		wantPartial  bool
+		wantCRange   string
+		wantErr      bool
+		wantSentinel error
+	}{
+		{
+			name:       "full read",
+			fileID:     "file.txt",
+			wantBody:   content,
+			wantSize:   int64(len(content)),
+			wantLength: int64(len(content)),
+		},
+		{
+			name:        "bounded range",
+			fileID:      "file.txt",
+			brange:      &ByteRange{Start: 0, End: 4},
+			wantBody:    content[:5],
+			wantLength:  5,
+			wantPartial: true,
+			wantCRange:  "bytes 0-4/17",
+		},
+		{
+			name:        "open-ended range",
+			fileID:      "file.txt",
+			brange:      &ByteRange{Start: 6, End: -1},
+			wantBody:    content[6:],
+			wantLength:  int64(len(content) - 6),
+			wantPartial: true,
+			wantCRange:  "bytes 6-16/17",
+		},
+		{
+			name:        "suffix range",
+			fileID:      "file.txt",
+			brange:      &ByteRange{Suffix: 5},
+			wantBody:    content[len(content)-5:],
+			wantLength:  5,
+			wantPartial: true,
+			wantCRange:  "bytes 12-16/17",
+		},
+		{
+			name:         "missing file maps to ErrObjectNotFound",
+			fileID:       "nope.txt",
+			wantErr:      true,
+			wantSentinel: ErrObjectNotFound,
+		},
+		{
+			name:         "range beyond eof maps to ErrInvalidRange",
+			fileID:       "file.txt",
+			brange:       &ByteRange{Start: 100, End: -1},
+			wantErr:      true,
+			wantSentinel: ErrInvalidRange,
+		},
+	}
 
-		got, err := io.ReadAll(obj.Body)
-		require.NoError(t, err)
-		assert.Equal(t, content, got)
-		assert.Equal(t, int64(len(content)), obj.Size)
-		assert.Equal(t, int64(len(content)), obj.Length)
-		assert.False(t, obj.Partial)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj, err := ls.Open(ctx, tt.fileID, tt.brange)
 
-	t.Run("bounded range", func(t *testing.T) {
-		obj, err := ls.Open(ctx, "file.txt", &ByteRange{Start: 0, End: 4})
-		require.NoError(t, err)
-		defer obj.Body.Close()
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantSentinel != nil {
+					assert.ErrorIs(t, err, tt.wantSentinel)
+				}
+				return
+			}
 
-		got, err := io.ReadAll(obj.Body)
-		require.NoError(t, err)
-		assert.Equal(t, content[:5], got)
-		assert.True(t, obj.Partial)
-		assert.Equal(t, int64(5), obj.Length)
-		assert.Equal(t, "bytes 0-4/17", obj.ContentRange)
-	})
+			require.NoError(t, err)
+			defer obj.Body.Close()
 
-	t.Run("open-ended range", func(t *testing.T) {
-		obj, err := ls.Open(ctx, "file.txt", &ByteRange{Start: 6, End: -1})
-		require.NoError(t, err)
-		defer obj.Body.Close()
-
-		got, err := io.ReadAll(obj.Body)
-		require.NoError(t, err)
-		assert.Equal(t, content[6:], got)
-		assert.Equal(t, "bytes 6-16/17", obj.ContentRange)
-	})
-
-	t.Run("suffix range", func(t *testing.T) {
-		obj, err := ls.Open(ctx, "file.txt", &ByteRange{Suffix: 5})
-		require.NoError(t, err)
-		defer obj.Body.Close()
-
-		got, err := io.ReadAll(obj.Body)
-		require.NoError(t, err)
-		assert.Equal(t, content[len(content)-5:], got)
-		assert.Equal(t, "bytes 12-16/17", obj.ContentRange)
-	})
-
-	t.Run("missing file maps to ErrObjectNotFound", func(t *testing.T) {
-		_, err := ls.Open(ctx, "nope.txt", nil)
-		assert.ErrorIs(t, err, ErrObjectNotFound)
-	})
-
-	t.Run("range beyond eof maps to ErrInvalidRange", func(t *testing.T) {
-		_, err := ls.Open(ctx, "file.txt", &ByteRange{Start: 100, End: -1})
-		assert.ErrorIs(t, err, ErrInvalidRange)
-	})
+			got, readErr := io.ReadAll(obj.Body)
+			require.NoError(t, readErr)
+			assert.Equal(t, tt.wantBody, got)
+			assert.Equal(t, tt.wantLength, obj.Length)
+			assert.Equal(t, tt.wantPartial, obj.Partial)
+			if tt.wantSize != 0 {
+				assert.Equal(t, tt.wantSize, obj.Size)
+			}
+			if tt.wantCRange != "" {
+				assert.Equal(t, tt.wantCRange, obj.ContentRange)
+			}
+		})
+	}
 }
 
 func Test_LocalStorage_PresignedURL(t *testing.T) {
