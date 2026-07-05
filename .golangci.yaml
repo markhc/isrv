@@ -11,6 +11,7 @@ linters:
     - exhaustruct
     - gochecknoglobals
     - gocognit
+    - gomodguard
     - gosec
     - cyclop
     - funlen
@@ -28,6 +29,9 @@ linters:
       ignore-package-globs:
         - github.com/gofiber/fiber/*
         - github.com/markhc/isrv/internal/utils
+    goconst:
+      min-occurrences: 5
+      min-len: 5
 
 formatters:
   enable:
