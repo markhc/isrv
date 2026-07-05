@@ -137,6 +137,13 @@ export function FileDetailPanel({ file, onDelete }: FileDetailPanelProps) {
         <dt className="text-muted-foreground">{t("table.downloads")}</dt>
         <dd>{file.downloads}</dd>
 
+        <dt className="text-muted-foreground">{t("table.encryptionVersion")}</dt>
+        <dd>
+          {file.encryptionVersion > 0
+            ? t("table.fileEncrypted", { version: file.encryptionVersion })
+            : t("table.fileNotEncrypted")}
+        </dd>
+
         <dt className="text-muted-foreground">{t("table.created")}</dt>
         <dd>{formatDate(file.createdAt, i18n.language)}</dd>
 

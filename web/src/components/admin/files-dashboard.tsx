@@ -122,6 +122,14 @@ export function FilesDashboard({ localeKey }: FilesDashboardProps) {
           </span>
         ),
       }),
+      helper.accessor("encryptionVersion", {
+        header: t("table.encryptionVersion"),
+        cell: (info) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {info.getValue() > 0 ? t("table.fileEncrypted", { version: info.getValue() }) : t("table.fileNotEncrypted")}
+          </span>
+        ),
+      }),
       helper.accessor("createdAt", {
         header: t("table.created"),
         cell: (info) => (

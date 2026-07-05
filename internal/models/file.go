@@ -14,7 +14,7 @@ type File struct {
 
 	// EncryptionVersion identifies the at-rest encryption scheme
 	// (encryption.Version*). Zero means the object is stored in plaintext.
-	EncryptionVersion int `json:"-"`
+	EncryptionVersion int `json:"encryptionVersion"`
 }
 
 // IsEncrypted reports whether the stored object is encrypted at rest.

@@ -26,7 +26,10 @@
     "created": "Uploaded at",
     "expires": "Expires",
     "actions": "Actions",
-    "empty": "No files found"
+    "empty": "No files found",
+    "encryptionVersion": "Encrypted",
+    "fileEncrypted": "Yes (v{{version}})",
+    "fileNotEncrypted": "No"
   },
   "sort": {
     "label": "Sort by",
