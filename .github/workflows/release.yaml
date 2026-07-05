@@ -118,6 +118,7 @@ jobs:
             isrv-linux-arm64.tar.gz \
             isrv-darwin-amd64.tar.gz \
             isrv-darwin-arm64.tar.gz \
+            --clobber \
             --repo ${{ github.repository }}
 
   docker_build:
@@ -157,7 +158,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   publish_release:
-    needs: [release-please, build_artifacts]
+    needs: [release-please, build_artifacts, docker_build]
     if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     permissions:
