@@ -8,21 +8,21 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
         go-version: 1.26
     - name: Cache Go modules
-      uses: actions/cache@v3
+      uses: actions/cache@v6
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
 
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v6
       with:
-        node-version: 22
+        node-version: 24
     - name: Install pnpm
       run: npm install -g pnpm
     
@@ -32,7 +32,7 @@ jobs:
         echo "PNPM_STORE_PATH=$PNPM_STORE_PATH" >> $GITHUB_ENV
 
     - name: Cache pnpm store
-      uses: actions/cache@v3
+      uses: actions/cache@v6
       with:
         path: ${{ env.PNPM_STORE_PATH }}
         key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -49,21 +49,21 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: 1.26
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
       - name: Install pnpm
         run: npm install -g pnpm
       
@@ -73,7 +73,7 @@ jobs:
           echo "PNPM_STORE_PATH=$PNPM_STORE_PATH" >> $GITHUB_ENV
 
       - name: Cache pnpm store
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: ${{ env.PNPM_STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -93,7 +93,7 @@ jobs:
           tar -czvf isrv-darwin-arm64.tar.gz -C build isrv-darwin-arm64
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_version.outputs.RELEASE_VERSION }}
           name: Release ${{ steps.get_version.outputs.RELEASE_VERSION }}
@@ -110,7 +110,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get Release Version
         id: get_version
@@ -123,7 +123,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
