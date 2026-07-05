@@ -22,6 +22,7 @@ import (
 	dbmocks "github.com/markhc/isrv/internal/database/mocks"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
+	"github.com/markhc/isrv/internal/storage"
 	stmocks "github.com/markhc/isrv/internal/storage/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -207,7 +208,12 @@ func Test_Download(t *testing.T) {
 
 			db.On("GetFile", mock.Anything, tt.file.ID).Return(&tt.file, nil)
 			db.On("OnFileDownload", mock.Anything, tt.file.ID).Return(tt.downloadErr)
-			stor.On("ServeFile", mock.Anything, &tt.file).Return(nil)
+			stor.On("PresignedURL", mock.Anything, &tt.file).Return("", false, nil)
+			stor.On("Open", mock.Anything, tt.file.ID, mock.Anything).Return(&storage.Object{
+				Body:   io.NopCloser(strings.NewReader("file-bytes")),
+				Size:   int64(len("file-bytes")),
+				Length: int64(len("file-bytes")),
+			}, nil)
 
 			app := newApp()
 			h := handlers.Download(db, stor)

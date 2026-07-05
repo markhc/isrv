@@ -8,8 +8,8 @@ import (
 	"context"
 	"mime/multipart"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/models"
+	"github.com/markhc/isrv/internal/storage"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -109,7 +109,7 @@ type MockStorage_DeleteFile_Call struct {
 // DeleteFile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-func (_e *MockStorage_Expecter) DeleteFile(ctx interface{}, fileID interface{}) *MockStorage_DeleteFile_Call {
+func (_e *MockStorage_Expecter) DeleteFile(ctx any, fileID any) *MockStorage_DeleteFile_Call {
 	return &MockStorage_DeleteFile_Call{Call: _e.mock.On("DeleteFile", ctx, fileID)}
 }
 
@@ -175,7 +175,7 @@ type MockStorage_FileExists_Call struct {
 // FileExists is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-func (_e *MockStorage_Expecter) FileExists(ctx interface{}, fileID interface{}) *MockStorage_FileExists_Call {
+func (_e *MockStorage_Expecter) FileExists(ctx any, fileID any) *MockStorage_FileExists_Call {
 	return &MockStorage_FileExists_Call{Call: _e.mock.On("FileExists", ctx, fileID)}
 }
 
@@ -231,7 +231,7 @@ type MockStorage_HealthCheck_Call struct {
 
 // HealthCheck is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockStorage_Expecter) HealthCheck(ctx interface{}) *MockStorage_HealthCheck_Call {
+func (_e *MockStorage_Expecter) HealthCheck(ctx any) *MockStorage_HealthCheck_Call {
 	return &MockStorage_HealthCheck_Call{Call: _e.mock.On("HealthCheck", ctx)}
 }
 
@@ -254,6 +254,152 @@ func (_c *MockStorage_HealthCheck_Call) Return(err error) *MockStorage_HealthChe
 }
 
 func (_c *MockStorage_HealthCheck_Call) RunAndReturn(run func(ctx context.Context) error) *MockStorage_HealthCheck_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Open provides a mock function for the type MockStorage
+func (_mock *MockStorage) Open(ctx context.Context, fileID string, brange *storage.ByteRange) (*storage.Object, error) {
+	ret := _mock.Called(ctx, fileID, brange)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Open")
+	}
+
+	var r0 *storage.Object
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *storage.ByteRange) (*storage.Object, error)); ok {
+		return returnFunc(ctx, fileID, brange)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *storage.ByteRange) *storage.Object); ok {
+		r0 = returnFunc(ctx, fileID, brange)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*storage.Object)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *storage.ByteRange) error); ok {
+		r1 = returnFunc(ctx, fileID, brange)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockStorage_Open_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Open'
+type MockStorage_Open_Call struct {
+	*mock.Call
+}
+
+// Open is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fileID string
+//   - brange *storage.ByteRange
+func (_e *MockStorage_Expecter) Open(ctx any, fileID any, brange any) *MockStorage_Open_Call {
+	return &MockStorage_Open_Call{Call: _e.mock.On("Open", ctx, fileID, brange)}
+}
+
+func (_c *MockStorage_Open_Call) Run(run func(ctx context.Context, fileID string, brange *storage.ByteRange)) *MockStorage_Open_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *storage.ByteRange
+		if args[2] != nil {
+			arg2 = args[2].(*storage.ByteRange)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStorage_Open_Call) Return(object *storage.Object, err error) *MockStorage_Open_Call {
+	_c.Call.Return(object, err)
+	return _c
+}
+
+func (_c *MockStorage_Open_Call) RunAndReturn(run func(ctx context.Context, fileID string, brange *storage.ByteRange) (*storage.Object, error)) *MockStorage_Open_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PresignedURL provides a mock function for the type MockStorage
+func (_mock *MockStorage) PresignedURL(ctx context.Context, file *models.File) (string, bool, error) {
+	ret := _mock.Called(ctx, file)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PresignedURL")
+	}
+
+	var r0 string
+	var r1 bool
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *models.File) (string, bool, error)); ok {
+		return returnFunc(ctx, file)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *models.File) string); ok {
+		r0 = returnFunc(ctx, file)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *models.File) bool); ok {
+		r1 = returnFunc(ctx, file)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, *models.File) error); ok {
+		r2 = returnFunc(ctx, file)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockStorage_PresignedURL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PresignedURL'
+type MockStorage_PresignedURL_Call struct {
+	*mock.Call
+}
+
+// PresignedURL is a helper method to define mock.On call
+//   - ctx context.Context
+//   - file *models.File
+func (_e *MockStorage_Expecter) PresignedURL(ctx any, file any) *MockStorage_PresignedURL_Call {
+	return &MockStorage_PresignedURL_Call{Call: _e.mock.On("PresignedURL", ctx, file)}
+}
+
+func (_c *MockStorage_PresignedURL_Call) Run(run func(ctx context.Context, file *models.File)) *MockStorage_PresignedURL_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *models.File
+		if args[1] != nil {
+			arg1 = args[1].(*models.File)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStorage_PresignedURL_Call) Return(url string, ok bool, err error) *MockStorage_PresignedURL_Call {
+	_c.Call.Return(url, ok, err)
+	return _c
+}
+
+func (_c *MockStorage_PresignedURL_Call) RunAndReturn(run func(ctx context.Context, file *models.File) (string, bool, error)) *MockStorage_PresignedURL_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -294,7 +440,7 @@ type MockStorage_SaveFileUpload_Call struct {
 //   - fileID string
 //   - file multipart.File
 //   - fileHeader *multipart.FileHeader
-func (_e *MockStorage_Expecter) SaveFileUpload(ctx interface{}, fileID interface{}, file interface{}, fileHeader interface{}) *MockStorage_SaveFileUpload_Call {
+func (_e *MockStorage_Expecter) SaveFileUpload(ctx any, fileID any, file any, fileHeader any) *MockStorage_SaveFileUpload_Call {
 	return &MockStorage_SaveFileUpload_Call{Call: _e.mock.On("SaveFileUpload", ctx, fileID, file, fileHeader)}
 }
 
@@ -332,63 +478,6 @@ func (_c *MockStorage_SaveFileUpload_Call) Return(s string, err error) *MockStor
 }
 
 func (_c *MockStorage_SaveFileUpload_Call) RunAndReturn(run func(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error)) *MockStorage_SaveFileUpload_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ServeFile provides a mock function for the type MockStorage
-func (_mock *MockStorage) ServeFile(c fiber.Ctx, file *models.File) error {
-	ret := _mock.Called(c, file)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ServeFile")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(fiber.Ctx, *models.File) error); ok {
-		r0 = returnFunc(c, file)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockStorage_ServeFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ServeFile'
-type MockStorage_ServeFile_Call struct {
-	*mock.Call
-}
-
-// ServeFile is a helper method to define mock.On call
-//   - c fiber.Ctx
-//   - file *models.File
-func (_e *MockStorage_Expecter) ServeFile(c interface{}, file interface{}) *MockStorage_ServeFile_Call {
-	return &MockStorage_ServeFile_Call{Call: _e.mock.On("ServeFile", c, file)}
-}
-
-func (_c *MockStorage_ServeFile_Call) Run(run func(c fiber.Ctx, file *models.File)) *MockStorage_ServeFile_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 fiber.Ctx
-		if args[0] != nil {
-			arg0 = args[0].(fiber.Ctx)
-		}
-		var arg1 *models.File
-		if args[1] != nil {
-			arg1 = args[1].(*models.File)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockStorage_ServeFile_Call) Return(err error) *MockStorage_ServeFile_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockStorage_ServeFile_Call) RunAndReturn(run func(c fiber.Ctx, file *models.File) error) *MockStorage_ServeFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

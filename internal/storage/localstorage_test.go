@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -145,4 +146,79 @@ type mockMultipartFile struct {
 
 func (m *mockMultipartFile) Close() error {
 	return nil
+}
+
+func Test_LocalStorage_Open(t *testing.T) {
+	tempDir := t.TempDir()
+	ls := &LocalStorage{BasePath: tempDir}
+	ctx := context.Background()
+
+	content := []byte("hello local world") // 17 bytes
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "file.txt"), content, 0o644))
+
+	t.Run("full read", func(t *testing.T) {
+		obj, err := ls.Open(ctx, "file.txt", nil)
+		require.NoError(t, err)
+		defer obj.Body.Close()
+
+		got, err := io.ReadAll(obj.Body)
+		require.NoError(t, err)
+		assert.Equal(t, content, got)
+		assert.Equal(t, int64(len(content)), obj.Size)
+		assert.Equal(t, int64(len(content)), obj.Length)
+		assert.False(t, obj.Partial)
+	})
+
+	t.Run("bounded range", func(t *testing.T) {
+		obj, err := ls.Open(ctx, "file.txt", &ByteRange{Start: 0, End: 4})
+		require.NoError(t, err)
+		defer obj.Body.Close()
+
+		got, err := io.ReadAll(obj.Body)
+		require.NoError(t, err)
+		assert.Equal(t, content[:5], got)
+		assert.True(t, obj.Partial)
+		assert.Equal(t, int64(5), obj.Length)
+		assert.Equal(t, "bytes 0-4/17", obj.ContentRange)
+	})
+
+	t.Run("open-ended range", func(t *testing.T) {
+		obj, err := ls.Open(ctx, "file.txt", &ByteRange{Start: 6, End: -1})
+		require.NoError(t, err)
+		defer obj.Body.Close()
+
+		got, err := io.ReadAll(obj.Body)
+		require.NoError(t, err)
+		assert.Equal(t, content[6:], got)
+		assert.Equal(t, "bytes 6-16/17", obj.ContentRange)
+	})
+
+	t.Run("suffix range", func(t *testing.T) {
+		obj, err := ls.Open(ctx, "file.txt", &ByteRange{Suffix: 5})
+		require.NoError(t, err)
+		defer obj.Body.Close()
+
+		got, err := io.ReadAll(obj.Body)
+		require.NoError(t, err)
+		assert.Equal(t, content[len(content)-5:], got)
+		assert.Equal(t, "bytes 12-16/17", obj.ContentRange)
+	})
+
+	t.Run("missing file maps to ErrObjectNotFound", func(t *testing.T) {
+		_, err := ls.Open(ctx, "nope.txt", nil)
+		assert.ErrorIs(t, err, ErrObjectNotFound)
+	})
+
+	t.Run("range beyond eof maps to ErrInvalidRange", func(t *testing.T) {
+		_, err := ls.Open(ctx, "file.txt", &ByteRange{Start: 100, End: -1})
+		assert.ErrorIs(t, err, ErrInvalidRange)
+	})
+}
+
+func Test_LocalStorage_PresignedURL(t *testing.T) {
+	ls := &LocalStorage{BasePath: t.TempDir()}
+	url, ok, err := ls.PresignedURL(context.Background(), &models.File{ID: "abc"})
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Empty(t, url)
 }

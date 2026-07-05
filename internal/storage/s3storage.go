@@ -7,6 +7,8 @@ import (
 	"mime/multipart"
 	"net/url"
 	"path"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,8 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	"github.com/gofiber/fiber/v3"
-	"github.com/markhc/isrv/internal/headers"
 	"github.com/markhc/isrv/internal/models"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 )
@@ -223,92 +223,78 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 	return nil
 }
 
-// ServeFile delivers the file to the client. In proxy mode the object is
-// streamed through the server; otherwise the client is redirected to a
-// pre-signed S3 URL.
-func (storage *S3Storage) ServeFile(
-	c fiber.Ctx,
-	file *models.File,
-) error {
-	if storage.ProxyDownloads {
-		return storage.proxyFile(c, file)
-	}
-
-	return storage.redirectPresigned(c, file)
-}
-
-// proxyFile fetches the object from S3 and streams it to the client. Range
-// requests are forwarded to S3 so partial downloads work without buffering
-// the whole object.
-func (storage *S3Storage) proxyFile(c fiber.Ctx, file *models.File) error {
+// Open fetches the object from S3 and returns a reader over its bytes. When
+// brange is non-nil the range is forwarded to S3 so partial downloads work
+// without buffering the whole object. The caller must Close the returned
+// Object. Open maps a missing object to ErrObjectNotFound and an unsatisfiable
+// range to ErrInvalidRange.
+func (storage *S3Storage) Open(ctx context.Context, fileID string, brange *ByteRange) (*Object, error) {
 	var err error
-	defer recordOpDuration(c.Context(), BackendS3, OperationServe, time.Now(), &err)
+	defer recordOpDuration(ctx, BackendS3, OperationServe, time.Now(), &err)
 
 	input := &s3.GetObjectInput{
 		Bucket: aws.String(storage.Bucket),
-		Key:    aws.String(path.Join(storage.BasePath, file.ID)),
+		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	}
 
-	if rangeHeader := c.Get(fiber.HeaderRange); rangeHeader != "" {
-		input.Range = aws.String(rangeHeader)
+	if brange != nil {
+		input.Range = aws.String(brange.header())
 	}
 
-	var object *s3.GetObjectOutput
-	object, err = storage.client.GetObject(c.Context(), input)
+	object, err := storage.client.GetObject(ctx, input)
 	if err != nil {
 		var noSuchKey *types.NoSuchKey
 		if errors.As(err, &noSuchKey) {
-			return c.Status(fiber.StatusNotFound).SendString("not found")
+			err = ErrObjectNotFound
+
+			return nil, err
 		}
 
 		var apiErr smithy.APIError
 		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidRange" {
-			return c.Status(fiber.StatusRequestedRangeNotSatisfiable).SendString("invalid range")
+			err = ErrInvalidRange
+
+			return nil, err
 		}
 
-		return c.Status(fiber.StatusInternalServerError).SendString("failed to fetch file")
+		err = fmt.Errorf("failed to fetch object: %w", err)
+
+		return nil, err
 	}
 
-	contentType := file.ContentType
-	if contentType == "" && object.ContentType != nil {
-		contentType = *object.ContentType
+	result := &Object{Body: object.Body}
+
+	if object.ContentType != nil {
+		result.ContentType = *object.ContentType
 	}
 
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	if object.ContentLength != nil {
+		result.Length = *object.ContentLength
 	}
-
-	headers.SetHeaders(c, file.Name, contentType, true, true)
-	c.Set(fiber.HeaderAcceptRanges, "bytes")
 
 	if object.ContentRange != nil {
-		c.Set(fiber.HeaderContentRange, *object.ContentRange)
-		c.Status(fiber.StatusPartialContent)
+		result.Partial = true
+		result.ContentRange = *object.ContentRange
+		result.Size = parseContentRangeTotal(*object.ContentRange, result.Length)
+	} else {
+		result.Size = result.Length
 	}
 
-	// SendStream closes the body once the response has been written.
-	if object.ContentLength != nil {
-		// manually assign to err instead of returning directly
-		// to ensure the deferred recordOpDuration captures the error
-		err = c.SendStream(object.Body, int(*object.ContentLength))
-		return err
-	}
-
-	// manually assign to err instead of returning directly
-	// to ensure the deferred recordOpDuration captures the error
-	err = c.SendStream(object.Body)
-	return err
+	return result, nil
 }
 
-// redirectPresigned generates a pre-signed S3 URL and redirects the client to it.
-func (storage *S3Storage) redirectPresigned(c fiber.Ctx, file *models.File) error {
+// PresignedURL generates a pre-signed S3 URL for direct client download. It
+// reports ok == false in proxy mode, where the server streams the object via
+// Open instead.
+func (storage *S3Storage) PresignedURL(ctx context.Context, file *models.File) (string, bool, error) {
+	if storage.ProxyDownloads {
+		return "", false, nil
+	}
+
 	sanitizedFileName := url.PathEscape(file.Name)
 	objectKey := path.Join(storage.BasePath, file.ID)
 
-	// cacheControl := "no-cache"
 	cacheControl := "public, max-age=43200" // 12 hours
-
-	// contentDisposition := "attachment"
 	contentDisposition := "inline"
 
 	contentType := "application/octet-stream"
@@ -316,7 +302,7 @@ func (storage *S3Storage) redirectPresigned(c fiber.Ctx, file *models.File) erro
 		contentType = file.ContentType
 	}
 
-	presignedUrl, err := storage.presigner.PresignGetObject(c.Context(), &s3.GetObjectInput{
+	presignedURL, err := storage.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket:                     aws.String(storage.Bucket),
 		Key:                        aws.String(objectKey),
 		ResponseCacheControl:       aws.String(cacheControl),
@@ -324,8 +310,25 @@ func (storage *S3Storage) redirectPresigned(c fiber.Ctx, file *models.File) erro
 		ResponseContentType:        aws.String(contentType),
 	}, s3.WithPresignExpires(12*time.Hour))
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString("Failed to generate file URL")
+		return "", false, fmt.Errorf("failed to generate presigned url: %w", err)
 	}
 
-	return c.Redirect().Status(fiber.StatusFound).To(presignedUrl.URL)
+	return presignedURL.URL, true, nil
+}
+
+// parseContentRangeTotal extracts the total object size from a Content-Range
+// header value of the form "bytes start-end/total". It falls back to fallback
+// when the value cannot be parsed (for example, an unknown total "*").
+func parseContentRangeTotal(contentRange string, fallback int64) int64 {
+	slash := strings.LastIndex(contentRange, "/")
+	if slash < 0 {
+		return fallback
+	}
+
+	total, err := strconv.ParseInt(strings.TrimSpace(contentRange[slash+1:]), 10, 64)
+	if err != nil {
+		return fallback
+	}
+
+	return total
 }
