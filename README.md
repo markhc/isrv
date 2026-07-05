@@ -168,11 +168,15 @@ make test-coverage
 
 ### Development workflow
 
-Format, lint, test, and build:
+Spin up a development server with hot reload:
 ```bash
 make dev
 ```
 
-## License
+## AI Usage
 
-See LICENSE file for details.
+I believe AI disclosure is important, and as such I should say that this project does make use of AI tools.
+
+Test cases, documentation and some code snippets have been generated with the help of tools such as Claude Code and GitHub Copilot. Furthermore, code reviews are currently performed by Coderabbit.
+
+Contributions from the community are welcome. However, please disclose any AI usage in your pull requests. Contributions deemed to be AI generated might be  rejected if they do not meet the quality standards of the project.
