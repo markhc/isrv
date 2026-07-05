@@ -3,6 +3,8 @@
   "packages": {
     ".": {
       "release-type": "go",
+      "draft": true,
+      "force-tag-creation": true,
       "changelog-path": "CHANGELOG.md",
       "changelog-sections": [
         { "type": "feat", "section": "Features" },

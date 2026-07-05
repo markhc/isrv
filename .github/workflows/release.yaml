@@ -110,14 +110,16 @@ jobs:
           tar -czvf isrv-darwin-arm64.tar.gz -C build isrv-darwin-arm64
 
       - name: Upload release artifacts
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ needs.release-please.outputs.tag_name }}
-          files: |
-            isrv-linux-amd64.tar.gz
-            isrv-linux-arm64.tar.gz
-            isrv-darwin-amd64.tar.gz
-            isrv-darwin-arm64.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ needs.release-please.outputs.tag_name }} \
+            isrv-linux-amd64.tar.gz \
+            isrv-linux-arm64.tar.gz \
+            isrv-darwin-amd64.tar.gz \
+            isrv-darwin-arm64.tar.gz \
+            --clobber \
+            --repo ${{ github.repository }}
 
   docker_build:
     needs: [release-please, verify]
@@ -154,3 +156,17 @@ jobs:
             BUILD_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  publish_release:
+    needs: [release-please, build_artifacts, docker_build]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit ${{ needs.release-please.outputs.tag_name }} \
+            --draft=false --repo ${{ github.repository }}
