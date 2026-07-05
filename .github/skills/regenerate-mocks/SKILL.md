@@ -66,7 +66,7 @@ make test
 
 ## Configuration
 
-Mockery is configured in [.mockery.yml](../../.mockery.yml). Key settings:
+Mockery is configured in [.mockery.yml](../../../.mockery.yml). Key settings:
 
 - `dir: '{{.InterfaceDir}}/mocks'` — mocks co-located with the interface package
 - `filename: 'mock_{{.InterfaceName}}.go'`
@@ -76,5 +76,5 @@ Mockery is configured in [.mockery.yml](../../.mockery.yml). Key settings:
 ## Adding a New Interface
 
 1. Add `//go:generate go tool mockery` at the top of the source file (after the `package` line)
-2. Add the package + interface to [.mockery.yml](../../.mockery.yml) under `packages:`
+2. Add the package + interface to [.mockery.yml](../../../.mockery.yml) under `packages:`
 3. Run `go generate ./<package path>/...`
