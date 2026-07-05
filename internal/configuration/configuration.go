@@ -126,6 +126,11 @@ func applyEnvOverrides() {
 		// Cleanup routine.
 		"ISRV_CLEANUP_ENABLED":  "Cleanup.Enabled",
 		"ISRV_CLEANUP_INTERVAL": "Cleanup.Interval",
+
+		// Encryption at rest.
+		"ISRV_ENCRYPTION_ENABLED":       "Encryption.Enabled",
+		"ISRV_ENCRYPTION_IDENTITY":      "Encryption.Identity",
+		"ISRV_ENCRYPTION_IDENTITY_FILE": "Encryption.IdentityFile",
 	}
 
 	for envVar, configField := range mapEnv {
@@ -205,6 +210,30 @@ func verifyConfiguration() {
 	verifyCleanupConfig(&config.Cleanup)
 	verifyRateLimitConfig(&config.Security.RateLimit)
 	verifyAdminConfig(&config.Admin)
+	verifyEncryptionConfig(&config.Encryption, &config.Storage)
+}
+
+// verifyEncryptionConfig validates the server-side encryption settings. It
+// panics on unusable combinations and logs a warning when encrypted uploads
+// will be force-proxied on S3.
+func verifyEncryptionConfig(enc *models.EncryptionConfiguration, storageConfig *models.StorageConfiguration) {
+	if enc.Identity != "" && enc.IdentityFile != "" {
+		panic("Invalid configuration: set either encryption.identity or encryption.identityFile, not both")
+	}
+
+	if enc.Enabled && !enc.HasKey() {
+		panic("Invalid configuration: encryption.enabled requires identity or identityFile; " +
+			"generate one with 'isrv --gen-encryption-key'")
+	}
+
+	// Identity parsing/reading is deferred to encryption.NewManager: the file
+	// may be a runtime-mounted secret not yet present at validation time.
+
+	if enc.Enabled && storageConfig.Type == "s3" && !storageConfig.ProxyDownloads {
+		fmt.Fprintln(os.Stderr, "warning: encryption is enabled with S3 storage and proxyDownloads "+
+			"disabled; encrypted files will be proxied through the server regardless, "+
+			"while plaintext files still use pre-signed redirects")
+	}
 }
 
 // verifyAdminConfig normalizes admin panel settings. When the panel is enabled

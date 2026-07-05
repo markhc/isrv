@@ -57,7 +57,7 @@ func Test_LocalStorage_FileExists(t *testing.T) {
 	// Create a test file
 	testFileID := "test-file.txt"
 	testFilePath := filepath.Join(tempDir, testFileID)
-	err := os.WriteFile(testFilePath, []byte("test content"), 0644)
+	err := os.WriteFile(testFilePath, []byte("test content"), 0o644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -100,13 +100,13 @@ func Test_LocalStorage_DeleteFile(t *testing.T) {
 		// Create directory if needed
 		dir := filepath.Dir(filePath)
 		if dir != tempDir {
-			err := os.MkdirAll(dir, 0755)
+			err := os.MkdirAll(dir, 0o755)
 			if err != nil {
 				t.Fatalf("Failed to create directory %s: %v", dir, err)
 			}
 		}
 
-		err := os.WriteFile(filePath, []byte("test content"), 0644)
+		err := os.WriteFile(filePath, []byte("test content"), 0o644)
 		if err != nil {
 			t.Fatalf("Failed to create test file %s: %v", fileID, err)
 		}

@@ -2,13 +2,16 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/database"
+	"github.com/markhc/isrv/internal/encryption"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
@@ -30,7 +33,12 @@ type uploadResponse struct {
 
 // Upload returns a handler that accepts a multipart file upload and persists
 // it to storage along with a database record.
-func Upload(config *models.Configuration, db database.Database, stor storage.Storage) fiber.Handler {
+func Upload(
+	config *models.Configuration,
+	db database.Database,
+	stor storage.Storage,
+	enc *encryption.Manager,
+) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 
 	return func(c fiber.Ctx) error {
@@ -71,7 +79,7 @@ func Upload(config *models.Configuration, db database.Database, stor storage.Sto
 			logging.MaybeIP("ip_address", ipAddress),
 		)
 
-		uploadResp, err := processUpload(c.Context(), config, db, stor, file, header, expiration, ipAddress)
+		uploadResp, err := processUpload(c.Context(), config, db, stor, enc, file, header, expiration, ipAddress)
 		if err != nil {
 			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
 				backendAttr,
@@ -104,6 +112,7 @@ func processUpload(
 	config *models.Configuration,
 	db database.Database,
 	stor storage.Storage,
+	enc *encryption.Manager,
 	file multipart.File,
 	header *multipart.FileHeader,
 	expiration time.Time,
@@ -137,7 +146,42 @@ func processUpload(
 		return uploadResponse{}, fmt.Errorf("failed to generate file token: %w", err)
 	}
 
-	path, err := stor.SaveFileUpload(ctx, fileID, file, header)
+	// file.Size always records the plaintext size; encrypted objects are
+	// larger, but the plaintext size drives the UI, expiration math, and the
+	// download Content-Length.
+	var (
+		reader     io.Reader = file
+		encVersion int
+		saveOpts   = storage.SaveOptions{
+			Size:        header.Size,
+			ContentType: header.Header.Get("Content-Type"),
+			Filename:    header.Filename,
+		}
+	)
+
+	if config.Encryption.Enabled {
+		// Hard error if encryption is requested but the manager is not available
+		if enc == nil {
+			return uploadResponse{}, errors.New("encryption is enabled but no encryption manager is configured")
+		}
+
+		reader, err = enc.Encrypt(file)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to build encrypting reader")
+			logging.ErrorCtx(ctx, "failed to build encrypting reader", logging.Error(err))
+			return uploadResponse{}, fmt.Errorf("failed to encrypt uploaded file: %w", err)
+		}
+
+		encVersion = encryption.VersionAgeV1
+		// The stored object metadata describes ciphertext of unknown length;
+		// the real name and type live in the database row.
+		saveOpts = storage.SaveOptions{Size: -1, ContentType: "application/octet-stream"}
+	}
+
+	span.SetAttributes(attribute.Bool(telemetry.AttrFileEncrypted, encVersion > 0))
+
+	path, err := stor.Save(ctx, fileID, reader, saveOpts)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to save uploaded file")
@@ -145,7 +189,15 @@ func processUpload(
 		return uploadResponse{}, fmt.Errorf("failed to save uploaded file: %w", err)
 	}
 
-	if err := db.OnFileUpload(ctx, fileID, header, token, expiration, ipAddress); err != nil {
+	if err := db.OnFileUpload(ctx, &models.File{
+		ID:                fileID,
+		Name:              header.Filename,
+		Size:              header.Size,
+		ContentType:       header.Header.Get("Content-Type"),
+		Expiration:        expiration,
+		IPAddress:         ipAddress,
+		EncryptionVersion: encVersion,
+	}, token); err != nil {
 		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
 			logging.ErrorCtx(ctx, "failed to roll back stored file after db error",
 				logging.String("file_id", fileID),

@@ -2,8 +2,6 @@ package database
 
 import (
 	"context"
-	"mime/multipart"
-	"net/textproto"
 	"testing"
 	"time"
 
@@ -75,17 +73,14 @@ func Test_SQLiteDB_OnFileUpload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mock multipart.FileHeader
-			header := &multipart.FileHeader{
-				Filename: tt.fileName,
-				Size:     tt.fileSize,
-				Header:   make(textproto.MIMEHeader),
-			}
-			if tt.contentType != "" {
-				header.Header.Set("Content-Type", tt.contentType)
-			}
-
-			err := db.OnFileUpload(context.Background(), tt.fileID, header, tt.fileID, tt.expirationTime, tt.ipAddress)
+			err := db.OnFileUpload(context.Background(), &models.File{
+				ID:          tt.fileID,
+				Name:        tt.fileName,
+				Size:        tt.fileSize,
+				ContentType: tt.contentType,
+				Expiration:  tt.expirationTime,
+				IPAddress:   tt.ipAddress,
+			}, tt.fileID)
 			require.NoError(t, err)
 
 			file, err := db.GetFile(context.Background(), tt.fileID)
@@ -100,18 +95,68 @@ func Test_SQLiteDB_OnFileUpload(t *testing.T) {
 	}
 }
 
+func Test_SQLiteDB_EncryptionVersion(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	files := []models.File{
+		{
+			ID:                "plain-file",
+			Name:              "plain.txt",
+			Size:              100,
+			Expiration:        time.Now().Add(24 * time.Hour),
+			IPAddress:         "192.168.1.1",
+			EncryptionVersion: 0,
+		},
+		{
+			ID:                "encrypted-file",
+			Name:              "secret.txt",
+			Size:              200,
+			Expiration:        time.Now().Add(24 * time.Hour),
+			IPAddress:         "192.168.1.2",
+			EncryptionVersion: 1,
+		},
+	}
+
+	for i := range files {
+		require.NoError(t, db.OnFileUpload(context.Background(), &files[i], files[i].ID))
+	}
+
+	t.Run("GetFile round-trips encryption version", func(t *testing.T) {
+		for _, want := range files {
+			got, err := db.GetFile(context.Background(), want.ID)
+			require.NoError(t, err)
+			assert.Equal(t, want.EncryptionVersion, got.EncryptionVersion)
+		}
+	})
+
+	t.Run("ListFiles round-trips encryption version", func(t *testing.T) {
+		listed, _, err := db.ListFiles(context.Background(), models.FileListFilter{})
+		require.NoError(t, err)
+
+		byID := make(map[string]int, len(listed))
+		for _, f := range listed {
+			byID[f.ID] = f.EncryptionVersion
+		}
+
+		assert.Equal(t, 0, byID["plain-file"])
+		assert.Equal(t, 1, byID["encrypted-file"])
+	})
+}
+
 func Test_SQLiteDB_OnFileDownload(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
 	// Setup: Insert a test file
 	fileID := "download-test"
-	header := &multipart.FileHeader{
-		Filename: "test.txt",
-		Size:     100,
-		Header:   make(textproto.MIMEHeader),
-	}
-	err := db.OnFileUpload(context.Background(), fileID, header, fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
+	err := db.OnFileUpload(context.Background(), &models.File{
+		ID:         fileID,
+		Name:       "test.txt",
+		Size:       100,
+		Expiration: time.Now().Add(24 * time.Hour),
+		IPAddress:  "192.168.1.1",
+	}, fileID)
 	require.NoError(t, err, "setup failed")
 
 	for i := 1; i <= 3; i++ {
@@ -135,12 +180,13 @@ func Test_SQLiteDB_OnFileDelete(t *testing.T) {
 	// Setup: Insert test files
 	testFiles := []string{"delete-test-1", "delete-test-2"}
 	for _, fileID := range testFiles {
-		header := &multipart.FileHeader{
-			Filename: fileID + ".txt",
-			Size:     100,
-			Header:   make(textproto.MIMEHeader),
-		}
-		err := db.OnFileUpload(context.Background(), fileID, header, fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
+		err := db.OnFileUpload(context.Background(), &models.File{
+			ID:         fileID,
+			Name:       fileID + ".txt",
+			Size:       100,
+			Expiration: time.Now().Add(24 * time.Hour),
+			IPAddress:  "192.168.1.1",
+		}, fileID)
 		require.NoError(t, err, "setup failed for %s", fileID)
 	}
 
@@ -176,12 +222,13 @@ func Test_SQLiteDB_GetExpiredFiles(t *testing.T) {
 
 	// Setup: Insert test files with various expiration times
 	for _, tc := range testCases {
-		header := &multipart.FileHeader{
-			Filename: tc.fileID + ".txt",
-			Size:     100,
-			Header:   make(textproto.MIMEHeader),
-		}
-		err := db.OnFileUpload(context.Background(), tc.fileID, header, tc.fileID, tc.expirationTime, "192.168.1.1")
+		err := db.OnFileUpload(context.Background(), &models.File{
+			ID:         tc.fileID,
+			Name:       tc.fileID + ".txt",
+			Size:       100,
+			Expiration: tc.expirationTime,
+			IPAddress:  "192.168.1.1",
+		}, tc.fileID)
 		if err != nil {
 			t.Fatalf("Setup failed for %s: %v", tc.fileID, err)
 		}
@@ -229,16 +276,14 @@ func Test_SQLiteDB_GetFileMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup: Insert file with metadata
-			header := &multipart.FileHeader{
-				Filename: tt.fileID + ".ext",
-				Size:     100,
-				Header:   make(textproto.MIMEHeader),
-			}
-			if tt.contentType != "" {
-				header.Header.Set("Content-Type", tt.contentType)
-			}
-
-			err := db.OnFileUpload(context.Background(), tt.fileID, header, tt.fileID, time.Now().Add(24*time.Hour), "192.168.1.1")
+			err := db.OnFileUpload(context.Background(), &models.File{
+				ID:          tt.fileID,
+				Name:        tt.fileID + ".ext",
+				Size:        100,
+				ContentType: tt.contentType,
+				Expiration:  time.Now().Add(24 * time.Hour),
+				IPAddress:   "192.168.1.1",
+			}, tt.fileID)
 			require.NoError(t, err, "setup failed")
 
 			file, err := db.GetFile(context.Background(), tt.fileID)
@@ -262,11 +307,12 @@ func Test_SQLiteDB_Connect_and_Migrate(t *testing.T) {
 	require.NoError(t, db.Connect())
 	require.NoError(t, db.Migrate())
 
-	header := &multipart.FileHeader{
-		Filename: "test.txt",
-		Size:     100,
-		Header:   make(textproto.MIMEHeader),
-	}
-	assert.NoError(t, db.OnFileUpload(context.Background(), "connect-test", header, "", time.Now().Add(24*time.Hour), "192.168.1.1"))
+	assert.NoError(t, db.OnFileUpload(context.Background(), &models.File{
+		ID:         "connect-test",
+		Name:       "test.txt",
+		Size:       100,
+		Expiration: time.Now().Add(24 * time.Hour),
+		IPAddress:  "192.168.1.1",
+	}, ""))
 	assert.NoError(t, db.Close())
 }

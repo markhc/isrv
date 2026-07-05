@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"mime/multipart"
+	"io"
 	"net/url"
 	"path"
 	"strconv"
@@ -178,28 +178,34 @@ func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, 
 	return false, fmt.Errorf("failed to check file existence: %w", err)
 }
 
-// SaveFileUpload uploads the file to the S3 bucket and returns the object key.
-// Large objects are split into parts and uploaded concurrently by the S3
-// transfer manager.
-func (storage *S3Storage) SaveFileUpload(
+// Save uploads r to the S3 bucket and returns the object key. Large objects
+// are split into parts and uploaded concurrently by the S3 transfer manager,
+// which accepts a non-seekable reader of unknown length.
+func (storage *S3Storage) Save(
 	ctx context.Context,
 	fileID string,
-	file multipart.File,
-	fileHeader *multipart.FileHeader,
+	r io.Reader,
+	opts SaveOptions,
 ) (string, error) {
 	var err error
 	defer recordOpDuration(ctx, BackendS3, OperationSave, time.Now(), &err)
 
-	sanitizedFileName := url.PathEscape(fileHeader.Filename)
-	contentDisposition := "inline; filename=\"" + sanitizedFileName + "\""
+	input := &transfermanager.UploadObjectInput{
+		Bucket: aws.String(storage.Bucket),
+		Key:    aws.String(path.Join(storage.BasePath, fileID)),
+		Body:   r,
+	}
 
-	_, err = storage.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
-		Bucket:             aws.String(storage.Bucket),
-		Key:                aws.String(path.Join(storage.BasePath, fileID)),
-		Body:               file,
-		ContentDisposition: aws.String(contentDisposition),
-		ContentType:        aws.String(fileHeader.Header.Get("Content-Type")),
-	})
+	if opts.ContentType != "" {
+		input.ContentType = aws.String(opts.ContentType)
+	}
+
+	if opts.Filename != "" {
+		sanitizedFileName := url.PathEscape(opts.Filename)
+		input.ContentDisposition = aws.String("inline; filename=\"" + sanitizedFileName + "\"")
+	}
+
+	_, err = storage.uploader.UploadObject(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("failed to upload file to S3: %w", err)
 	}

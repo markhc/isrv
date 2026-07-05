@@ -5,9 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -84,16 +82,6 @@ func newTestS3Storage(client s3api, presigner s3presigner, uploader s3uploader) 
 	}
 }
 
-type testMultipartFile struct {
-	*bytes.Reader
-}
-
-func (f *testMultipartFile) Close() error { return nil }
-
-func newTestMultipartFile(content []byte) multipart.File {
-	return &testMultipartFile{Reader: bytes.NewReader(content)}
-}
-
 // ---- tests ----
 
 func Test_S3Storage_FileExists(t *testing.T) {
@@ -129,30 +117,41 @@ func Test_S3Storage_FileExists(t *testing.T) {
 	}
 }
 
-func Test_S3Storage_SaveFileUpload(t *testing.T) {
+func Test_S3Storage_Save(t *testing.T) {
 	tests := []struct {
 		name    string
+		opts    SaveOptions
 		putErr  error
 		wantErr bool
 	}{
-		{name: "success"},
-		{name: "put error", putErr: errors.New("write failed"), wantErr: true},
+		{
+			name: "success",
+			opts: SaveOptions{Size: 5, ContentType: "text/plain", Filename: "test.txt"},
+		},
+		{
+			name: "unknown length reader",
+			opts: SaveOptions{Size: -1, ContentType: "application/octet-stream"},
+		},
+		{
+			name:    "put error",
+			opts:    SaveOptions{Size: 5, ContentType: "text/plain", Filename: "test.txt"},
+			putErr:  errors.New("write failed"),
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			wantContentType := tt.opts.ContentType
+
 			uploader := &MockS3Uploader{}
 			uploader.On("UploadObject", mock.MatchedBy(func(p *transfermanager.UploadObjectInput) bool {
 				return p.Key != nil && *p.Key == "files/test-id" &&
-					p.ContentType != nil && *p.ContentType == "text/plain"
+					p.ContentType != nil && *p.ContentType == wantContentType
 			})).Return((*transfermanager.UploadObjectOutput)(nil), tt.putErr)
 
 			s := newTestS3Storage(nil, nil, uploader)
-			header := &multipart.FileHeader{
-				Filename: "test.txt",
-				Header:   textproto.MIMEHeader{"Content-Type": []string{"text/plain"}},
-			}
-			gotID, err := s.SaveFileUpload(context.Background(), "test-id", newTestMultipartFile([]byte("hello")), header)
+			gotID, err := s.Save(context.Background(), "test-id", bytes.NewReader([]byte("hello")), tt.opts)
 
 			if tt.wantErr {
 				require.Error(t, err)

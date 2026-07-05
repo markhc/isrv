@@ -13,6 +13,8 @@ const (
 	AttrFileSize = "isrv.file.size_bytes"
 	// AttrFileExpiration is the file's RFC3339-formatted expiration time.
 	AttrFileExpiration = "isrv.file.expiration"
+	// AttrFileEncrypted reports whether the stored object is encrypted at rest.
+	AttrFileEncrypted = "isrv.file.encrypted"
 
 	// AttrRequestIP is the resolved client IP of the request.
 	AttrRequestIP = "isrv.request.ip_address"

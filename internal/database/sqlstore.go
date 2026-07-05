@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"mime/multipart"
 	"strings"
 	"time"
 
@@ -19,8 +18,8 @@ import (
 
 const (
 	QUERY_INSERT_FILE = `
-		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, content_type)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, content_type, encryption_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	QUERY_UPDATE_DOWNLOAD_COUNT = `
 		UPDATE files SET download_count = download_count + 1 WHERE id = ?
@@ -38,7 +37,7 @@ const (
 		SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP
 	`
 	QUERY_SELECT_FILE_DATA = `
-		SELECT id, file_name, file_size, content_type, expiration_time, download_count
+		SELECT id, file_name, file_size, content_type, expiration_time, download_count, encryption_version
 		FROM files WHERE id = ?
 	`
 	QUERY_UPDATE_EXPIRATION = `
@@ -46,7 +45,7 @@ const (
 	`
 	QUERY_LIST_FILES_SELECT = `
 		SELECT id, file_name, file_size, content_type, expiration_time,
-		       download_count, ip_address, created_at
+		       download_count, ip_address, created_at, encryption_version
 		FROM files
 	`
 	QUERY_LIST_FILES_COUNT = `SELECT COUNT(*) FROM files`
@@ -100,35 +99,31 @@ func (s *sqlStore) Ping(ctx context.Context) error {
 // OnFileUpload inserts a new file record into the database.
 func (s *sqlStore) OnFileUpload(
 	ctx context.Context,
-	fileID string,
-	fileHeader *multipart.FileHeader,
+	file *models.File,
 	token string,
-	expirationTime time.Time,
-	ipAddress string,
 ) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileUpload",
 		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-			attribute.String(telemetry.AttrFileName, fileHeader.Filename),
-			attribute.Int64(telemetry.AttrFileSize, fileHeader.Size),
-			attribute.String(telemetry.AttrRequestIP, ipAddress),
+			attribute.String(telemetry.AttrFileID, file.ID),
+			attribute.String(telemetry.AttrFileName, file.Name),
+			attribute.Int64(telemetry.AttrFileSize, file.Size),
+			attribute.String(telemetry.AttrRequestIP, file.IPAddress),
 		),
 	)
 
 	defer span.End()
 
-	contentType := fileHeader.Header.Get("Content-Type")
-
 	_, err := s.sqldb.ExecContext(
 		ctx,
 		s.rebind(QUERY_INSERT_FILE),
-		fileID,
-		fileHeader.Filename,
-		fileHeader.Size,
+		file.ID,
+		file.Name,
+		file.Size,
 		token,
-		expirationTime,
-		ipAddress,
-		contentType)
+		file.Expiration,
+		file.IPAddress,
+		file.ContentType,
+		file.EncryptionVersion)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to insert file record")
@@ -310,7 +305,8 @@ func (s *sqlStore) GetFile(ctx context.Context, id string) (*models.File, error)
 		&file.Size,
 		&contentType,
 		&file.Expiration,
-		&file.Downloads)
+		&file.Downloads,
+		&file.EncryptionVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFileNotFound
@@ -370,7 +366,7 @@ func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) 
 		)
 
 		err := rows.Scan(&file.ID, &file.Name, &file.Size, &contentType,
-			&file.Expiration, &file.Downloads, &ipAddress, &file.CreatedAt)
+			&file.Expiration, &file.Downloads, &ipAddress, &file.CreatedAt, &file.EncryptionVersion)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to scan file row")

@@ -150,5 +150,21 @@ cleanup:
   enabled: true
   interval: 1m
 
+# server-side encryption at rest
+# When enabled, new uploads are encrypted before reaching the storage backend
+# and transparently decrypted on download. Existing plaintext files remain
+# readable. Decryption only requires an identity to be configured; setting
+# `enabled: false` while keeping an identity stops encrypting new uploads but
+# keeps existing encrypted files downloadable.
+encryption:
+  # encrypt new uploads
+  enabled: false
+  # age X25519 identity (AGE-SECRET-KEY-1...). Generate one with 'isrv --gen-encryption-key'. 
+  # Prefer using identityFile to avoid storing the secret in plaintext in the config file.
+  identity: ""
+  # path to a file containing the identity, in age-keygen output format.
+  # Set either identity or identityFile, not both.
+  identityFile: ""
+
 # enable debug mode for more verbose logging and additional information in responses
 debug: false

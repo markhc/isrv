@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"time"
@@ -76,12 +75,12 @@ func (ls *LocalStorage) FileExists(ctx context.Context, fileID string) (bool, er
 	return true, nil
 }
 
-// SaveFileUpload writes the uploaded file to disk under BasePath and returns the full file path.
-func (ls *LocalStorage) SaveFileUpload(
+// Save writes r to disk under BasePath and returns the full file path.
+func (ls *LocalStorage) Save(
 	ctx context.Context,
 	fileID string,
-	file multipart.File,
-	_ *multipart.FileHeader,
+	r io.Reader,
+	_ SaveOptions,
 ) (string, error) {
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationSave, time.Now(), &err)
@@ -96,7 +95,7 @@ func (ls *LocalStorage) SaveFileUpload(
 	}
 	defer dst.Close()
 
-	_, err = io.Copy(dst, file)
+	_, err = io.Copy(dst, r)
 	if err != nil {
 		logging.ErrorCtx(ctx, "failed to copy file data", logging.Error(err))
 

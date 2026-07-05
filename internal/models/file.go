@@ -11,7 +11,14 @@ type File struct {
 	Downloads   int       `json:"downloads"`
 	IPAddress   string    `json:"ipAddress,omitempty"`
 	CreatedAt   time.Time `json:"createdAt,omitzero"`
+
+	// EncryptionVersion identifies the at-rest encryption scheme
+	// (encryption.Version*). Zero means the object is stored in plaintext.
+	EncryptionVersion int `json:"-"`
 }
+
+// IsEncrypted reports whether the stored object is encrypted at rest.
+func (f *File) IsEncrypted() bool { return f.EncryptionVersion > 0 }
 
 // FileListFilter describes the query parameters for listing files in the admin
 // panel. The zero value lists all files with default ordering.
