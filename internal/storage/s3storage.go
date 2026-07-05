@@ -288,10 +288,16 @@ func (storage *S3Storage) proxyFile(c fiber.Ctx, file *models.File) error {
 
 	// SendStream closes the body once the response has been written.
 	if object.ContentLength != nil {
-		return c.SendStream(object.Body, int(*object.ContentLength))
+		// manually assign to err instead of returning directly
+		// to ensure the deferred recordOpDuration runs
+		err = c.SendStream(object.Body, int(*object.ContentLength))
+		return err
 	}
 
-	return c.SendStream(object.Body)
+	// manually assign to err instead of returning directly
+	// to ensure the deferred recordOpDuration runs
+	err = c.SendStream(object.Body)
+	return err
 }
 
 // redirectPresigned generates a pre-signed S3 URL and redirects the client to it.
