@@ -1,11 +1,31 @@
-name: Create Release on Tag Push
+name: Release
+
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   verify:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -25,7 +45,7 @@ jobs:
         node-version: 24
     - name: Install pnpm
       run: npm install -g pnpm
-    
+
     - name: Get Cache Store Path
       run: |
         PNPM_STORE_PATH=$(pnpm store path)
@@ -44,7 +64,8 @@ jobs:
       run: make test
 
   build_artifacts:
-    needs: verify
+    needs: [release-please, verify]
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,7 +87,7 @@ jobs:
           node-version: 24
       - name: Install pnpm
         run: npm install -g pnpm
-      
+
       - name: Get Cache Store Path
         run: |
           PNPM_STORE_PATH=$(pnpm store path)
@@ -78,10 +99,6 @@ jobs:
           path: ${{ env.PNPM_STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
 
-      - name: Get Release Version
-        id: get_version
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
       - name: Building targets
         run: make build-all
 
@@ -92,29 +109,25 @@ jobs:
           tar -czvf isrv-darwin-amd64.tar.gz -C build isrv-darwin-amd64 && \
           tar -czvf isrv-darwin-arm64.tar.gz -C build isrv-darwin-arm64
 
-      - name: Create GitHub Release
+      - name: Upload release artifacts
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.get_version.outputs.RELEASE_VERSION }}
-          name: Release ${{ steps.get_version.outputs.RELEASE_VERSION }}
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: |
             isrv-linux-amd64.tar.gz
             isrv-linux-arm64.tar.gz
             isrv-darwin-amd64.tar.gz
             isrv-darwin-arm64.tar.gz
-            
+
   docker_build:
-    needs: verify
+    needs: [release-please, verify]
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-
-      - name: Get Release Version
-        id: get_version
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
         uses: docker/login-action@v4
@@ -124,7 +137,7 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -134,10 +147,10 @@ jobs:
           push: true
           tags: |
             markhc/isrv:latest
-            markhc/isrv:${{ steps.get_version.outputs.RELEASE_VERSION }}
+            markhc/isrv:${{ needs.release-please.outputs.tag_name }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
           build-args: |
-            BUILD_VERSION=${{ steps.get_version.outputs.RELEASE_VERSION }}
+            BUILD_VERSION=${{ needs.release-please.outputs.tag_name }}
             BUILD_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
