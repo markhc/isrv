@@ -20,6 +20,11 @@
     "selfHosting": {
       "title": "Self-hosting",
       "body": "iSRV is open source and designed to be self-hosted. You control where your files are stored, how long they are kept, and who can upload. Refer to the project repository for setup instructions."
+    },
+    "sourceCode": {
+      "title": "Source code",
+      "body": "iSRV is open source. Browse the code, report issues, or contribute on GitHub.",
+      "link": "View on GitHub"
     }
   }
 }

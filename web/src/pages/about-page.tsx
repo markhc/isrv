@@ -40,6 +40,19 @@ export default function AboutPage() {
             <h2 className="text-base font-semibold text-foreground">{t("about:sections.selfHosting.title")}</h2>
             <p>{t("about:sections.selfHosting.body")}</p>
           </section>
+
+          <section className="flex flex-col gap-2">
+            <h2 className="text-base font-semibold text-foreground">{t("about:sections.sourceCode.title")}</h2>
+            <p>{t("about:sections.sourceCode.body")}</p>
+            <a
+              href="https://github.com/markhc/isrv"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors w-fit"
+            >
+              {t("about:sections.sourceCode.link")}
+            </a>
+          </section>
         </div>
       </div>
     </main>
