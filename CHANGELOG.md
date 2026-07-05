@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/markhc/isrv/compare/v1.2.0...v1.2.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* add link to repo on the about page ([#39](https://github.com/markhc/isrv/issues/39)) ([ce99eca](https://github.com/markhc/isrv/commit/ce99ecabada1abbf1203fe74b342c125ce25c34d))
+
 ## [1.2.0](https://github.com/markhc/isrv/compare/v1.1.0...v1.2.0) (2026-07-05)
 
 
