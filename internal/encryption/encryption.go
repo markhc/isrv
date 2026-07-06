@@ -75,6 +75,17 @@ func newManagerFromFile(path string) (*Manager, error) {
 	}
 	defer f.Close()
 
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("encryption: stat identity file: %w", err)
+	}
+
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		return nil, fmt.Errorf(
+			"encryption: identity file %q has insecure permissions %#o: must not be group/world accessible",
+			path, perm)
+	}
+
 	identities, err := age.ParseIdentities(f)
 	if err != nil {
 		return nil, fmt.Errorf("encryption: parse identity file: %w", err)

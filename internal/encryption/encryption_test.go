@@ -334,6 +334,16 @@ func Test_NewManager(t *testing.T) {
 			wantErr: true,
 			wantNil: true,
 		},
+		{
+			name: "identity file with group-readable permissions",
+			cfg: func(t *testing.T) models.EncryptionConfiguration {
+				path := writeIdentityFile(t, id.String())
+				require.NoError(t, os.Chmod(path, 0o640))
+				return models.EncryptionConfiguration{IdentityFile: path}
+			},
+			wantErr: true,
+			wantNil: true,
+		},
 	}
 
 	for _, tt := range tests {
