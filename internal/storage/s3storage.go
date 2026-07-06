@@ -196,6 +196,12 @@ func (storage *S3Storage) Save(
 		Body:   r,
 	}
 
+	// A known length lets the transfer manager size multipart parts without
+	// probing a non-seekable reader.
+	if opts.Size >= 0 {
+		input.ContentLength = aws.Int64(opts.Size)
+	}
+
 	if opts.ContentType != "" {
 		input.ContentType = aws.String(opts.ContentType)
 	}

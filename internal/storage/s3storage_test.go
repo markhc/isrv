@@ -143,11 +143,16 @@ func Test_S3Storage_Save(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			wantContentType := tt.opts.ContentType
+			wantSize := tt.opts.Size
 
 			uploader := &MockS3Uploader{}
 			uploader.On("UploadObject", mock.MatchedBy(func(p *transfermanager.UploadObjectInput) bool {
+				lengthOK := p.ContentLength == nil && wantSize < 0 ||
+					p.ContentLength != nil && *p.ContentLength == wantSize
+
 				return p.Key != nil && *p.Key == "files/test-id" &&
-					p.ContentType != nil && *p.ContentType == wantContentType
+					p.ContentType != nil && *p.ContentType == wantContentType &&
+					lengthOK
 			})).Return((*transfermanager.UploadObjectOutput)(nil), tt.putErr)
 
 			s := newTestS3Storage(nil, nil, uploader)
