@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import './themes/nightwalker.css';
+@import './themes/default.css';
 
 /* Keep only the custom accordion animations not provided by tw-animate-css */
 @theme {
