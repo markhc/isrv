@@ -21,8 +21,7 @@ isrv is a lightweight file sharing service that provides anonymous temporary sto
 This project is a work in progress, here's a list of things I am working on in no particular order:
 
 - More remote storage options (GCS, FTP)
-- Compress files at rest to save storage when convenient (text and other highly compressible formats)
-- Optional file encryption at rest
+- E2E encryption for files
 - Storage tiers (namely "hot" and "cold") to optimize costs and performance based on file access patterns
 
 

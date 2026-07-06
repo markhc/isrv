@@ -6,7 +6,6 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"mime/multipart"
 	"time"
 
 	"github.com/markhc/isrv/internal/models"
@@ -32,13 +31,7 @@ type Database interface { //nolint:interfacebloat
 	Ping(ctx context.Context) error
 
 	// OnFileUpload records a new file upload in the database.
-	OnFileUpload(
-		ctx context.Context,
-		fileID string,
-		fileHeader *multipart.FileHeader,
-		token string,
-		expirationTime time.Time,
-		ipAddress string) error
+	OnFileUpload(ctx context.Context, file *models.File, token string) error
 	// OnFileDownload increments the download counter for the given file.
 	// It returns ErrFileNotFound if no record exists for the ID.
 	OnFileDownload(ctx context.Context, fileID string) error

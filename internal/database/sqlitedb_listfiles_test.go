@@ -2,8 +2,6 @@ package database
 
 import (
 	"context"
-	"mime/multipart"
-	"net/textproto"
 	"testing"
 	"time"
 
@@ -16,16 +14,14 @@ import (
 func seedFile(t *testing.T, db *SQLiteDB, id, name, contentType, ip string, size int64) {
 	t.Helper()
 
-	header := &multipart.FileHeader{
-		Filename: name,
-		Size:     size,
-		Header:   make(textproto.MIMEHeader),
-	}
-	if contentType != "" {
-		header.Header.Set("Content-Type", contentType)
-	}
-
-	err := db.OnFileUpload(context.Background(), id, header, id, time.Now().Add(24*time.Hour), ip)
+	err := db.OnFileUpload(context.Background(), &models.File{
+		ID:          id,
+		Name:        name,
+		Size:        size,
+		ContentType: contentType,
+		Expiration:  time.Now().Add(24 * time.Hour),
+		IPAddress:   ip,
+	}, id)
 	require.NoError(t, err)
 }
 

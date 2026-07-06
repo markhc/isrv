@@ -26,7 +26,10 @@
     "created": "Enviado em",
     "expires": "Expira",
     "actions": "Ações",
-    "empty": "Nenhum arquivo encontrado"
+    "empty": "Nenhum arquivo encontrado",
+    "encryptionVersion": "Criptografia",
+    "fileEncrypted": "Sim (v{{version}})",
+    "fileNotEncrypted": "Não"
   },
   "sort": {
     "label": "Ordenar por",

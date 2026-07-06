@@ -6,7 +6,7 @@ package mocks
 
 import (
 	"context"
-	"mime/multipart"
+	"io"
 
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
@@ -404,47 +404,47 @@ func (_c *MockStorage_PresignedURL_Call) RunAndReturn(run func(ctx context.Conte
 	return _c
 }
 
-// SaveFileUpload provides a mock function for the type MockStorage
-func (_mock *MockStorage) SaveFileUpload(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
-	ret := _mock.Called(ctx, fileID, file, fileHeader)
+// Save provides a mock function for the type MockStorage
+func (_mock *MockStorage) Save(ctx context.Context, fileID string, r io.Reader, opts storage.SaveOptions) (string, error) {
+	ret := _mock.Called(ctx, fileID, r, opts)
 
 	if len(ret) == 0 {
-		panic("no return value specified for SaveFileUpload")
+		panic("no return value specified for Save")
 	}
 
 	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, multipart.File, *multipart.FileHeader) (string, error)); ok {
-		return returnFunc(ctx, fileID, file, fileHeader)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Reader, storage.SaveOptions) (string, error)); ok {
+		return returnFunc(ctx, fileID, r, opts)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, multipart.File, *multipart.FileHeader) string); ok {
-		r0 = returnFunc(ctx, fileID, file, fileHeader)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, io.Reader, storage.SaveOptions) string); ok {
+		r0 = returnFunc(ctx, fileID, r, opts)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, multipart.File, *multipart.FileHeader) error); ok {
-		r1 = returnFunc(ctx, fileID, file, fileHeader)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, io.Reader, storage.SaveOptions) error); ok {
+		r1 = returnFunc(ctx, fileID, r, opts)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockStorage_SaveFileUpload_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveFileUpload'
-type MockStorage_SaveFileUpload_Call struct {
+// MockStorage_Save_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Save'
+type MockStorage_Save_Call struct {
 	*mock.Call
 }
 
-// SaveFileUpload is a helper method to define mock.On call
+// Save is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fileID string
-//   - file multipart.File
-//   - fileHeader *multipart.FileHeader
-func (_e *MockStorage_Expecter) SaveFileUpload(ctx any, fileID any, file any, fileHeader any) *MockStorage_SaveFileUpload_Call {
-	return &MockStorage_SaveFileUpload_Call{Call: _e.mock.On("SaveFileUpload", ctx, fileID, file, fileHeader)}
+//   - r io.Reader
+//   - opts storage.SaveOptions
+func (_e *MockStorage_Expecter) Save(ctx any, fileID any, r any, opts any) *MockStorage_Save_Call {
+	return &MockStorage_Save_Call{Call: _e.mock.On("Save", ctx, fileID, r, opts)}
 }
 
-func (_c *MockStorage_SaveFileUpload_Call) Run(run func(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader)) *MockStorage_SaveFileUpload_Call {
+func (_c *MockStorage_Save_Call) Run(run func(ctx context.Context, fileID string, r io.Reader, opts storage.SaveOptions)) *MockStorage_Save_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -454,13 +454,13 @@ func (_c *MockStorage_SaveFileUpload_Call) Run(run func(ctx context.Context, fil
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 multipart.File
+		var arg2 io.Reader
 		if args[2] != nil {
-			arg2 = args[2].(multipart.File)
+			arg2 = args[2].(io.Reader)
 		}
-		var arg3 *multipart.FileHeader
+		var arg3 storage.SaveOptions
 		if args[3] != nil {
-			arg3 = args[3].(*multipart.FileHeader)
+			arg3 = args[3].(storage.SaveOptions)
 		}
 		run(
 			arg0,
@@ -472,12 +472,12 @@ func (_c *MockStorage_SaveFileUpload_Call) Run(run func(ctx context.Context, fil
 	return _c
 }
 
-func (_c *MockStorage_SaveFileUpload_Call) Return(s string, err error) *MockStorage_SaveFileUpload_Call {
+func (_c *MockStorage_Save_Call) Return(s string, err error) *MockStorage_Save_Call {
 	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *MockStorage_SaveFileUpload_Call) RunAndReturn(run func(ctx context.Context, fileID string, file multipart.File, fileHeader *multipart.FileHeader) (string, error)) *MockStorage_SaveFileUpload_Call {
+func (_c *MockStorage_Save_Call) RunAndReturn(run func(ctx context.Context, fileID string, r io.Reader, opts storage.SaveOptions) (string, error)) *MockStorage_Save_Call {
 	_c.Call.Return(run)
 	return _c
 }

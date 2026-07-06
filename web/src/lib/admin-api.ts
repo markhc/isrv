@@ -8,6 +8,7 @@ export interface AdminFile {
   contentType: string
   expiration: string
   downloads: number
+  encryptionVersion: number
   ipAddress?: string
   createdAt?: string
 }

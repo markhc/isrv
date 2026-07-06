@@ -76,6 +76,23 @@ type CleanupConfiguration struct {
 	Interval time.Duration `yaml:"interval"`
 }
 
+// EncryptionConfiguration holds settings for server-side encryption at rest.
+type EncryptionConfiguration struct {
+	// Enabled encrypts new uploads. Decryption of existing files only
+	// requires an identity to be configured, regardless of this flag.
+	Enabled bool `yaml:"enabled"`
+	// Identity is the age X25519 identity (AGE-SECRET-KEY-1...).
+	Identity string `yaml:"identity"`
+	// IdentityFile is a path to a file containing the identity, in
+	// age-keygen output format.
+	IdentityFile string `yaml:"identityFile"`
+}
+
+// HasKey reports whether any identity source is configured.
+func (e EncryptionConfiguration) HasKey() bool {
+	return e.Identity != "" || e.IdentityFile != ""
+}
+
 type RateLimitExceededAction string
 
 const (
@@ -103,26 +120,27 @@ type SecurityConfiguration struct {
 
 // Configuration is the top-level application configuration.
 type Configuration struct {
-	ServerName           string                `yaml:"serverName"`
-	ServerURL            string                `yaml:"serverUrl"`
-	ServerHost           string                `yaml:"serverHost"`
-	ServerPort           int                   `yaml:"serverPort"`
-	MaxFileSizeMB        int                   `yaml:"maxFileSizeMb"`
-	MinAgeDays           int                   `yaml:"minAgeDays"`
-	MaxAgeDays           int                   `yaml:"maxAgeDays"`
-	RandomIDLength       int                   `yaml:"randomIdLength"`
-	KeepOriginalFilename bool                  `yaml:"keepOriginalFilename"`
-	DisableIndexPage     bool                  `yaml:"disableIndexPage"`
-	DisableUploadPage    bool                  `yaml:"disableUploadPage"`
-	FaviconURL           string                `yaml:"faviconUrl"`
-	FaviconFormat        string                `yaml:"faviconFormat"`
-	Security             SecurityConfiguration `yaml:"security"`
-	Admin                AdminConfiguration    `yaml:"admin"`
-	Storage              StorageConfiguration  `yaml:"storage"`
-	Database             DatabaseConfiguration `yaml:"database"`
-	Logging              LoggingConfiguration  `yaml:"logging"`
-	Cleanup              CleanupConfiguration  `yaml:"cleanup"`
-	DebugMode            bool                  `yaml:"debug"`
+	ServerName           string                  `yaml:"serverName"`
+	ServerURL            string                  `yaml:"serverUrl"`
+	ServerHost           string                  `yaml:"serverHost"`
+	ServerPort           int                     `yaml:"serverPort"`
+	MaxFileSizeMB        int                     `yaml:"maxFileSizeMb"`
+	MinAgeDays           int                     `yaml:"minAgeDays"`
+	MaxAgeDays           int                     `yaml:"maxAgeDays"`
+	RandomIDLength       int                     `yaml:"randomIdLength"`
+	KeepOriginalFilename bool                    `yaml:"keepOriginalFilename"`
+	DisableIndexPage     bool                    `yaml:"disableIndexPage"`
+	DisableUploadPage    bool                    `yaml:"disableUploadPage"`
+	FaviconURL           string                  `yaml:"faviconUrl"`
+	FaviconFormat        string                  `yaml:"faviconFormat"`
+	Security             SecurityConfiguration   `yaml:"security"`
+	Admin                AdminConfiguration      `yaml:"admin"`
+	Storage              StorageConfiguration    `yaml:"storage"`
+	Database             DatabaseConfiguration   `yaml:"database"`
+	Logging              LoggingConfiguration    `yaml:"logging"`
+	Cleanup              CleanupConfiguration    `yaml:"cleanup"`
+	Encryption           EncryptionConfiguration `yaml:"encryption"`
+	DebugMode            bool                    `yaml:"debug"`
 }
 
 // FrontendConfig holds the subset of Configuration that is safe to expose to

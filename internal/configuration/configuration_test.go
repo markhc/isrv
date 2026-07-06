@@ -47,7 +47,7 @@ storage:
   type: "local" 
   basePath: "/test/path/"
 `
-	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0o644))
 
 	// Save original config
 	originalConfig := config
@@ -80,7 +80,7 @@ storage:
   type: "local" 
   basePath: "./data/"
 `
-	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0o644))
 
 	// Save original config
 	originalConfig := config
@@ -116,7 +116,7 @@ storage:
   type: "local"
   basePath: "./data/"
 `
-	require.NoError(t, os.WriteFile("config.yaml", []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile("config.yaml", []byte(configContent), 0o644))
 
 	// Test loading from default location (empty string triggers search)
 	Load("", false)
@@ -340,9 +340,9 @@ func TestApplyEnvOverrides(t *testing.T) {
 func TestConfigFileExists(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "config"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("test"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config", "config.yaml"), []byte("test"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("test"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config", "config.yaml"), []byte("test"), 0o644))
 
 	tests := []struct {
 		name           string
@@ -686,7 +686,7 @@ func TestLoadFromFile_InvalidYaml(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "invalid.yaml")
 
 	// Create file with invalid YAML
-	require.NoError(t, os.WriteFile(configPath, []byte("invalid: yaml: content: ["), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte("invalid: yaml: content: ["), 0o644))
 
 	// Should panic on invalid YAML
 	assert.Panics(t, func() {
@@ -715,7 +715,7 @@ storage:
   type: "local"
   basePath: "./data/"
 `
-	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0o644))
 
 	// Save original config
 	originalConfig := config

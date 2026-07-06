@@ -6,7 +6,6 @@ package mocks
 
 import (
 	"context"
-	"mime/multipart"
 	"time"
 
 	"github.com/markhc/isrv/internal/models"
@@ -623,16 +622,16 @@ func (_c *MockDatabase_OnFileDownload_Call) RunAndReturn(run func(ctx context.Co
 }
 
 // OnFileUpload provides a mock function for the type MockDatabase
-func (_mock *MockDatabase) OnFileUpload(ctx context.Context, fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error {
-	ret := _mock.Called(ctx, fileID, fileHeader, token, expirationTime, ipAddress)
+func (_mock *MockDatabase) OnFileUpload(ctx context.Context, file *models.File, token string) error {
+	ret := _mock.Called(ctx, file, token)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OnFileUpload")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *multipart.FileHeader, string, time.Time, string) error); ok {
-		r0 = returnFunc(ctx, fileID, fileHeader, token, expirationTime, ipAddress)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *models.File, string) error); ok {
+		r0 = returnFunc(ctx, file, token)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -646,48 +645,30 @@ type MockDatabase_OnFileUpload_Call struct {
 
 // OnFileUpload is a helper method to define mock.On call
 //   - ctx context.Context
-//   - fileID string
-//   - fileHeader *multipart.FileHeader
+//   - file *models.File
 //   - token string
-//   - expirationTime time.Time
-//   - ipAddress string
-func (_e *MockDatabase_Expecter) OnFileUpload(ctx any, fileID any, fileHeader any, token any, expirationTime any, ipAddress any) *MockDatabase_OnFileUpload_Call {
-	return &MockDatabase_OnFileUpload_Call{Call: _e.mock.On("OnFileUpload", ctx, fileID, fileHeader, token, expirationTime, ipAddress)}
+func (_e *MockDatabase_Expecter) OnFileUpload(ctx any, file any, token any) *MockDatabase_OnFileUpload_Call {
+	return &MockDatabase_OnFileUpload_Call{Call: _e.mock.On("OnFileUpload", ctx, file, token)}
 }
 
-func (_c *MockDatabase_OnFileUpload_Call) Run(run func(ctx context.Context, fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string)) *MockDatabase_OnFileUpload_Call {
+func (_c *MockDatabase_OnFileUpload_Call) Run(run func(ctx context.Context, file *models.File, token string)) *MockDatabase_OnFileUpload_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 string
+		var arg1 *models.File
 		if args[1] != nil {
-			arg1 = args[1].(string)
+			arg1 = args[1].(*models.File)
 		}
-		var arg2 *multipart.FileHeader
+		var arg2 string
 		if args[2] != nil {
-			arg2 = args[2].(*multipart.FileHeader)
-		}
-		var arg3 string
-		if args[3] != nil {
-			arg3 = args[3].(string)
-		}
-		var arg4 time.Time
-		if args[4] != nil {
-			arg4 = args[4].(time.Time)
-		}
-		var arg5 string
-		if args[5] != nil {
-			arg5 = args[5].(string)
+			arg2 = args[2].(string)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
-			arg3,
-			arg4,
-			arg5,
 		)
 	})
 	return _c
@@ -698,7 +679,7 @@ func (_c *MockDatabase_OnFileUpload_Call) Return(err error) *MockDatabase_OnFile
 	return _c
 }
 
-func (_c *MockDatabase_OnFileUpload_Call) RunAndReturn(run func(ctx context.Context, fileID string, fileHeader *multipart.FileHeader, token string, expirationTime time.Time, ipAddress string) error) *MockDatabase_OnFileUpload_Call {
+func (_c *MockDatabase_OnFileUpload_Call) RunAndReturn(run func(ctx context.Context, file *models.File, token string) error) *MockDatabase_OnFileUpload_Call {
 	_c.Call.Return(run)
 	return _c
 }

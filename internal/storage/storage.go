@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"time"
 
 	"github.com/markhc/isrv/internal/models"
@@ -58,6 +57,17 @@ func recordOpDuration(ctx context.Context, backend, op string, start time.Time, 
 	)
 }
 
+// SaveOptions carries optional object metadata for Save.
+type SaveOptions struct {
+	// Size is the number of bytes r will yield, or -1 when unknown.
+	Size int64
+	// ContentType to attach to the stored object, when the backend supports
+	// object metadata.
+	ContentType string
+	// Filename for the backend's content-disposition metadata, if any.
+	Filename string
+}
+
 // Storage is the interface for file storage backends.
 type Storage interface {
 	// Backend returns a short, stable identifier for this storage backend
@@ -68,13 +78,10 @@ type Storage interface {
 	HealthCheck(ctx context.Context) error
 	// FileExists reports whether a file with the given ID exists in storage.
 	FileExists(ctx context.Context, fileID string) (bool, error)
-	// SaveFileUpload writes an uploaded file to storage and returns its
-	// backend-specific storage path or key.
-	SaveFileUpload(
-		ctx context.Context,
-		fileID string,
-		file multipart.File,
-		fileHeader *multipart.FileHeader) (string, error)
+	// Save writes r to storage under fileID and returns its backend-specific
+	// storage path or key. opts carries optional object metadata; a Size of
+	// -1 signals an unknown-length reader (e.g. an encrypting stream).
+	Save(ctx context.Context, fileID string, r io.Reader, opts SaveOptions) (string, error)
 	// DeleteFile removes the file with the given ID from storage.
 	DeleteFile(ctx context.Context, fileID string) error
 	// Open returns a reader over the stored object's bytes. When brange is

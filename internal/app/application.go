@@ -13,6 +13,7 @@ import (
 	"github.com/markhc/isrv/internal/cleanup"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/database"
+	"github.com/markhc/isrv/internal/encryption"
 	"github.com/markhc/isrv/internal/favicon"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
@@ -61,11 +62,12 @@ func NewApplication(
 	config *models.Configuration,
 	db database.Database,
 	stor storage.Storage,
+	enc *encryption.Manager,
 	faviconData []byte,
 ) *Application {
 	a := &Application{
-		DownloadHandler: handlers.Download(db, stor),
-		UploadHandler:   handlers.Upload(config, db, stor),
+		DownloadHandler: handlers.Download(db, stor, enc),
+		UploadHandler:   handlers.Upload(config, db, stor, enc),
 		DeleteHandler:   handlers.Delete(db, stor),
 		ExpireHandler:   handlers.Expire(config, db),
 		HealthzHandler:  handlers.Healthz(),
@@ -139,6 +141,11 @@ func StartApp(ctx context.Context) error {
 		return fmt.Errorf("initialise storage: %w", err)
 	}
 
+	encManager, err := encryption.NewManager(config.Encryption)
+	if err != nil {
+		return fmt.Errorf("initialise encryption: %w", err)
+	}
+
 	dbInstance, err := createDb(config)
 	if err != nil {
 		return fmt.Errorf("initialise database: %w", err)
@@ -158,7 +165,7 @@ func StartApp(ctx context.Context) error {
 		logging.LogError("failed to fetch favicon", logging.String("url", config.FaviconURL), logging.Error(err))
 	}
 
-	application := NewApplication(ctx, config, dbInstance, storageClient, faviconData)
+	application := NewApplication(ctx, config, dbInstance, storageClient, encManager, faviconData)
 
 	// BodyLimit enforces a hard upload cap before handler code runs;
 	// derived from MaxFileSizeMB so the limit matches the upload handler.

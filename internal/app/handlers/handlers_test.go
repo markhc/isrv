@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"text/template"
@@ -20,6 +21,7 @@ import (
 	"github.com/markhc/isrv/internal/app/handlers"
 	"github.com/markhc/isrv/internal/database"
 	dbmocks "github.com/markhc/isrv/internal/database/mocks"
+	"github.com/markhc/isrv/internal/encryption"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/models"
 	"github.com/markhc/isrv/internal/storage"
@@ -216,7 +218,7 @@ func Test_Download(t *testing.T) {
 			}, nil)
 
 			app := newApp()
-			h := handlers.Download(db, stor)
+			h := handlers.Download(db, stor, nil)
 			app.Get("/d/:id", h)
 			app.Get("/d/:id/:filename", h)
 
@@ -277,14 +279,14 @@ func Test_Upload(t *testing.T) {
 			expectedBody:   "file size exceeds the maximum allowed limit",
 		},
 		{
-			name: "SaveFileUpload error returns 500",
+			name: "Save error returns 500",
 			setup: func(t *testing.T) (*http.Request, *dbmocks.MockDatabase, *stmocks.MockStorage) {
 				body, ct := multipartBody(t, "file.txt", []byte("hello"))
 				req := httptest.NewRequest(http.MethodPost, "/", body)
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
 				stor := newMockStorage(t)
-				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("", errors.New("storage failure"))
 				return req, db, stor
 			},
@@ -299,9 +301,9 @@ func Test_Upload(t *testing.T) {
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
 				stor := newMockStorage(t)
-				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/file.txt", nil)
-				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything).
 					Return(errors.New("db error"))
 				stor.On("DeleteFile", mock.Anything, mock.Anything).Return(nil)
 				return req, db, stor
@@ -317,9 +319,9 @@ func Test_Upload(t *testing.T) {
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
 				stor := newMockStorage(t)
-				stor.On("SaveFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/photo.png", nil)
-				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything).
 					Return(nil)
 				return req, db, stor
 			},
@@ -338,7 +340,7 @@ func Test_Upload(t *testing.T) {
 			req, db, stor := tt.setup(t)
 
 			app := newApp()
-			app.Post("/", handlers.Upload(cfg, db, stor))
+			app.Post("/", handlers.Upload(cfg, db, stor, nil))
 
 			resp := doTest(t, app, req)
 			body := bodyString(t, resp)
@@ -347,6 +349,202 @@ func Test_Upload(t *testing.T) {
 			assert.Contains(t, body, tt.expectedBody)
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Encryption
+// ---------------------------------------------------------------------------
+
+// newEncManager builds an encryption.Manager from a freshly generated identity.
+func newEncManager(t *testing.T) *encryption.Manager {
+	t.Helper()
+
+	id, err := encryption.GenerateIdentity()
+	require.NoError(t, err)
+
+	m, err := encryption.NewManager(models.EncryptionConfiguration{Identity: id})
+	require.NoError(t, err)
+	require.NotNil(t, m)
+
+	return m
+}
+
+// encMultipartBody builds a multipart body carrying a single "file" field.
+func encMultipartBody(t *testing.T, filename string, content []byte) (*bytes.Buffer, string) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", filename)
+	require.NoError(t, err)
+	_, _ = fw.Write(content)
+	require.NoError(t, mw.Close())
+
+	return &buf, mw.FormDataContentType()
+}
+
+func Test_Upload_Encryption(t *testing.T) {
+	enc := newEncManager(t)
+
+	plaintext := []byte("secret upload contents that should be encrypted at rest")
+
+	body, ct := encMultipartBody(t, "secret.txt", plaintext)
+	req := httptest.NewRequest(http.MethodPost, "/", body)
+	req.Header.Set("Content-Type", ct)
+
+	db := dbmocks.NewMockDatabase(t)
+	stor := newMockStorage(t)
+
+	var stored []byte
+	stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(opts storage.SaveOptions) bool {
+		return opts.Size == -1 && opts.ContentType == "application/octet-stream"
+	})).Run(func(args mock.Arguments) {
+		r, _ := args.Get(2).(io.Reader)
+		stored, _ = io.ReadAll(r)
+	}).Return("/path/secret.txt", nil)
+
+	db.On("OnFileUpload", mock.Anything, mock.MatchedBy(func(f *models.File) bool {
+		return f.EncryptionVersion == encryption.VersionAgeV1 && f.Size == int64(len(plaintext))
+	}), mock.Anything).Return(nil)
+
+	cfg := defaultConfig()
+	cfg.Encryption.Enabled = true
+
+	app := newApp()
+	app.Post("/", handlers.Upload(cfg, db, stor, enc))
+
+	resp := doTest(t, app, req)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	require.NotEmpty(t, stored)
+	assert.NotEqual(t, plaintext, stored, "stored bytes must be ciphertext")
+	assert.True(t, bytes.HasPrefix(stored, []byte("age-encryption.org/v1")),
+		"stored object must start with the age magic")
+
+	// The ciphertext must decrypt back to the original plaintext.
+	dec, err := enc.Decrypt(bytes.NewReader(stored))
+	require.NoError(t, err)
+	got, err := io.ReadAll(dec)
+	require.NoError(t, err)
+	assert.Equal(t, plaintext, got)
+}
+
+func Test_Download_Encryption(t *testing.T) {
+	enc := newEncManager(t)
+
+	plaintext := []byte("decrypted download contents")
+
+	// Produce the stored ciphertext as the upload path would.
+	encReader, err := enc.Encrypt(bytes.NewReader(plaintext))
+	require.NoError(t, err)
+	ciphertext, err := io.ReadAll(encReader)
+	require.NoError(t, err)
+
+	newEncryptedFile := func() *models.File {
+		return &models.File{
+			ID:                "enc-file",
+			Name:              "secret.txt",
+			ContentType:       "text/plain",
+			Size:              int64(len(plaintext)),
+			EncryptionVersion: encryption.VersionAgeV1,
+		}
+	}
+
+	openCiphertext := func(stor *stmocks.MockStorage) {
+		stor.On("Open", mock.Anything, "enc-file", (*storage.ByteRange)(nil)).Return(&storage.Object{
+			Body:   io.NopCloser(bytes.NewReader(ciphertext)),
+			Size:   int64(len(ciphertext)),
+			Length: int64(len(ciphertext)),
+		}, nil)
+	}
+
+	t.Run("round-trip returns plaintext with DB metadata", func(t *testing.T) {
+		file := newEncryptedFile()
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+
+		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
+		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		openCiphertext(stor)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, enc))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/enc-file", nil))
+		got := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, string(plaintext), got)
+		assert.Equal(t, strconv.Itoa(len(plaintext)), resp.Header.Get("Content-Length"))
+		assert.Contains(t, resp.Header.Get("Content-Type"), "text/plain")
+
+		// PresignedURL must never be consulted for encrypted files.
+		stor.AssertNotCalled(t, "PresignedURL", mock.Anything, mock.Anything)
+	})
+
+	t.Run("range header is ignored: full body, no accept-ranges", func(t *testing.T) {
+		file := newEncryptedFile()
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+
+		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
+		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		openCiphertext(stor)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, enc))
+
+		r := httptest.NewRequest(http.MethodGet, "/d/enc-file", nil)
+		r.Header.Set("Range", "bytes=0-3")
+		resp := doTest(t, app, r)
+		got := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, string(plaintext), got)
+		assert.Empty(t, resp.Header.Get("Accept-Ranges"))
+		assert.Empty(t, resp.Header.Get("Content-Range"))
+	})
+
+	t.Run("nil manager returns 500 without leaking bytes", func(t *testing.T) {
+		file := newEncryptedFile()
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+
+		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
+		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/enc-file", nil))
+		got := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.NotContains(t, got, string(plaintext))
+		stor.AssertNotCalled(t, "Open", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("wrong identity returns 500 without leaking bytes", func(t *testing.T) {
+		file := newEncryptedFile()
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+
+		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
+		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		openCiphertext(stor)
+
+		wrongManager := newEncManager(t) // different identity
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, wrongManager))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/enc-file", nil))
+		got := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.NotContains(t, got, string(plaintext))
+	})
 }
 
 // ---------------------------------------------------------------------------

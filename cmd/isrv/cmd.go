@@ -11,6 +11,7 @@ import (
 
 	"github.com/markhc/isrv/internal/app"
 	"github.com/markhc/isrv/internal/configuration"
+	"github.com/markhc/isrv/internal/encryption"
 	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/spf13/cobra"
@@ -21,6 +22,7 @@ var (
 	versionFlag       bool
 	debugFlag         bool
 	makeConfig        bool
+	genEncryptionKey  bool
 	disableSupervisor bool
 	configPath        string
 )
@@ -58,6 +60,18 @@ var rootCmd = &cobra.Command{
 
 		if makeConfig {
 			configuration.GenerateDefaultConfig(filepath.Join(os.Getenv("HOME"), ".config", "isrv", "config.yaml"))
+
+			return nil
+		}
+
+		if genEncryptionKey {
+			key, err := encryption.GenerateIdentity()
+			if err != nil {
+				return fmt.Errorf("generate encryption key: %w", err)
+			}
+
+			//nolint:forbidigo
+			fmt.Println(key)
 
 			return nil
 		}
@@ -133,6 +147,11 @@ func Execute() {
 	rootCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to configuration file")
 
 	rootCmd.Flags().BoolVar(&makeConfig, "makeconf", false, "Generate a default configuration file and exit")
+	rootCmd.Flags().BoolVar(
+		&genEncryptionKey,
+		"gen-encryption-key",
+		false,
+		"Generate a new age encryption identity (AGE-SECRET-KEY-1...) and exit.")
 	rootCmd.Flags().BoolVar(
 		&disableSupervisor,
 		"disable-supervisor",
