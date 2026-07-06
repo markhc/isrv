@@ -169,7 +169,6 @@ func processUpload(
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to build encrypting reader")
-			logging.ErrorCtx(ctx, "failed to build encrypting reader", logging.Error(err))
 			return uploadResponse{}, fmt.Errorf("failed to encrypt uploaded file: %w", err)
 		}
 
@@ -185,7 +184,6 @@ func processUpload(
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "failed to save uploaded file")
-		logging.ErrorCtx(ctx, "failed to save uploaded file", logging.Error(err))
 		return uploadResponse{}, fmt.Errorf("failed to save uploaded file: %w", err)
 	}
 
