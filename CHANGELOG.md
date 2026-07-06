@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/markhc/isrv/compare/v1.2.1...v1.3.0) (2026-07-06)
+
+
+### Features
+
+* add encryption system ([#45](https://github.com/markhc/isrv/issues/45)) ([db863cb](https://github.com/markhc/isrv/commit/db863cb007f931e00377a0c514615141ba527c57))
+
+
+### Code Refactoring
+
+* **storage:** decouple file serving from storage drivers ([#43](https://github.com/markhc/isrv/issues/43)) ([ada5158](https://github.com/markhc/isrv/commit/ada515815c4ec37acf2bb018f95eb06aee17a6d1))
+
 ## [1.2.1](https://github.com/markhc/isrv/compare/v1.2.0...v1.2.1) (2026-07-05)
 
 
