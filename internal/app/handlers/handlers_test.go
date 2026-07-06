@@ -452,7 +452,7 @@ func Test_Download_Encryption(t *testing.T) {
 	}
 
 	openCiphertext := func(stor *stmocks.MockStorage) {
-		stor.On("Open", mock.Anything, "enc-file", mock.Anything).Return(&storage.Object{
+		stor.On("Open", mock.Anything, "enc-file", (*storage.ByteRange)(nil)).Return(&storage.Object{
 			Body:   io.NopCloser(bytes.NewReader(ciphertext)),
 			Size:   int64(len(ciphertext)),
 			Length: int64(len(ciphertext)),
