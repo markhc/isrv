@@ -16,14 +16,22 @@ isrv is a lightweight file sharing service that provides anonymous temporary sto
 - Easy installation: Single statically-linked binary that can be deployed anywhere
 - Manage your own uploads, without compromising anonymity
 
-## TODO
+## Roadmap
 
 This project is a work in progress, here's a list of things I am working on in no particular order:
 
-- More remote storage options (GCS, FTP)
-- E2E encryption for files
+- True E2EE with the key in the URL fragment; The server never sees the key and cannot decrypt files
+- Client mode in the same binary, allowing users to upload and manage their files with ease
+- Metadata stripping for uploaded files (EXIF, ID3, etc.)
+- Support non-temporary storage option for users who want to keep their files indefinitely
+- More remote storage backend options (GCS, FTP & others)
+- Built-in TLS support with automatic certificate management CertMagic
+- "Burn After Reading" feature: Expiry after N downloads
+- Zip file support for multiple uploads: 
+  - Upload multiple files and download them as a single zip file
+- Text/Paste file preview in the web interface with syntax highlighting
+- Improvements to abuse detection and mitigation
 - Storage tiers (namely "hot" and "cold") to optimize costs and performance based on file access patterns
-
 
 ## Installation
 
@@ -112,6 +120,13 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_ADMIN_USERNAME` | - | Admin panel username (enables the panel when set together with the password) |
 | `ISRV_ADMIN_PASSWORD` | - | Admin panel password |
 | `ISRV_ADMIN_SESSION_SECRET` | - | HMAC key for signing admin session cookies (random if unset) |
+
+### Reverse proxy
+
+isrv does not terminate TLS, so production deployments normally run behind a
+reverse proxy. See [docs/nginx.md](docs/nginx.md) for a complete NGINX server
+block and guidance on client IP detection, upload/download buffering, and
+which endpoints to keep private.
 
 ### Telemetry
 
