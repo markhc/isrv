@@ -80,7 +80,7 @@ func (ls *LocalStorage) Save(
 	ctx context.Context,
 	fileID string,
 	r io.Reader,
-	_ SaveOptions,
+	opts SaveOptions,
 ) (string, error) {
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationSave, time.Now(), &err)
@@ -95,11 +95,18 @@ func (ls *LocalStorage) Save(
 	}
 	defer dst.Close()
 
-	_, err = io.Copy(dst, r)
+	written, err := io.Copy(dst, r)
 	if err != nil {
 		logging.ErrorCtx(ctx, "failed to copy file data", logging.Error(err))
 
 		return "", fmt.Errorf("failed to copy file data: %w", err)
+	}
+
+	if opts.Size >= 0 && written != opts.Size {
+		err = fmt.Errorf("incomplete write: copied %d bytes, expected %d", written, opts.Size)
+		logging.ErrorCtx(ctx, "failed to save file", logging.Error(err))
+
+		return "", err
 	}
 
 	return filePath, nil

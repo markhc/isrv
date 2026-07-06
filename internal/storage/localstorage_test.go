@@ -86,6 +86,37 @@ func Test_LocalStorage_FileExists(t *testing.T) {
 	}
 }
 
+func Test_LocalStorage_Save(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		opts    SaveOptions
+		wantErr bool
+	}{
+		{name: "known size matches", content: "hello", opts: SaveOptions{Size: 5}},
+		{name: "unknown size", content: "hello", opts: SaveOptions{Size: -1}},
+		{name: "size mismatch", content: "hello", opts: SaveOptions{Size: 10}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ls := &LocalStorage{BasePath: t.TempDir()}
+
+			path, err := ls.Save(context.Background(), "test-id", bytes.NewReader([]byte(tt.content)), tt.opts)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, tt.content, string(data))
+		})
+	}
+}
+
 func Test_LocalStorage_DeleteFile(t *testing.T) {
 	// Setup
 	tempDir := t.TempDir()
