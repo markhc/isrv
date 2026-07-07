@@ -650,7 +650,7 @@ func TestGetDefaultConfig(t *testing.T) {
 	assert.Equal(t, 365, cfg.MaxAgeDays)
 	assert.Equal(t, 12, cfg.RandomIDLength)
 	assert.False(t, cfg.DisableIndexPage)
-	assert.True(t, cfg.DisableUploadPage)
+	assert.False(t, cfg.DisableUploadPage)
 	assert.Equal(t, "", cfg.FaviconURL)
 	assert.Equal(t, "png", cfg.FaviconFormat)
 

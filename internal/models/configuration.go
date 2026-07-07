@@ -60,8 +60,12 @@ type DatabaseConfiguration struct {
 
 // LoggingConfiguration holds settings for structured logging.
 type LoggingConfiguration struct {
-	LogToFile bool          `yaml:"logToFile"`
-	LogIps    bool          `yaml:"logIps"`
+	LogToFile bool `yaml:"logToFile"`
+	LogIps    bool `yaml:"logIps"`
+	// Anonymize enables minimal-logging mode: successful access-log lines are
+	// dropped (only warnings and errors are kept for maintenance) and any
+	// identifying field (IP, user agent, path, filename, host) is omitted.
+	Anonymize bool          `yaml:"anonymize"`
 	Level     zapcore.Level `yaml:"level"`
 	Path      string        `yaml:"path"`
 

@@ -59,8 +59,8 @@ func Download(db database.Database, stor storage.Storage, enc *encryption.Manage
 		logging.DebugCtx(ctx,
 			"serving file",
 			logging.String("id", fileID),
-			logging.String("filename", file.Name),
-			logging.String("path", c.Path()))
+			logging.Sensitive("filename", file.Name),
+			logging.Sensitive("path", c.Path()))
 
 		if err := db.OnFileDownload(ctx, fileID); err != nil {
 			// best-effort

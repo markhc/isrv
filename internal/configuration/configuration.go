@@ -120,6 +120,7 @@ func applyEnvOverrides() {
 		"ISRV_LOGGING_LOG_TO_FILE":  "Logging.LogToFile",
 		"ISRV_LOGGING_PATH":         "Logging.Path",
 		"ISRV_LOGGING_LOG_IPS":      "Logging.LogIps",
+		"ISRV_LOGGING_ANONYMIZE":    "Logging.Anonymize",
 		"ISRV_LOGGING_MAX_SIZE_MB":  "Logging.MaxSizeMB",
 		"ISRV_LOGGING_MAX_BACKUPS":  "Logging.MaxBackups",
 		"ISRV_LOGGING_MAX_AGE_DAYS": "Logging.MaxAgeDays",
