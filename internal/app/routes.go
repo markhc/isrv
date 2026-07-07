@@ -81,7 +81,7 @@ func SetupRoutes(app *fiber.App, a *Application) {
 
 	adminAPI := app.Group("/admin/api")
 	if a.AdminEnabled {
-		adminAPI.Post("/login", a.Middleware.RateLimit, a.AdminLoginHandler)
+		adminAPI.Post("/login", a.Middleware.AdminRateLimit, a.AdminLoginHandler)
 		adminAPI.Post("/logout", a.AdminLogoutHandler)
 		adminAPI.Get("/session", a.AdminSessionHandler)
 		adminAPI.Get("/files", a.Middleware.RequireAdmin, a.AdminListHandler)

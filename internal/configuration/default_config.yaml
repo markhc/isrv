@@ -51,6 +51,11 @@ admin:
   sessionSecret: ""
   # how long an admin login session remains valid
   sessionTtl: 24h
+  # max number of failed login attempts per hour before blocking the IP
+  failedLoginLimit: 5
+  # how long to block IPs that exceed the failed login limit
+  # set to 0 to block indefinitely until the server is restarted or the IP is manually unblocked
+  failedLoginBlockDuration: 12h
 
 # storage configuration
 storage:

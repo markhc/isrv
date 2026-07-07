@@ -33,10 +33,12 @@ type StorageConfiguration struct {
 
 // AdminConfiguration holds settings for the single-administrator admin panel.
 type AdminConfiguration struct {
-	Username      string        `yaml:"username"`
-	Password      string        `yaml:"password"`
-	SessionSecret string        `yaml:"sessionSecret"`
-	SessionTTL    time.Duration `yaml:"sessionTtl"`
+	Username                 string        `yaml:"username"`
+	Password                 string        `yaml:"password"`
+	SessionSecret            string        `yaml:"sessionSecret"`
+	SessionTTL               time.Duration `yaml:"sessionTtl"`
+	FailedLoginLimit         int           `yaml:"failedLoginLimit"`
+	FailedLoginBlockDuration time.Duration `yaml:"failedLoginBlockDuration"`
 }
 
 // Enabled reports whether the admin panel is configured and should be served.
