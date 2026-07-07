@@ -118,7 +118,6 @@ func processUpload(
 
 	token, err := utils.GenerateFileToken()
 	if err != nil {
-		logging.ErrorCtx(ctx, "failed to generate file token", logging.Error(err))
 		return uploadResponse{}, fmt.Errorf("failed to generate file token: %w", err)
 	}
 
@@ -173,10 +172,6 @@ func processUpload(
 			)
 		}
 
-		logging.ErrorCtx(ctx, "failed to record file upload in database",
-			logging.String("file_id", fileID),
-			logging.Error(err),
-		)
 		return uploadResponse{}, fmt.Errorf("failed to record file upload: %w", err)
 	}
 
