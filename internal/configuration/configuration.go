@@ -179,6 +179,11 @@ func loadFromFile(path string, debug bool) {
 		panic(err)
 	}
 
+	// Seed with the embedded defaults so fields or whole sections absent from
+	// the user's file fall back to real defaults instead of Go zero values.
+	// YAML unmarshaling only overwrites keys present in the document.
+	config = getDefaultConfig()
+
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		panic(err)

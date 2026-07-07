@@ -66,6 +66,51 @@ storage:
 	config = originalConfig
 }
 
+// TestLoad_OmittedFieldsFallBackToDefaults guards against old config files that
+// predate newer sections: fields and whole sections absent from the file must
+// fall back to the embedded defaults rather than Go zero values.
+func TestLoad_OmittedFieldsFallBackToDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "minimal-config.yaml")
+
+	// A minimal config providing only the fields validation strictly requires,
+	// omitting the security, cleanup, database, logging and favicon settings as
+	// an outdated config file would.
+	configContent := `
+serverName: "minimal-server"
+serverPort: 9000
+randomIdLength: 12
+maxFileSizeMb: 512
+storage:
+  type: "local"
+  basePath: "/test/path/"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0o644))
+
+	originalConfig := config
+	t.Cleanup(func() { config = originalConfig })
+
+	Load(configPath, false)
+
+	// Provided values are honored.
+	assert.Equal(t, "minimal-server", config.ServerName)
+	assert.Equal(t, 9000, config.ServerPort)
+
+	// Omitted scalar fields fall back to defaults instead of zero values.
+	assert.True(t, config.KeepOriginalFilename)
+	assert.True(t, config.DisableUploadPage)
+	assert.Equal(t, "png", config.FaviconFormat)
+	assert.Equal(t, 30, config.MinAgeDays)
+	assert.Equal(t, 365, config.MaxAgeDays)
+
+	// Omitted sections fall back to defaults.
+	assert.True(t, config.Security.ValidateIpAddresses)
+	assert.True(t, config.Security.RateLimit.Enabled)
+	assert.True(t, config.Cleanup.Enabled)
+	assert.Equal(t, time.Minute, config.Cleanup.Interval)
+	assert.Equal(t, "sqlite", config.Database.Type)
+}
+
 func TestLoad_ExplicitPath_DebugMode(t *testing.T) {
 	// Create temporary config file
 	tmpDir := t.TempDir()
