@@ -98,7 +98,7 @@ storage:
 
 	// Omitted scalar fields fall back to defaults instead of zero values.
 	assert.True(t, config.KeepOriginalFilename)
-	assert.True(t, config.DisableUploadPage)
+	assert.False(t, config.DisableUploadPage)
 	assert.Equal(t, "png", config.FaviconFormat)
 	assert.Equal(t, 30, config.MinAgeDays)
 	assert.Equal(t, 365, config.MaxAgeDays)
@@ -650,7 +650,7 @@ func TestGetDefaultConfig(t *testing.T) {
 	assert.Equal(t, 365, cfg.MaxAgeDays)
 	assert.Equal(t, 12, cfg.RandomIDLength)
 	assert.False(t, cfg.DisableIndexPage)
-	assert.True(t, cfg.DisableUploadPage)
+	assert.False(t, cfg.DisableUploadPage)
 	assert.Equal(t, "", cfg.FaviconURL)
 	assert.Equal(t, "png", cfg.FaviconFormat)
 

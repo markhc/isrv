@@ -161,23 +161,36 @@ func RequestLogger(options *RequestLoggerOptions) fiber.Handler {
 			return err
 		}
 
+		// In anonymize mode only maintenance-relevant records survive: successful
+		// access-log lines (info/debug) are dropped, leaving warnings and errors.
+		if anonymizeEnabled() && lvl < zapcore.WarnLevel {
+			return err
+		}
+
+		// The path carries the file ID, so it is redacted from the message in
+		// anonymize mode just as it is from the structured field below.
+		loggedPath := c.Path()
+		if anonymizeEnabled() {
+			loggedPath = "[redacted]"
+		}
+
 		// request_id is added by Ctx below via requestid.FromContext; adding it
 		// here would read the wrong (request) header and duplicate the key.
 		zapFields := []zap.Field{
 			zap.String("method", c.Method()),
-			zap.String("path", c.Path()),
+			Sensitive("path", c.Path()),
 			MaybeIP("remote_addr", c.IP()),
-			zap.String("host", c.Hostname()),
+			Sensitive("host", c.Hostname()),
 			zap.String("scheme", c.Protocol()),
 			zap.String("proto", c.Protocol()),
 			zap.Int64("length", int64(len(c.Body()))),
-			zap.String("user_agent", c.Get(fiber.HeaderUserAgent)),
+			Sensitive("user_agent", c.Get(fiber.HeaderUserAgent)),
 			zap.Int("status", statusCode),
 			zap.Duration("duration", duration),
 			zap.Int("response_bytes", len(c.Response().Body())),
 		}
 
-		msg := fmt.Sprintf("%s %s => HTTP %v (%v)", c.Method(), c.Path(), statusCode, duration)
+		msg := fmt.Sprintf("%s %s => HTTP %v (%v)", c.Method(), loggedPath, statusCode, duration)
 		Ctx(c.Context()).Log(lvl, msg, zapFields...)
 
 		return err
@@ -301,18 +314,42 @@ func String(key, value string) zap.Field {
 	return zap.String(key, value)
 }
 
+// anonymizeEnabled reports whether minimal-logging (anonymize) mode is active.
+// In this mode successful access logs are suppressed and every identifying
+// field is omitted, for no-logs deployments such as Tor onion services.
+func anonymizeEnabled() bool {
+	return configuration.Get().Logging.Anonymize
+}
+
 // MaybeIP returns a zap field carrying the client IP address only when IP
 // logging is enabled in the configuration. When disabled it returns
 // zap.Skip() so the field is omitted from the record entirely.
 //
 // Use this wherever a remote client address is about to be logged so the
-// LogIps configuration flag is honored consistently.
+// LogIps configuration flag is honored consistently. Anonymize mode always
+// suppresses the IP regardless of LogIps.
 func MaybeIP(key, ipAddress string) zap.Field {
-	if !configuration.Get().Logging.LogIps {
+	cfg := configuration.Get().Logging
+	if cfg.Anonymize || !cfg.LogIps {
 		return zap.Skip()
 	}
 
 	return zap.String(key, ipAddress)
+}
+
+// Sensitive returns a zap string field carrying a potentially identifying
+// value (filename, request path, host, and similar) only when anonymize mode
+// is disabled. In anonymize mode it returns zap.Skip() so the value never
+// reaches the log record.
+//
+// Use this for any field that could deanonymize a user, so the Anonymize
+// configuration flag is honored consistently across the codebase.
+func Sensitive(key, value string) zap.Field {
+	if anonymizeEnabled() {
+		return zap.Skip()
+	}
+
+	return zap.String(key, value)
 }
 
 // Int creates a zap int field.

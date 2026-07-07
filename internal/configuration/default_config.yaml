@@ -28,7 +28,7 @@ keepOriginalFilename: true
 # Disables the index page that shows project information and help, among other things.
 disableIndexPage: false
 # Disables the upload page that allows users to upload files through a web form.
-disableUploadPage: true
+disableUploadPage: false
 
 # URL and format for the favicon. If empty, no favicon will be served.
 # Can be a local file path or remote URL.
@@ -143,6 +143,9 @@ logging:
   logToFile: false # whether to log to a file alongside stdout.
   path: ./isrv.log # path to the log file if logToFile is true
   logIps: true     # log the client IP address for each request
+  anonymize: false # minimal-logging mode: keep only warnings/errors and omit all
+                   # identifying fields (IP, user agent, path, filename, host).
+                   # incompatible with logIps: true, which is ignored if anonymize is true.
   # File rotation
   maxSizeMb: 100   # rotate when the active file reaches this many MiB
   maxBackups: 7    # retain at most this many rotated files (0 = unlimited)

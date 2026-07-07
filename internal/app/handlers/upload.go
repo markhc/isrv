@@ -73,7 +73,7 @@ func Upload(
 		expiration := utils.CalculateExpirationTime(c, header.Size, config)
 
 		logging.InfoCtx(c.Context(), "file upload requested",
-			logging.String("filename", header.Filename),
+			logging.Sensitive("filename", header.Filename),
 			logging.Int64("size", header.Size),
 			logging.TimeRFC3339("expiration", expiration),
 			logging.MaybeIP("ip_address", ipAddress),
@@ -127,7 +127,7 @@ func processUpload(
 	)
 	defer span.End()
 
-	logging.InfoCtx(ctx, "processing uploaded file", logging.String("filename", header.Filename))
+	logging.InfoCtx(ctx, "processing uploaded file", logging.Sensitive("filename", header.Filename))
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
 	span.SetAttributes(attribute.String(telemetry.AttrFileID, fileID))
