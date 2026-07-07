@@ -460,7 +460,7 @@ func TestRateLimit_CleanupRemovesExpiredBlocks(t *testing.T) {
 // ---------------------------------------------------------------------------
 // RateLimitFailedLogins
 //
-// Uses a hardcoded strict config (burst 1, block on exceed). The downstream
+// Uses a hardcoded strict config (burst 5, block on exceed). The downstream
 // handler returns 401 when the request carries X-Login=fail, else 200. Only
 // failed (401) responses spend rate-limit budget.
 // ---------------------------------------------------------------------------
