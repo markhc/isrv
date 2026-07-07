@@ -72,7 +72,8 @@ func Setup(ctx context.Context, buildVersion string) (ShutdownFunc, error) {
 		sdkmetric.WithResource(res),
 	}
 
-	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" {
+	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" ||
+		os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") != "" {
 		metricExporter, err := otlpmetrichttp.New(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("create metric exporter: %w", err)
