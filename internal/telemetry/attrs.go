@@ -2,8 +2,7 @@ package telemetry
 
 // Application-specific attribute keys. Centralized here so handlers, storage
 // backends, the cleanup service, and the database layer all share the same
-// vocabulary on metrics. Keys are namespaced with "isrv." per the
-// OpenTelemetry guidance for custom attributes.
+// vocabulary on metrics.
 //
 // These are low-cardinality labels only. Identifying values (file IDs,
 // filenames, client IPs) are deliberately never attached to metrics, so
