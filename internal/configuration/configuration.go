@@ -84,10 +84,12 @@ func applyEnvOverrides() {
 		"ISRV_RATE_LIMIT_BLOCK_DURATION": "Security.RateLimit.BlockDuration",
 
 		// Admin panel.
-		"ISRV_ADMIN_USERNAME":       "Admin.Username",
-		"ISRV_ADMIN_PASSWORD":       "Admin.Password",
-		"ISRV_ADMIN_SESSION_SECRET": "Admin.SessionSecret",
-		"ISRV_ADMIN_SESSION_TTL":    "Admin.SessionTTL",
+		"ISRV_ADMIN_USERNAME":                    "Admin.Username",
+		"ISRV_ADMIN_PASSWORD":                    "Admin.Password",
+		"ISRV_ADMIN_SESSION_SECRET":              "Admin.SessionSecret",
+		"ISRV_ADMIN_SESSION_TTL":                 "Admin.SessionTTL",
+		"ISRV_ADMIN_FAILED_LOGIN_LIMIT":          "Admin.FailedLoginLimit",
+		"ISRV_ADMIN_FAILED_LOGIN_BLOCK_DURATION": "Admin.FailedLoginBlockDuration",
 
 		// Storage backend.
 		"ISRV_STORAGE_TYPE":        "Storage.Type",
@@ -259,6 +261,14 @@ func verifyAdminConfig(adminConfig *models.AdminConfiguration) {
 
 	if adminConfig.SessionTTL <= 0 {
 		adminConfig.SessionTTL = 24 * time.Hour
+	}
+
+	if adminConfig.FailedLoginLimit <= 0 {
+		adminConfig.FailedLoginLimit = 5
+	}
+
+	if adminConfig.FailedLoginBlockDuration <= 0 {
+		adminConfig.FailedLoginBlockDuration = 12 * time.Hour
 	}
 }
 

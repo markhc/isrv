@@ -24,9 +24,10 @@ import (
 
 // AppMiddleware bundles the Fiber middleware functions wired into the router.
 type AppMiddleware struct {
-	RequireToken fiber.Handler
-	RequireAdmin fiber.Handler
-	RateLimit    fiber.Handler
+	RequireToken   fiber.Handler
+	RequireAdmin   fiber.Handler
+	RateLimit      fiber.Handler
+	AdminRateLimit fiber.Handler
 }
 
 // Application bundles the Fiber handlers, middleware, and other dependencies
@@ -90,6 +91,7 @@ func NewApplication(
 		a.AdminListHandler = handlers.AdminListFiles(db)
 		a.AdminDeleteHandler = handlers.AdminDeleteFile(db, stor)
 		a.Middleware.RequireAdmin = middleware.RequireAdmin(config.Admin)
+		a.Middleware.AdminRateLimit = middleware.RateLimitFailedLogins(ctx, config.Admin)
 	}
 
 	if config.FaviconURL != "" && faviconData != nil {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -454,4 +455,158 @@ func TestRateLimit_CleanupRemovesExpiredBlocks(t *testing.T) {
 
 	assert.False(t, expiredExists, "expired block should be removed")
 	assert.True(t, activeExists, "active block should be kept")
+}
+
+// ---------------------------------------------------------------------------
+// RateLimitFailedLogins
+//
+// Uses a hardcoded strict config (burst 5, block on exceed). The downstream
+// handler returns 401 when the request carries X-Login=fail, else 200. Only
+// failed (401) responses spend rate-limit budget.
+// ---------------------------------------------------------------------------
+
+// newLoginApp builds a Fiber app guarded by RateLimitFailedLogins.
+func newLoginApp(t *testing.T) *fiber.App {
+	t.Helper()
+	app := fiber.New(fiber.Config{
+		ProxyHeader: "X-Test-IP",
+		TrustProxy:  true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: []string{"0.0.0.0/0"},
+		},
+	})
+	cfg := models.AdminConfiguration{
+		FailedLoginLimit:         5,
+		FailedLoginBlockDuration: 12 * time.Hour,
+	}
+	app.Use(RateLimitFailedLogins(t.Context(), cfg))
+	app.Post("/login", func(c fiber.Ctx) error {
+		if c.Get("X-Login") == "fail" {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+	return app
+}
+
+// loginReq builds a POST /login request for the given IP. When fail is true the
+// downstream handler is instructed to respond 401.
+func loginReq(ip string, fail bool) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/login", nil)
+	r.Header.Set("X-Test-IP", ip)
+	if fail {
+		r.Header.Set("X-Login", "fail")
+	}
+	return r
+}
+
+func TestRateLimitFailedLogins_SuccessesNeverBlocked(t *testing.T) {
+	app := newLoginApp(t)
+	for range 50 {
+		assert.Equal(t, http.StatusOK, do(app, loginReq("11.0.0.1", false)),
+			"successful logins must never be throttled")
+	}
+}
+
+func TestRateLimitFailedLogins_FirstFailureAllowed(t *testing.T) {
+	app := newLoginApp(t)
+	// The full hourly budget is available up front, so a failed attempt passes through.
+	assert.Equal(t, http.StatusUnauthorized, do(app, loginReq("11.0.0.2", true)))
+}
+
+func TestRateLimitFailedLogins_RepeatedFailuresBlocked(t *testing.T) {
+	app := newLoginApp(t)
+	maxFailedLoginsPerHour := 5
+
+	// The hourly budget of failed attempts each return the handler's 401.
+	for i := range maxFailedLoginsPerHour {
+		assert.Equal(t, http.StatusUnauthorized, do(app, loginReq("11.0.0.3", true)),
+			"failed attempt %d should be within budget", i+1)
+	}
+	// The next failure exhausts the budget and blocks the IP.
+	assert.Equal(t, http.StatusForbidden, do(app, loginReq("11.0.0.3", true)))
+	// Once blocked, even valid credentials are rejected.
+	assert.Equal(t, http.StatusForbidden, do(app, loginReq("11.0.0.3", false)))
+}
+
+func TestRateLimitFailedLogins_SuccessesDoNotConsumeBudget(t *testing.T) {
+	app := newLoginApp(t)
+	maxFailedLoginsPerHour := 5
+
+	for range 20 {
+		assert.Equal(t, http.StatusOK, do(app, loginReq("11.0.0.4", false)))
+	}
+	// Budget is untouched by successes: the full hourly budget of failures is still allowed.
+	for i := range maxFailedLoginsPerHour {
+		assert.Equal(t, http.StatusUnauthorized, do(app, loginReq("11.0.0.4", true)),
+			"failed attempt %d should be within budget", i+1)
+	}
+	// The next failure trips the block.
+	assert.Equal(t, http.StatusForbidden, do(app, loginReq("11.0.0.4", true)))
+}
+
+func TestRateLimitFailedLogins_IsolatedPerIP(t *testing.T) {
+	app := newLoginApp(t)
+	maxFailedLoginsPerHour := 5
+
+	// Exhaust IP A's budget and block it.
+	for range maxFailedLoginsPerHour {
+		do(app, loginReq("11.1.0.1", true))
+	}
+	assert.Equal(t, http.StatusForbidden, do(app, loginReq("11.1.0.1", true)))
+	// IP B has its own fresh budget.
+	assert.Equal(t, http.StatusUnauthorized, do(app, loginReq("11.1.0.2", true)))
+	assert.Equal(t, http.StatusOK, do(app, loginReq("11.1.0.2", false)))
+}
+
+func TestRateLimitFailedLogins_BlockedRequestSkipsHandler(t *testing.T) {
+	var calls atomic.Int64
+	app := fiber.New(fiber.Config{
+		ProxyHeader: "X-Test-IP",
+		TrustProxy:  true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: []string{"0.0.0.0/0"},
+		},
+	})
+	cfg := models.AdminConfiguration{
+		FailedLoginLimit:         5,
+		FailedLoginBlockDuration: 12 * time.Hour,
+	}
+
+	app.Use(RateLimitFailedLogins(t.Context(), cfg))
+	app.Post("/login", func(c fiber.Ctx) error {
+		calls.Add(1)
+		return c.SendStatus(fiber.StatusUnauthorized)
+	})
+
+	// Exhaust the budget and trip the block; the handler runs for each of these.
+	for range cfg.FailedLoginLimit + 1 {
+		do(app, loginReq("11.2.0.1", true))
+	}
+	callsBeforeBlock := calls.Load()
+
+	assert.Equal(t, http.StatusForbidden, do(app, loginReq("11.2.0.1", true)))
+	assert.Equal(t, callsBeforeBlock, calls.Load(),
+		"handler must not run once the IP is blocked")
+}
+
+func TestRateLimitFailedLogins_HandlerErrorPropagates(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		ProxyHeader: "X-Test-IP",
+		TrustProxy:  true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: []string{"0.0.0.0/0"},
+		},
+	})
+	cfg := models.AdminConfiguration{
+		FailedLoginLimit:         5,
+		FailedLoginBlockDuration: 12 * time.Hour,
+	}
+	app.Use(RateLimitFailedLogins(t.Context(), cfg))
+	app.Post("/login", func(c fiber.Ctx) error {
+		return fiber.NewError(fiber.StatusInternalServerError, "boom")
+	})
+
+	assert.Equal(t, http.StatusInternalServerError, do(app, loginReq("11.3.0.1", true)),
+		"handler errors must propagate to Fiber's error handler")
 }
