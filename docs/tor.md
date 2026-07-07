@@ -26,7 +26,7 @@ serverUrl: http://youraddress.onion # share links are generated from this (fill 
 
 logging:
   anonymize: true                  # minimal, no-logs posture (see below)
-  logToFile: false                 # keep logs off disk; stdout only
+  logToFile: false                 # disable isrv's log file (see disk note below)
 ```
 
 Or via environment variables:
@@ -93,9 +93,13 @@ Confirm the returned link uses the `.onion` host. If it points at
 - **omits every identifying field** from the records that remain: client IP,
   user agent, request path (which contains the file ID), filename, and host.
 
-It supersedes `logIps`, so you do not need to set that separately. Pair it
-with `logToFile: false` so nothing lands on disk at all - logs go to stdout,
-which you can discard or send to volatile storage.
+It supersedes `logIps`, so you do not need to set that separately. Setting
+`logToFile: false` disables isrv's own log file; the remaining warning/error
+records still go to stdout/stderr. Whether that console output reaches disk is
+deployment-dependent - container runtimes and init systems often persist it
+(for example Docker's `json-file` driver or the systemd journal). If you need a
+guarantee that nothing lands on disk, route isrv's console output to volatile
+storage (or discard it) at the deployment layer.
 
 Server-side error detail (which file failed to decrypt, a storage error, and
 so on) is deliberately kept, because it is about the server rather than any

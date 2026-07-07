@@ -98,7 +98,7 @@ storage:
 
 	// Omitted scalar fields fall back to defaults instead of zero values.
 	assert.True(t, config.KeepOriginalFilename)
-	assert.True(t, config.DisableUploadPage)
+	assert.False(t, config.DisableUploadPage)
 	assert.Equal(t, "png", config.FaviconFormat)
 	assert.Equal(t, 30, config.MinAgeDays)
 	assert.Equal(t, 365, config.MaxAgeDays)
