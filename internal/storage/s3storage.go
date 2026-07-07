@@ -19,7 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	"github.com/markhc/isrv/internal/models"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 )
 
 // s3api is the subset of *s3.Client operations used by S3Storage.
@@ -98,10 +97,6 @@ func newS3Options(config models.StorageConfiguration) s3.Options {
 		options.BaseEndpoint = aws.String(config.Endpoint)
 		options.UsePathStyle = true
 	}
-
-	// Register AWS SDK middleware that emits an OTel span per API call with
-	// the standard rpc.system / rpc.service / rpc.method attributes.
-	otelaws.AppendMiddlewares(&options.APIOptions)
 
 	return options
 }

@@ -109,8 +109,6 @@ func runServer(parentCtx context.Context) error {
 		}
 	}()
 
-	logging.AttachOTelBridge()
-
 	// In debug mode or when the supervisor is disabled, run the webserver
 	// directly so failures surface immediately rather than being restarted.
 	cfg := configuration.Get()

@@ -124,13 +124,9 @@ When set, environment variables override the corresponding values from the confi
 ### Reverse proxy
 
 isrv does not terminate TLS, so production deployments normally run behind a
-reverse proxy. See [docs/nginx.md](docs/nginx.md) for a complete NGINX server
+reverse proxy. See [docs/reverse-proxies/nginx.md](docs/reverse-proxies/nginx.md) for a complete NGINX server
 block and guidance on client IP detection, upload/download buffering, and
 which endpoints to keep private.
-
-### Telemetry
-
-The service is made to work with the OpenTelemetry standard. To enable telemetry, set `OTEL_EXPORTER_OTLP_ENDPOINT` to a valid OTLP endpoint. More information available in the [OpenTelemetry documentation](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/):
 
 ### Observability endpoints
 
@@ -140,7 +136,7 @@ When the server is running, the following infrastructure endpoints are always av
 |----------|-------------|
 | `GET /healthz` | Liveness probe; always returns `200 {"status":"ok"}` |
 | `GET /readyz` | Readiness probe; returns `200` when the database and storage backend are both reachable, otherwise `503` with a per-check error map |
-| `GET /metrics` | Prometheus scrape endpoint exposing all OpenTelemetry-recorded metrics in OpenMetrics format |
+| `GET /metrics` | Prometheus scrape endpoint |
 
 ## Admin Panel
 

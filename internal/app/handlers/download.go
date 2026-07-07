@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,30 +17,27 @@ import (
 	"github.com/markhc/isrv/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Download returns a handler that serves a stored file by its ID.
 // It is mounted on both /d/:id and /d/:id/:filename.
 func Download(db database.Database, stor storage.Storage, enc *encryption.Manager) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
+	successAttrs := metric.WithAttributes(backendAttr,
+		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess))
+	errorAttrs := metric.WithAttributes(backendAttr,
+		attribute.String(telemetry.AttrResult, telemetry.ResultError))
 
 	return func(c fiber.Ctx) error {
 		fileID := c.Params("id")
 		fileName := c.Params("filename")
 
-		ctx, span := telemetry.Tracer().Start(c.Context(), "download.serve",
-			trace.WithAttributes(
-				attribute.String(telemetry.AttrFileID, fileID),
-				attribute.String(telemetry.AttrFileName, fileName),
-				backendAttr,
-			),
-		)
-		defer span.End()
-		c.SetContext(ctx)
+		ctx := c.Context()
 
 		file, err := db.GetFile(ctx, fileID)
 		if err != nil {
+			telemetry.Downloads.Add(ctx, 1, errorAttrs)
+
 			if errors.Is(err, database.ErrFileNotFound) {
 				return c.Status(fiber.StatusNotFound).SendString("not found")
 			}
@@ -53,8 +49,6 @@ func Download(db database.Database, stor storage.Storage, enc *encryption.Manage
 		if fileName != "" {
 			file.Name = fileName
 		}
-
-		span.SetAttributes(attribute.Bool(telemetry.AttrFileEncrypted, file.IsEncrypted()))
 
 		logging.DebugCtx(ctx,
 			"serving file",
@@ -70,23 +64,24 @@ func Download(db database.Database, stor storage.Storage, enc *encryption.Manage
 		// Encrypted objects cannot be handed to the client as-is: skip the
 		// pre-signed redirect entirely and always proxy through Open + decrypt.
 		if file.IsEncrypted() {
-			return serveEncrypted(c, stor, enc, file, span, backendAttr)
+			return serveEncrypted(c, stor, enc, file, successAttrs, errorAttrs)
 		}
 
 		// Prefer offloading delivery to the backend (S3 pre-signed redirect)
 		// when it supports it.
 		url, ok, err := stor.PresignedURL(ctx, file)
 		if err != nil {
+			telemetry.Downloads.Add(ctx, 1, errorAttrs)
 			logging.ErrorCtx(ctx, "failed to generate presigned url", logging.Error(err))
 			return c.Status(fiber.StatusInternalServerError).SendString("failed to generate file url")
 		}
 
 		if ok {
-			recordDownloadSuccess(ctx, span, backendAttr)
+			telemetry.Downloads.Add(ctx, 1, successAttrs)
 			return c.Redirect().Status(fiber.StatusFound).To(url)
 		}
 
-		return serveStream(c, stor, file, span, backendAttr)
+		return serveStream(c, stor, file, successAttrs, errorAttrs)
 	}
 }
 
@@ -100,12 +95,13 @@ func serveEncrypted(
 	stor storage.Storage,
 	enc *encryption.Manager,
 	file *models.File,
-	span trace.Span,
-	backendAttr attribute.KeyValue,
+	successAttrs metric.MeasurementOption,
+	errorAttrs metric.MeasurementOption,
 ) error {
 	ctx := c.Context()
 
 	if enc == nil {
+		telemetry.Downloads.Add(ctx, 1, errorAttrs)
 		logging.ErrorCtx(ctx, "file is encrypted but no encryption identity is configured",
 			logging.String("id", file.ID))
 		return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
@@ -113,6 +109,8 @@ func serveEncrypted(
 
 	obj, err := stor.Open(ctx, file.ID, nil)
 	if err != nil {
+		telemetry.Downloads.Add(ctx, 1, errorAttrs)
+
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return c.Status(fiber.StatusNotFound).SendString("not found")
 		}
@@ -125,6 +123,7 @@ func serveEncrypted(
 	// written) because age authenticates the file header eagerly.
 	plain, err := enc.Decrypt(obj.Body)
 	if err != nil {
+		telemetry.Downloads.Add(ctx, 1, errorAttrs)
 		_ = obj.Body.Close()
 		logging.ErrorCtx(ctx, "failed to decrypt file", logging.String("id", file.ID), logging.Error(err))
 		return c.Status(fiber.StatusInternalServerError).SendString("failed to decrypt file")
@@ -139,7 +138,7 @@ func serveEncrypted(
 
 	headers.SetHeaders(c, file.Name, contentType, true, true)
 
-	recordDownloadSuccess(ctx, span, backendAttr)
+	telemetry.Downloads.Add(ctx, 1, successAttrs)
 
 	// Content-Length is the plaintext size from the database, never the
 	// ciphertext length (obj.Length). SendStream closes rc when done. A
@@ -170,14 +169,16 @@ func serveStream(
 	c fiber.Ctx,
 	stor storage.Storage,
 	file *models.File,
-	span trace.Span,
-	backendAttr attribute.KeyValue,
+	successAttrs metric.MeasurementOption,
+	errorAttrs metric.MeasurementOption,
 ) error {
 	ctx := c.Context()
 	brange := parseRangeHeader(c.Get(fiber.HeaderRange))
 
 	obj, err := stor.Open(ctx, file.ID, brange)
 	if err != nil {
+		telemetry.Downloads.Add(ctx, 1, errorAttrs)
+
 		switch {
 		case errors.Is(err, storage.ErrObjectNotFound):
 			return c.Status(fiber.StatusNotFound).SendString("not found")
@@ -206,20 +207,10 @@ func serveStream(
 		c.Status(fiber.StatusPartialContent)
 	}
 
-	recordDownloadSuccess(ctx, span, backendAttr)
+	telemetry.Downloads.Add(ctx, 1, successAttrs)
 
 	// SendStream closes obj.Body once the response has been written.
 	return c.SendStream(obj.Body, int(obj.Length))
-}
-
-// recordDownloadSuccess marks the span and increments the downloads counter
-// for a successful delivery.
-func recordDownloadSuccess(ctx context.Context, span trace.Span, backendAttr attribute.KeyValue) {
-	span.SetAttributes(attribute.String(telemetry.AttrResult, telemetry.ResultSuccess))
-	telemetry.Downloads.Add(ctx, 1, metric.WithAttributes(
-		backendAttr,
-		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
-	))
 }
 
 // parseRangeHeader parses a single HTTP byte-range request header value. It
