@@ -12,9 +12,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	"github.com/markhc/isrv/internal/models"
-	"github.com/uptrace/opentelemetry-go-extra/otelsql"
-	"github.com/uptrace/opentelemetry-go-extra/otelsqlx"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 // PostgresDB implements Database using a PostgreSQL backend. The
@@ -65,9 +62,7 @@ func postgresDSN(config models.DatabaseConfiguration) string {
 
 // Connect opens the PostgreSQL database connection.
 func (db *PostgresDB) Connect() error {
-	sqldb, err := otelsqlx.Open("pgx", db.dsn,
-		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
-	)
+	sqldb, err := sqlx.Open("pgx", db.dsn)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}

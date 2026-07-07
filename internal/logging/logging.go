@@ -13,16 +13,10 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/markhc/isrv/internal/configuration"
-	"go.opentelemetry.io/contrib/bridges/otelzap"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
-
-// instrumentationName mirrors telemetry.InstrumentationName. It is duplicated
-// here to avoid an import cycle once telemetry starts using the logger.
-const instrumentationName = "github.com/markhc/isrv"
 
 // RequestLoggerOptions configures the per-request logger middleware.
 type RequestLoggerOptions struct {
@@ -31,11 +25,9 @@ type RequestLoggerOptions struct {
 }
 
 var (
-	logger     *zap.Logger
-	baseCore   zapcore.Core // file + console cores, reused when attaching the OTel bridge
-	logSink    io.Closer    // rotating file sink (lumberjack), retained for clean shutdown
-	initOnce   sync.Once
-	bridgeOnce sync.Once
+	logger   *zap.Logger
+	logSink  io.Closer // rotating file sink (lumberjack), retained for clean shutdown
+	initOnce sync.Once
 )
 
 // Initialize sets up the global logger, writing to both the configured log
@@ -102,19 +94,7 @@ func initializeLocked() {
 		}, cores...)
 	}
 
-	baseCore = zapcore.NewTee(cores...)
-	logger = zap.New(baseCore)
-}
-
-// AttachOTelBridge rewraps the global logger to additionally forward records
-// to the OpenTelemetry log pipeline via the otelzap bridge.
-func AttachOTelBridge() {
-	bridgeOnce.Do(func() {
-		if baseCore == nil {
-			return
-		}
-		logger = zap.New(zapcore.NewTee(baseCore, otelzap.NewCore(instrumentationName)))
-	})
+	logger = zap.New(zapcore.NewTee(cores...))
 }
 
 // Shutdown flushes buffered log records and closes the rotating log file if
@@ -246,16 +226,14 @@ func LogError(message string, fields ...zap.Field) {
 	logger.Error(message, fields...)
 }
 
-// Ctx returns a *zap.Logger annotated with the OpenTelemetry trace and span
-// IDs (when ctx carries a valid span context) and the chi request ID (when
-// present). Use it inside request handlers, middleware, and any other code
-// path that has a context, so log records can be correlated with distributed
-// traces in the observability backend.
+// Ctx returns a *zap.Logger annotated with the request ID (when ctx carries
+// one). Use it inside request handlers, middleware, and any other code path
+// that has a context, so log records for a single request can be correlated.
 //
 //	logging.Ctx(r.Context()).Info("upload requested", logging.String("filename", name))
 //
-// When ctx is nil or carries neither a span nor a request ID, the global
-// logger is returned unchanged.
+// When ctx is nil or carries no request ID, the global logger is returned
+// unchanged.
 func Ctx(ctx context.Context) *zap.Logger {
 	if logger == nil {
 		return logger
@@ -264,47 +242,34 @@ func Ctx(ctx context.Context) *zap.Logger {
 		return logger
 	}
 
-	// Pre-size for the common case: trace_id + span_id + request_id.
-	fields := make([]zap.Field, 0, 3)
-
-	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
-		fields = append(fields,
-			zap.String("trace_id", sc.TraceID().String()),
-			zap.String("span_id", sc.SpanID().String()),
-		)
-	}
-
-	if reqID := requestid.FromContext(ctx); reqID != "" {
-		fields = append(fields, zap.String("request_id", reqID))
-	}
-
-	if len(fields) == 0 {
+	reqID := requestid.FromContext(ctx)
+	if reqID == "" {
 		return logger
 	}
 
-	return logger.With(fields...)
+	return logger.With(zap.String("request_id", reqID))
 }
 
-// DebugCtx logs a message at debug level with trace/request correlation
-// fields extracted from ctx.
+// DebugCtx logs a message at debug level with the request ID extracted
+// from ctx.
 func DebugCtx(ctx context.Context, message string, fields ...zap.Field) {
 	Ctx(ctx).Debug(message, fields...)
 }
 
-// InfoCtx logs a message at info level with trace/request correlation
-// fields extracted from ctx.
+// InfoCtx logs a message at info level with the request ID extracted
+// from ctx.
 func InfoCtx(ctx context.Context, message string, fields ...zap.Field) {
 	Ctx(ctx).Info(message, fields...)
 }
 
-// WarnCtx logs a message at warn level with trace/request correlation
-// fields extracted from ctx.
+// WarnCtx logs a message at warn level with the request ID extracted
+// from ctx.
 func WarnCtx(ctx context.Context, message string, fields ...zap.Field) {
 	Ctx(ctx).Warn(message, fields...)
 }
 
-// ErrorCtx logs a message at error level with trace/request correlation
-// fields extracted from ctx.
+// ErrorCtx logs a message at error level with the request ID extracted
+// from ctx.
 func ErrorCtx(ctx context.Context, message string, fields ...zap.Field) {
 	Ctx(ctx).Error(message, fields...)
 }

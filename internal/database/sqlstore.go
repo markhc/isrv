@@ -10,10 +10,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/markhc/isrv/internal/models"
-	"github.com/markhc/isrv/internal/telemetry"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -102,17 +98,6 @@ func (s *sqlStore) OnFileUpload(
 	file *models.File,
 	token string,
 ) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileUpload",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, file.ID),
-			attribute.String(telemetry.AttrFileName, file.Name),
-			attribute.Int64(telemetry.AttrFileSize, file.Size),
-			attribute.String(telemetry.AttrRequestIP, file.IPAddress),
-		),
-	)
-
-	defer span.End()
-
 	_, err := s.sqldb.ExecContext(
 		ctx,
 		s.rebind(QUERY_INSERT_FILE),
@@ -125,9 +110,6 @@ func (s *sqlStore) OnFileUpload(
 		file.ContentType,
 		file.EncryptionVersion)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to insert file record")
-
 		return fmt.Errorf("failed to insert file record: %w", err)
 	}
 
@@ -136,27 +118,13 @@ func (s *sqlStore) OnFileUpload(
 
 // OnFileDownload increments the download counter for the given file ID.
 func (s *sqlStore) OnFileDownload(ctx context.Context, fileID string) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDownload",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-		),
-	)
-
-	defer span.End()
-
 	result, err := s.sqldb.ExecContext(ctx, s.rebind(QUERY_UPDATE_DOWNLOAD_COUNT), fileID)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to update download count")
-
 		return fmt.Errorf("failed to update download count: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to get rows affected for download count update")
-
 		return fmt.Errorf("failed to get rows affected for download count update: %w", err)
 	}
 
@@ -169,27 +137,13 @@ func (s *sqlStore) OnFileDownload(ctx context.Context, fileID string) error {
 
 // OnFileDelete removes the record for the given file ID from the database.
 func (s *sqlStore) OnFileDelete(ctx context.Context, fileID string) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.OnFileDelete",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-		),
-	)
-
-	defer span.End()
-
 	result, err := s.sqldb.ExecContext(ctx, s.rebind(QUERY_DELETE_FILE), fileID)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to delete file record")
-
 		return fmt.Errorf("failed to delete file record: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to get rows affected for file delete")
-
 		return fmt.Errorf("failed to get rows affected for file delete: %w", err)
 	}
 
@@ -202,23 +156,12 @@ func (s *sqlStore) OnFileDelete(ctx context.Context, fileID string) error {
 
 // GetFileToken returns the token associated with the given file ID.
 func (s *sqlStore) GetFileToken(ctx context.Context, fileID string) (string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileToken",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-		),
-	)
-
-	defer span.End()
-
 	var token string
 	err := s.sqldb.GetContext(ctx, &token, s.rebind(QUERY_SELECT_TOKEN), fileID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrFileNotFound
 		}
-
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to query file token")
 
 		return "", fmt.Errorf("failed to query file token: %w", err)
 	}
@@ -228,19 +171,12 @@ func (s *sqlStore) GetFileToken(ctx context.Context, fileID string) (string, err
 
 // GetFileByToken returns the file ID associated with the given token.
 func (s *sqlStore) GetFileByToken(ctx context.Context, token string) (string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFileByToken")
-
-	defer span.End()
-
 	var fileID string
 	err := s.sqldb.GetContext(ctx, &fileID, s.rebind(QUERY_SELECT_FILE_BY_TOKEN), token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrFileNotFound
 		}
-
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to query file by token")
 
 		return "", fmt.Errorf("failed to query file by token: %w", err)
 	}
@@ -250,14 +186,8 @@ func (s *sqlStore) GetFileByToken(ctx context.Context, token string) (string, er
 
 // GetExpiredFiles returns the IDs of all files whose expiration time is in the past.
 func (s *sqlStore) GetExpiredFiles(ctx context.Context) ([]string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetExpiredFiles")
-	defer span.End()
-
 	rows, err := s.sqldb.QueryContext(ctx, s.rebind(QUERY_SELECT_EXPIRED_FILES))
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to query expired files")
-
 		return nil, fmt.Errorf("failed to query expired files: %w", err)
 	}
 	defer rows.Close()
@@ -267,18 +197,12 @@ func (s *sqlStore) GetExpiredFiles(ctx context.Context) ([]string, error) {
 		var fileID string
 		err := rows.Scan(&fileID)
 		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to scan expired file row")
-
 			return nil, fmt.Errorf("failed to scan expired file row: %w", err)
 		}
 		expiredFiles = append(expiredFiles, fileID)
 	}
 
 	if err := rows.Err(); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to iterate expired file rows")
-
 		return nil, fmt.Errorf("failed to iterate expired file rows: %w", err)
 	}
 
@@ -287,13 +211,6 @@ func (s *sqlStore) GetExpiredFiles(ctx context.Context) ([]string, error) {
 
 // GetFile returns the file record for the given file ID.
 func (s *sqlStore) GetFile(ctx context.Context, id string) (*models.File, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.GetFile",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, id),
-		),
-	)
-	defer span.End()
-
 	var (
 		file        models.File
 		contentType sql.NullString
@@ -312,9 +229,6 @@ func (s *sqlStore) GetFile(ctx context.Context, id string) (*models.File, error)
 			return nil, ErrFileNotFound
 		}
 
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to query file data")
-
 		return nil, fmt.Errorf("failed to query file data: %w", err)
 	}
 
@@ -328,16 +242,10 @@ func (s *sqlStore) GetFile(ctx context.Context, id string) (*models.File, error)
 // parameters; the ORDER BY column and direction are chosen from a whitelist to
 // avoid SQL injection.
 func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) ([]models.File, int, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.ListFiles")
-	defer span.End()
-
 	where, args := buildListFilesWhere(filter)
 
 	var total int
 	if err := s.sqldb.GetContext(ctx, &total, s.rebind(QUERY_LIST_FILES_COUNT+where), args...); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to count files")
-
 		return nil, 0, fmt.Errorf("failed to count files: %w", err)
 	}
 
@@ -350,9 +258,6 @@ func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) 
 
 	rows, err := s.sqldb.QueryContext(ctx, s.rebind(query), args...)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to query files")
-
 		return nil, 0, fmt.Errorf("failed to query files: %w", err)
 	}
 	defer rows.Close()
@@ -368,9 +273,6 @@ func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) 
 		err := rows.Scan(&file.ID, &file.Name, &file.Size, &contentType,
 			&file.Expiration, &file.Downloads, &ipAddress, &file.CreatedAt, &file.EncryptionVersion)
 		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to scan file row")
-
 			return nil, 0, fmt.Errorf("failed to scan file row: %w", err)
 		}
 
@@ -380,9 +282,6 @@ func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) 
 	}
 
 	if err := rows.Err(); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to iterate file rows")
-
 		return nil, 0, fmt.Errorf("failed to iterate file rows: %w", err)
 	}
 
@@ -391,27 +290,13 @@ func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) 
 
 // SetExpiration updates the expiration time for the given file ID.
 func (s *sqlStore) SetExpiration(ctx context.Context, fileID string, expiration time.Time) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "db.SetExpiration",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileID, fileID),
-			attribute.String(telemetry.AttrFileExpiration, expiration.Format(time.RFC3339)),
-		),
-	)
-	defer span.End()
-
 	result, err := s.sqldb.ExecContext(ctx, s.rebind(QUERY_UPDATE_EXPIRATION), expiration, fileID)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to update expiration")
-
 		return fmt.Errorf("failed to update expiration: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to check rows affected")
-
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 

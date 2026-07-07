@@ -11,7 +11,6 @@ import (
 	"github.com/markhc/isrv/internal/storage"
 	"github.com/markhc/isrv/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -85,9 +84,6 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 }
 
 func (s *Service) performCleanup(ctx context.Context) {
-	ctx, span := telemetry.Tracer().Start(ctx, "cleanup.cycle")
-	defer span.End()
-
 	start := time.Now()
 	result := telemetry.ResultSuccess
 
@@ -101,8 +97,6 @@ func (s *Service) performCleanup(ctx context.Context) {
 
 	expiredFiles, err := s.db.GetExpiredFiles(ctx)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to get expired files")
 		logging.ErrorCtx(ctx, "failed to get expired files", logging.Error(err))
 		result = telemetry.ResultError
 
@@ -116,7 +110,6 @@ func (s *Service) performCleanup(ctx context.Context) {
 	}
 
 	logging.InfoCtx(ctx, "found expired files", logging.Int("count", len(expiredFiles)))
-	span.SetAttributes(attribute.Int(telemetry.AttrCleanupExpiredCount, len(expiredFiles)))
 
 	successCount := 0
 	failureCount := 0

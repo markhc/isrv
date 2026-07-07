@@ -12,9 +12,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
 	"github.com/markhc/isrv/internal/models"
-	"github.com/uptrace/opentelemetry-go-extra/otelsql"
-	"github.com/uptrace/opentelemetry-go-extra/otelsqlx"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	_ "modernc.org/sqlite"
 )
 
@@ -53,13 +50,9 @@ func (db *SQLiteDB) Connect() error {
 
 	var err error
 	if db.pathIsDSN {
-		db.sqldb, err = otelsqlx.Open("sqlite", db.filePath,
-			otelsql.WithAttributes(semconv.DBSystemSqlite),
-		)
+		db.sqldb, err = sqlx.Open("sqlite", db.filePath)
 	} else {
-		db.sqldb, err = otelsqlx.Open("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc",
-			otelsql.WithAttributes(semconv.DBSystemSqlite),
-		)
+		db.sqldb, err = sqlx.Open("sqlite", "file:"+db.filePath+"?cache=shared&mode=rwc")
 	}
 
 	if err != nil {

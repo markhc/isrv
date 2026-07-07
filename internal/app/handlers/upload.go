@@ -18,9 +18,7 @@ import (
 	"github.com/markhc/isrv/internal/telemetry"
 	"github.com/markhc/isrv/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type uploadResponse struct {
@@ -40,31 +38,27 @@ func Upload(
 	enc *encryption.Manager,
 ) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
+	successAttrs := metric.WithAttributes(backendAttr,
+		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess))
+	errorAttrs := metric.WithAttributes(backendAttr,
+		attribute.String(telemetry.AttrResult, telemetry.ResultError))
+	sizeAttrs := metric.WithAttributes(backendAttr)
 
 	return func(c fiber.Ctx) error {
 		header, err := c.FormFile("file")
 		if err != nil {
-			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
+			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
 			return utils.RespondWithError(c, fiber.StatusBadRequest, "multipart form 'file' field is missing")
 		}
 
 		if err := validateFileSize(header, config.MaxFileSizeMB); err != nil {
-			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
+			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
 			return utils.RespondWithError(c, fiber.StatusRequestEntityTooLarge, err.Error())
 		}
 
 		file, err := header.Open()
 		if err != nil {
-			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
+			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
 			return utils.RespondWithError(c, fiber.StatusBadRequest, "failed to open uploaded file")
 		}
 		defer file.Close()
@@ -81,19 +75,13 @@ func Upload(
 
 		uploadResp, err := processUpload(c.Context(), config, db, stor, enc, file, header, expiration, ipAddress)
 		if err != nil {
-			telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
-				backendAttr,
-				attribute.String(telemetry.AttrResult, telemetry.ResultError),
-			))
+			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
 			logging.ErrorCtx(c.Context(), "failed to process file upload", logging.Error(err))
 			return utils.RespondWithError(c, fiber.StatusInternalServerError, "failed to process upload")
 		}
 
-		telemetry.Uploads.Add(c.Context(), 1, metric.WithAttributes(
-			backendAttr,
-			attribute.String(telemetry.AttrResult, telemetry.ResultSuccess),
-		))
-		telemetry.UploadSize.Record(c.Context(), header.Size, metric.WithAttributes(backendAttr))
+		telemetry.Uploads.Add(c.Context(), 1, successAttrs)
+		telemetry.UploadSize.Record(c.Context(), header.Size, sizeAttrs)
 
 		return utils.RespondWithSuccess(c, uploadResp)
 	}
@@ -118,19 +106,9 @@ func processUpload(
 	expiration time.Time,
 	ipAddress string,
 ) (uploadResponse, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "upload.process_file",
-		trace.WithAttributes(
-			attribute.String(telemetry.AttrFileName, header.Filename),
-			attribute.String(telemetry.AttrRequestIP, ipAddress),
-			attribute.Int64(telemetry.AttrFileSize, header.Size),
-		),
-	)
-	defer span.End()
-
 	logging.InfoCtx(ctx, "processing uploaded file", logging.Sensitive("filename", header.Filename))
 
 	fileID := utils.GenerateRandomString(config.RandomIDLength)
-	span.SetAttributes(attribute.String(telemetry.AttrFileID, fileID))
 
 	logging.DebugCtx(ctx, "generated file ID", logging.String("file_id", fileID))
 
@@ -141,8 +119,6 @@ func processUpload(
 	token, err := utils.GenerateFileToken()
 	if err != nil {
 		logging.ErrorCtx(ctx, "failed to generate file token", logging.Error(err))
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to generate file token")
 		return uploadResponse{}, fmt.Errorf("failed to generate file token: %w", err)
 	}
 
@@ -167,8 +143,6 @@ func processUpload(
 
 		reader, err = enc.Encrypt(file)
 		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to build encrypting reader")
 			return uploadResponse{}, fmt.Errorf("failed to encrypt uploaded file: %w", err)
 		}
 
@@ -178,12 +152,8 @@ func processUpload(
 		saveOpts = storage.SaveOptions{Size: -1, ContentType: "application/octet-stream"}
 	}
 
-	span.SetAttributes(attribute.Bool(telemetry.AttrFileEncrypted, encVersion > 0))
-
 	path, err := stor.Save(ctx, fileID, reader, saveOpts)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to save uploaded file")
 		return uploadResponse{}, fmt.Errorf("failed to save uploaded file: %w", err)
 	}
 
@@ -203,8 +173,6 @@ func processUpload(
 			)
 		}
 
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to record file upload in database")
 		logging.ErrorCtx(ctx, "failed to record file upload in database",
 			logging.String("file_id", fileID),
 			logging.Error(err),

@@ -7,25 +7,10 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/google/uuid"
 	"github.com/markhc/isrv/internal/logging"
-	"github.com/markhc/isrv/internal/telemetry"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
-
-//nolint:gochecknoglobals
-var infraEndpointPrefixes = []string{
-	"/healthz",
-	"/readyz",
-	"/metrics",
-	"/debug/",
-	"/static/",
-}
 
 // SetupRoutes registers all application routes, handlers, and middleware.
 func SetupRoutes(app *fiber.App, a *Application) {
-	// Tracing first so it captures even early aborts.
-	app.Use(telemetry.FiberTracing("isrv", infraEndpointPrefixes))
-
 	app.Use(requestid.New(requestid.Config{
 		Header: fiber.HeaderXRequestID,
 		Generator: func() string {
@@ -41,13 +26,11 @@ func SetupRoutes(app *fiber.App, a *Application) {
 		},
 	}))
 
-	// Panic recovery that records the panic on the active span before
-	// allowing Fiber's recover middleware to translate it to a 500.
+	// Panic recovery that logs the panic before allowing Fiber's recover
+	// middleware to translate it to a 500.
 	app.Use(recover.New(recover.Config{
 		EnableStackTrace: true,
 		StackTraceHandler: func(c fiber.Ctx, e any) {
-			span := trace.SpanFromContext(c.Context())
-			span.SetStatus(codes.Error, "panic")
 			logging.ErrorCtx(c.Context(), "request handler panic",
 				logging.Any("panic", e),
 			)
