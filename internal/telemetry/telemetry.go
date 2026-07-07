@@ -42,20 +42,7 @@ type ShutdownFunc func(context.Context) error
 //
 // This service deliberately emits metrics only. Traces and OTLP log export are
 // not configured: as request-level records they would carry client IPs,
-// filenames, and precise timestamps, undermining the service's privacy
-// posture. Aggregate metrics reveal no per-request detail.
-//
-// The Prometheus scrape endpoint (see MetricsHandler) is always wired up.
-// OTLP push is opt-in: metrics are additionally pushed to a collector only
-// when OTEL_EXPORTER_OTLP_ENDPOINT is set. Exporter configuration (endpoint,
-// auth headers, protocol) is read entirely from the standard OTEL_*
-// environment variables, keeping this code backend-agnostic. Notable
-// variables:
-//
-//   - OTEL_EXPORTER_OTLP_ENDPOINT  – base URL of the OTLP receiver
-//   - OTEL_EXPORTER_OTLP_HEADERS   – comma-separated key=value auth headers
-//   - OTEL_SERVICE_NAME            – overrides the default service.name
-//   - OTEL_RESOURCE_ATTRIBUTES     – additional resource key=value pairs
+// filenames, and precise timestamps, undermining privacy.
 //
 // buildVersion is used as the default value for the service.version resource
 // attribute and can be overridden via OTEL_RESOURCE_ATTRIBUTES.
