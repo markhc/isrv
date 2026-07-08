@@ -21,8 +21,9 @@ import (
 	"github.com/markhc/isrv/internal/models"
 )
 
-// s3api is the subset of *s3.Client operations used by S3Storage.
-type s3api interface {
+// S3Client is the subset of *s3.Client operations used by S3Storage, wrapped
+// behind an interface so unit tests can substitute a mock.
+type S3Client interface {
 	HeadBucket(
 		ctx context.Context,
 		params *s3.HeadBucketInput,
@@ -45,8 +46,8 @@ type s3api interface {
 	) (*s3.DeleteObjectOutput, error)
 }
 
-// s3presigner is the subset of *s3.PresignClient operations used by S3Storage.
-type s3presigner interface {
+// S3Presigner is the subset of *s3.PresignClient operations used by S3Storage.
+type S3Presigner interface {
 	PresignGetObject(
 		ctx context.Context,
 		params *s3.GetObjectInput,
@@ -54,10 +55,10 @@ type s3presigner interface {
 	) (*v4.PresignedHTTPRequest, error)
 }
 
-// s3uploader is the subset of *transfermanager.Client operations used by
+// S3Uploader is the subset of *transfermanager.Client operations used by
 // S3Storage. The transfer manager splits large objects into parts and uploads
 // them concurrently.
-type s3uploader interface {
+type S3Uploader interface {
 	UploadObject(
 		ctx context.Context,
 		input *transfermanager.UploadObjectInput,
@@ -73,9 +74,10 @@ type S3Storage struct {
 	// of redirecting the client to a pre-signed URL.
 	ProxyDownloads bool
 
-	client    s3api
-	presigner s3presigner
-	uploader  s3uploader
+	// Client, Presigner and Uploader are the SDK seams; tests inject mocks here.
+	Client    S3Client
+	Presigner S3Presigner
+	Uploader  S3Uploader
 }
 
 // newS3Options builds the S3 client options from the storage configuration.
@@ -127,9 +129,9 @@ func NewS3Storage(ctx context.Context, config models.StorageConfiguration) (*S3S
 		Bucket:         config.BucketName,
 		BasePath:       config.BasePath,
 		ProxyDownloads: config.ProxyDownloads,
-		client:         awsClient,
-		presigner:      s3.NewPresignClient(awsClient),
-		uploader:       uploader,
+		Client:         awsClient,
+		Presigner:      s3.NewPresignClient(awsClient),
+		Uploader:       uploader,
 	}, nil
 }
 
@@ -139,7 +141,7 @@ func (storage *S3Storage) Backend() string { return BackendS3 }
 // HealthCheck issues a HeadBucket against the configured S3 bucket to verify
 // connectivity and that the bucket is still accessible.
 func (storage *S3Storage) HealthCheck(ctx context.Context) error {
-	if _, err := storage.client.HeadBucket(ctx, &s3.HeadBucketInput{
+	if _, err := storage.Client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(storage.Bucket),
 	}); err != nil {
 		return fmt.Errorf("head bucket %q: %w", storage.Bucket, err)
@@ -153,7 +155,7 @@ func (storage *S3Storage) FileExists(ctx context.Context, fileID string) (bool, 
 	var err error
 	defer recordOpDuration(ctx, BackendS3, OperationExists, time.Now(), &err)
 
-	_, err = storage.client.HeadObject(ctx, &s3.HeadObjectInput{
+	_, err = storage.Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -206,7 +208,7 @@ func (storage *S3Storage) Save(
 		input.ContentDisposition = aws.String("inline; filename=\"" + sanitizedFileName + "\"")
 	}
 
-	_, err = storage.uploader.UploadObject(ctx, input)
+	_, err = storage.Uploader.UploadObject(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("failed to upload file to S3: %w", err)
 	}
@@ -219,7 +221,7 @@ func (storage *S3Storage) DeleteFile(ctx context.Context, fileID string) error {
 	var err error
 	defer recordOpDuration(ctx, BackendS3, OperationDelete, time.Now(), &err)
 
-	_, err = storage.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	_, err = storage.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(storage.Bucket),
 		Key:    aws.String(path.Join(storage.BasePath, fileID)),
 	})
@@ -248,7 +250,7 @@ func (storage *S3Storage) Open(ctx context.Context, fileID string, brange *ByteR
 		input.Range = aws.String(brange.header())
 	}
 
-	object, err := storage.client.GetObject(ctx, input)
+	object, err := storage.Client.GetObject(ctx, input)
 	if err != nil {
 		var noSuchKey *types.NoSuchKey
 		if errors.As(err, &noSuchKey) {
@@ -291,8 +293,7 @@ func (storage *S3Storage) Open(ctx context.Context, fileID string, brange *ByteR
 }
 
 // PresignedURL generates a pre-signed S3 URL for direct client download. It
-// reports ok == false in proxy mode, where the server streams the object via
-// Open instead.
+// reports ok == false in proxy mode, where the server streams the object via Open instead.
 func (storage *S3Storage) PresignedURL(ctx context.Context, file *models.File) (string, bool, error) {
 	if storage.ProxyDownloads {
 		return "", false, nil
@@ -309,7 +310,7 @@ func (storage *S3Storage) PresignedURL(ctx context.Context, file *models.File) (
 		contentType = file.ContentType
 	}
 
-	presignedURL, err := storage.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+	presignedURL, err := storage.Presigner.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket:                     aws.String(storage.Bucket),
 		Key:                        aws.String(objectKey),
 		ResponseCacheControl:       aws.String(cacheControl),

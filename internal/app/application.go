@@ -285,6 +285,13 @@ func createStorage(ctx context.Context, config *models.Configuration) (storage.S
 		}
 
 		return s3, nil
+	case "gcs":
+		gcs, err := storage.NewGCSStorage(ctx, config.Storage)
+		if err != nil {
+			return nil, fmt.Errorf("initialise gcs storage: %w", err)
+		}
+
+		return gcs, nil
 	default:
 		return nil, fmt.Errorf("invalid storage type %q", config.Storage.Type)
 	}

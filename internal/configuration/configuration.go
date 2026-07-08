@@ -100,7 +100,10 @@ func applyEnvOverrides() {
 		"ISRV_STORAGE_REGION":      "Storage.Region",
 		"ISRV_STORAGE_ENDPOINT":    "Storage.Endpoint",
 
-		// S3-specific behaviour.
+		// GCS-specific settings.
+		"ISRV_STORAGE_CREDENTIALS_FILE": "Storage.CredentialsFile",
+
+		// Object-storage behaviour.
 		"ISRV_STORAGE_PROXY_DOWNLOADS":     "Storage.ProxyDownloads",
 		"ISRV_STORAGE_UPLOAD_PART_SIZE_MB": "Storage.UploadPartSizeMB",
 		"ISRV_STORAGE_UPLOAD_CONCURRENCY":  "Storage.UploadConcurrency",
@@ -237,9 +240,10 @@ func verifyEncryptionConfig(enc *models.EncryptionConfiguration, storageConfig *
 	// Identity parsing/reading is deferred to encryption.NewManager: the file
 	// may be a runtime-mounted secret not yet present at validation time.
 
-	if enc.Enabled && storageConfig.Type == "s3" && !storageConfig.ProxyDownloads {
-		fmt.Fprintln(os.Stderr, "warning: encryption is enabled with S3 storage and proxyDownloads "+
-			"disabled; encrypted files will be proxied through the server regardless, "+
+	remoteStorage := storageConfig.Type == "s3" || storageConfig.Type == "gcs"
+	if enc.Enabled && remoteStorage && !storageConfig.ProxyDownloads {
+		fmt.Fprintln(os.Stderr, "warning: encryption is enabled with remote object storage and "+
+			"proxyDownloads disabled; encrypted files will be proxied through the server regardless, "+
 			"while plaintext files still use pre-signed redirects")
 	}
 }
@@ -310,8 +314,8 @@ func GenerateDefaultConfig(configPath string) {
 }
 
 func verifyStorageConfig(storageConfig *models.StorageConfiguration) {
-	if storageConfig.Type != "local" && storageConfig.Type != "s3" {
-		panic("Invalid configuration: storage.type must be either 'local' or 's3'")
+	if storageConfig.Type != "local" && storageConfig.Type != "s3" && storageConfig.Type != "gcs" {
+		panic("Invalid configuration: storage.type must be 'local', 's3' or 'gcs'")
 	}
 
 	switch storageConfig.Type {
@@ -339,6 +343,14 @@ func verifyStorageConfig(storageConfig *models.StorageConfiguration) {
 
 		if storageConfig.UploadConcurrency < 0 {
 			panic("Invalid configuration: storage.upload_concurrency cannot be negative")
+		}
+	case "gcs":
+		if storageConfig.BucketName == "" {
+			panic("Invalid configuration: bucket_name must be provided for GCS storage")
+		}
+
+		if storageConfig.UploadPartSizeMB < 0 {
+			panic("Invalid configuration: storage.upload_part_size_mb cannot be negative")
 		}
 	}
 }

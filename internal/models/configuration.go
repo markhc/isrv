@@ -9,8 +9,8 @@ import (
 
 // StorageConfiguration holds settings for the storage backend.
 type StorageConfiguration struct {
-	Type string `yaml:"type"` // "local" or "s3"
-	// BasePath is the root directory for local storage or the key prefix for S3 storage.
+	Type string `yaml:"type"` // "local", "s3" or "gcs"
+	// BasePath is the root directory for local storage or the key prefix for object storage.
 	BasePath string `yaml:"basePath"`
 
 	// Object storage settings (S3).
@@ -20,14 +20,19 @@ type StorageConfiguration struct {
 	Region     string `yaml:"region"`
 	Endpoint   string `yaml:"endpoint"`
 
-	// ProxyDownloads streams S3 objects through the server instead of
-	// redirecting clients to a pre-signed URL.
+	// CredentialsFile is a path to a Google service account JSON key for GCS
+	// storage. Empty uses Application Default Credentials.
+	CredentialsFile string `yaml:"credentialsFile"`
+
+	// ProxyDownloads streams objects through the server on download instead
+	// of redirecting clients to a pre-signed URL (S3 and GCS).
 	ProxyDownloads bool `yaml:"proxyDownloads"`
-	// UploadPartSizeMB is the part size in MiB for multipart S3 uploads.
-	// Zero uses the SDK default. S3 requires parts of at least 5 MiB.
+	// UploadPartSizeMB is the part size in MiB for multipart S3 uploads (at
+	// least 5 MiB) or the resumable-upload chunk size for GCS. Zero uses the
+	// SDK default.
 	UploadPartSizeMB int `yaml:"uploadPartSizeMb"`
 	// UploadConcurrency is the number of parts uploaded in parallel for
-	// multipart S3 uploads. Zero uses the SDK default.
+	// multipart S3 uploads. Zero uses the SDK default. Not used by GCS.
 	UploadConcurrency int `yaml:"uploadConcurrency"`
 }
 
