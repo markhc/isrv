@@ -473,7 +473,40 @@ func TestVerifyConfiguration(t *testing.T) {
 				return cfg
 			},
 			expectPanic:  true,
-			panicMessage: "Invalid configuration: storage.type must be either 'local' or 's3'",
+			panicMessage: "Invalid configuration: storage.type must be 'local', 's3' or 'gcs'",
+		},
+		{
+			name: "valid gcs configuration",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.Storage.Type = "gcs"
+				cfg.Storage.BucketName = "my-bucket"
+				return cfg
+			},
+			expectPanic: false,
+		},
+		{
+			name: "gcs storage without bucket name",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.Storage.Type = "gcs"
+				cfg.Storage.BucketName = ""
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: bucket_name must be provided for GCS storage",
+		},
+		{
+			name: "gcs storage with negative upload part size",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.Storage.Type = "gcs"
+				cfg.Storage.BucketName = "my-bucket"
+				cfg.Storage.UploadPartSizeMB = -1
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: storage.upload_part_size_mb cannot be negative",
 		},
 		{
 			name: "local storage with empty base path",

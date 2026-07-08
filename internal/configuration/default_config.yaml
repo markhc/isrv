@@ -58,25 +58,32 @@ admin:
 
 # storage configuration
 storage:
-  # supported types: local, s3
+  # supported types: local, s3, gcs
   type: local
-  # for local storage, this is the directory where files will be saved. For S3, this is the base path within the bucket (can be empty)
+  # for local storage, this is the directory where files will be saved. For S3/GCS, this is the base path within the bucket (can be empty)
   basePath: ./upload_data/
-  # for S3 storage, these are the required credentials and settings. For local storage, these can be left empty
+  # for S3 storage, these are the required credentials. For local and GCS storage, these can be left empty
   accessKey: ""
   secretKey: ""
+  # bucket name for S3 and GCS storage
   bucketName: ""
-  # AWS region. Required when no endpoint is set
+  # AWS region. Required for S3 when no endpoint is set
   region: ""
-  # custom endpoint for S3-compatible stores (MinIO, GCS, ...). Leave empty for AWS S3.
+  # custom endpoint for S3-compatible stores (MinIO, ...). Leave empty for AWS S3.
   endpoint: ""
+  # for GCS storage, path to a service account JSON key file. Leave empty to use
+  # Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS, gcloud
+  # login, or the GCE/GKE metadata server).
+  credentialsFile: ""
   # when true, downloads are streamed through the server instead of
-  # redirecting the client to a pre-signed S3 URL. Uses server bandwidth but
-  # hides the storage endpoint and keeps download URLs stable.
+  # redirecting the client to a pre-signed URL (S3 and GCS). Uses server
+  # bandwidth but hides the storage endpoint and keeps download URLs stable.
   proxyDownloads: false
-  # multipart upload tuning. Large uploads are split into parts of
+  # upload tuning. For S3, large uploads are split into parts of
   # uploadPartSizeMb MiB (minimum 5MiB) and uploaded with uploadConcurrency
-  # parallel workers. Zero values use the SDK defaults.
+  # parallel workers. For GCS, uploadPartSizeMb sets the resumable-upload
+  # chunk size and uploadConcurrency has no effect. Zero values use the SDK
+  # defaults.
   uploadPartSizeMb: 0
   uploadConcurrency: 0
 

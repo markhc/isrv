@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -67,7 +68,7 @@ func defaultConfig() *models.Configuration {
 func newMockStorage(t *testing.T) *stmocks.MockStorage {
 	t.Helper()
 	s := stmocks.NewMockStorage(t)
-	s.On("Backend").Return("local").Maybe()
+	s.EXPECT().Backend().Return("local").Maybe()
 	return s
 }
 
@@ -208,10 +209,10 @@ func Test_Download(t *testing.T) {
 			db := dbmocks.NewMockDatabase(t)
 			stor := newMockStorage(t)
 
-			db.On("GetFile", mock.Anything, tt.file.ID).Return(&tt.file, nil)
-			db.On("OnFileDownload", mock.Anything, tt.file.ID).Return(tt.downloadErr)
-			stor.On("PresignedURL", mock.Anything, &tt.file).Return("", false, nil)
-			stor.On("Open", mock.Anything, tt.file.ID, mock.Anything).Return(&storage.Object{
+			db.EXPECT().GetFile(mock.Anything, tt.file.ID).Return(&tt.file, nil)
+			db.EXPECT().OnFileDownload(mock.Anything, tt.file.ID).Return(tt.downloadErr)
+			stor.EXPECT().PresignedURL(mock.Anything, &tt.file).Return("", false, nil)
+			stor.EXPECT().Open(mock.Anything, tt.file.ID, mock.Anything).Return(&storage.Object{
 				Body:   io.NopCloser(strings.NewReader("file-bytes")),
 				Size:   int64(len("file-bytes")),
 				Length: int64(len("file-bytes")),
@@ -286,7 +287,7 @@ func Test_Upload(t *testing.T) {
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
 				stor := newMockStorage(t)
-				stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				stor.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("", errors.New("storage failure"))
 				return req, db, stor
 			},
@@ -301,11 +302,11 @@ func Test_Upload(t *testing.T) {
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
 				stor := newMockStorage(t)
-				stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				stor.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/file.txt", nil)
-				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything).
+				db.EXPECT().OnFileUpload(mock.Anything, mock.Anything, mock.Anything).
 					Return(errors.New("db error"))
-				stor.On("DeleteFile", mock.Anything, mock.Anything).Return(nil)
+				stor.EXPECT().DeleteFile(mock.Anything, mock.Anything).Return(nil)
 				return req, db, stor
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -319,9 +320,9 @@ func Test_Upload(t *testing.T) {
 				req.Header.Set("Content-Type", ct)
 				db := dbmocks.NewMockDatabase(t)
 				stor := newMockStorage(t)
-				stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				stor.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return("/path/photo.png", nil)
-				db.On("OnFileUpload", mock.Anything, mock.Anything, mock.Anything).
+				db.EXPECT().OnFileUpload(mock.Anything, mock.Anything, mock.Anything).
 					Return(nil)
 				return req, db, stor
 			},
@@ -396,14 +397,13 @@ func Test_Upload_Encryption(t *testing.T) {
 	stor := newMockStorage(t)
 
 	var stored []byte
-	stor.On("Save", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(opts storage.SaveOptions) bool {
+	stor.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(opts storage.SaveOptions) bool {
 		return opts.Size == -1 && opts.ContentType == "application/octet-stream"
-	})).Run(func(args mock.Arguments) {
-		r, _ := args.Get(2).(io.Reader)
+	})).Run(func(_ context.Context, _ string, r io.Reader, _ storage.SaveOptions) {
 		stored, _ = io.ReadAll(r)
 	}).Return("/path/secret.txt", nil)
 
-	db.On("OnFileUpload", mock.Anything, mock.MatchedBy(func(f *models.File) bool {
+	db.EXPECT().OnFileUpload(mock.Anything, mock.MatchedBy(func(f *models.File) bool {
 		return f.EncryptionVersion == encryption.VersionAgeV1 && f.Size == int64(len(plaintext))
 	}), mock.Anything).Return(nil)
 
@@ -452,7 +452,7 @@ func Test_Download_Encryption(t *testing.T) {
 	}
 
 	openCiphertext := func(stor *stmocks.MockStorage) {
-		stor.On("Open", mock.Anything, "enc-file", (*storage.ByteRange)(nil)).Return(&storage.Object{
+		stor.EXPECT().Open(mock.Anything, "enc-file", (*storage.ByteRange)(nil)).Return(&storage.Object{
 			Body:   io.NopCloser(bytes.NewReader(ciphertext)),
 			Size:   int64(len(ciphertext)),
 			Length: int64(len(ciphertext)),
@@ -464,8 +464,8 @@ func Test_Download_Encryption(t *testing.T) {
 		db := dbmocks.NewMockDatabase(t)
 		stor := newMockStorage(t)
 
-		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
-		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, file.ID).Return(nil)
 		openCiphertext(stor)
 
 		app := newApp()
@@ -488,8 +488,8 @@ func Test_Download_Encryption(t *testing.T) {
 		db := dbmocks.NewMockDatabase(t)
 		stor := newMockStorage(t)
 
-		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
-		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, file.ID).Return(nil)
 		openCiphertext(stor)
 
 		app := newApp()
@@ -511,8 +511,8 @@ func Test_Download_Encryption(t *testing.T) {
 		db := dbmocks.NewMockDatabase(t)
 		stor := newMockStorage(t)
 
-		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
-		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, file.ID).Return(nil)
 
 		app := newApp()
 		app.Get("/d/:id", handlers.Download(db, stor, nil))
@@ -530,8 +530,8 @@ func Test_Download_Encryption(t *testing.T) {
 		db := dbmocks.NewMockDatabase(t)
 		stor := newMockStorage(t)
 
-		db.On("GetFile", mock.Anything, file.ID).Return(file, nil)
-		db.On("OnFileDownload", mock.Anything, file.ID).Return(nil)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, file.ID).Return(nil)
 		openCiphertext(stor)
 
 		wrongManager := newEncManager(t) // different identity
@@ -563,8 +563,8 @@ func Test_Delete(t *testing.T) {
 			name:   "happy path returns 204",
 			fileID: "abc123",
 			setup: func(db *dbmocks.MockDatabase, st *stmocks.MockStorage) {
-				st.On("DeleteFile", mock.Anything, "abc123").Return(nil)
-				db.On("OnFileDelete", mock.Anything, "abc123").Return(nil)
+				st.EXPECT().DeleteFile(mock.Anything, "abc123").Return(nil)
+				db.EXPECT().OnFileDelete(mock.Anything, "abc123").Return(nil)
 			},
 			expectedStatus: http.StatusNoContent,
 		},
@@ -572,7 +572,7 @@ func Test_Delete(t *testing.T) {
 			name:   "storage error returns 500",
 			fileID: "abc123",
 			setup: func(db *dbmocks.MockDatabase, st *stmocks.MockStorage) {
-				st.On("DeleteFile", mock.Anything, "abc123").Return(errors.New("disk full"))
+				st.EXPECT().DeleteFile(mock.Anything, "abc123").Return(errors.New("disk full"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "failed to delete file",
@@ -581,8 +581,8 @@ func Test_Delete(t *testing.T) {
 			name:   "database error after storage deletion returns 500",
 			fileID: "abc123",
 			setup: func(db *dbmocks.MockDatabase, st *stmocks.MockStorage) {
-				st.On("DeleteFile", mock.Anything, "abc123").Return(nil)
-				db.On("OnFileDelete", mock.Anything, "abc123").Return(errors.New("db error"))
+				st.EXPECT().DeleteFile(mock.Anything, "abc123").Return(nil)
+				db.EXPECT().OnFileDelete(mock.Anything, "abc123").Return(errors.New("db error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "failed to delete file record",
@@ -646,8 +646,8 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON(unixMsIn(24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
-				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
+				db.EXPECT().GetFile(mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.EXPECT().SetExpiration(mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   `"fileId":"abc123"`,
@@ -657,8 +657,8 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON("48"),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
-				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
+				db.EXPECT().GetFile(mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.EXPECT().SetExpiration(mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   `"expiration"`,
@@ -692,7 +692,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON(unixMsIn(400 * 24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.EXPECT().GetFile(mock.Anything, "abc123").Return(smallFileRecord(), nil)
 			},
 			expectedStatus: http.StatusUnprocessableEntity,
 			expectedBody:   "expiration exceeds the maximum allowed time",
@@ -702,7 +702,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "missing",
 			body:   expiresJSON("24"),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFile", mock.Anything, "missing").Return(nil, database.ErrFileNotFound)
+				db.EXPECT().GetFile(mock.Anything, "missing").Return(nil, database.ErrFileNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   "file not found",
@@ -712,7 +712,7 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON("24"),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFile", mock.Anything, "abc123").Return(nil, database.ErrDatabase)
+				db.EXPECT().GetFile(mock.Anything, "abc123").Return(nil, database.ErrDatabase)
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "internal server error",
@@ -722,8 +722,8 @@ func Test_Expire(t *testing.T) {
 			fileID: "abc123",
 			body:   expiresJSON(unixMsIn(24 * time.Hour)),
 			setup: func(db *dbmocks.MockDatabase) {
-				db.On("GetFile", mock.Anything, "abc123").Return(smallFileRecord(), nil)
-				db.On("SetExpiration", mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(errors.New("db error"))
+				db.EXPECT().GetFile(mock.Anything, "abc123").Return(smallFileRecord(), nil)
+				db.EXPECT().SetExpiration(mock.Anything, "abc123", mock.AnythingOfType("time.Time")).Return(errors.New("db error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "failed to update expiration",

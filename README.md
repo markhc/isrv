@@ -24,7 +24,6 @@ This project is a work in progress, here's a list of things I am working on in n
 - Client mode in the same binary, allowing users to upload and manage their files with ease
 - Metadata stripping for uploaded files (EXIF, ID3, etc.)
 - Support non-temporary storage option for users who want to keep their files indefinitely
-- More remote storage backend options (GCS, FTP & others)
 - Built-in TLS support with automatic certificate management CertMagic
 - "Burn After Reading" feature: Expiry after N downloads
 - Zip file support for multiple uploads: 
@@ -109,7 +108,10 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_SERVER_URL` | `http://localhost:8080` | Sets the server URL |
 | `ISRV_SERVER_HOST` | `0.0.0.0` | Sets the server host address |
 | `ISRV_SERVER_PORT` | `8080` | Sets the server port |
-| `ISRV_STORAGE_PATH` | - | Sets the storage base path |
+| `ISRV_STORAGE_TYPE` | `local` | Storage backend: `local`, `s3` or `gcs` |
+| `ISRV_STORAGE_PATH` | - | Sets the storage base path (directory for `local`, key prefix for `s3`/`gcs`) |
+| `ISRV_STORAGE_BUCKET_NAME` | - | Bucket name for `s3` and `gcs` storage |
+| `ISRV_STORAGE_CREDENTIALS_FILE` | - | Service account JSON key file for `gcs` storage (empty = Application Default Credentials) |
 | `ISRV_LOGGING_LOG_TO_FILE` | `false` | Whether we should log to a file |
 | `ISRV_LOGGING_LOG_IPS` | `true` | Log uploaders IP |
 | `ISRV_LOGGING_ANONYMIZE` | `false` | Minimal-logging mode: drop successful request logs and omit all identifying fields (supersedes `logIps`) |

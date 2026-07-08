@@ -27,6 +27,7 @@ var ErrInvalidRange = errors.New("storage: invalid byte range")
 const (
 	BackendLocal = "local"
 	BackendS3    = "s3"
+	BackendGCS   = "gcs"
 )
 
 // Operation identifiers for the storage.operation.duration histogram.

@@ -20,3 +20,7 @@ packages:
   github.com/markhc/isrv/internal/storage:
     interfaces:
       Storage: {}
+      GCSBucket: {}
+      S3Client: {}
+      S3Presigner: {}
+      S3Uploader: {}
