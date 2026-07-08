@@ -31,7 +31,9 @@ LDFLAGS := -ldflags "\
 	-s -w -extldflags '-static'"
 
 # Go build flags for static builds
-GO_BUILD_FLAGS := -trimpath -a $(LDFLAGS)
+# disable_grpc_modules drops the gRPC/xDS transport from cloud.google.com/go/storage
+# (GCS is used over HTTP only), saving ~12 MB of binary size.
+GO_BUILD_FLAGS := -trimpath -tags disable_grpc_modules $(LDFLAGS)
 
 # Environment variables for static builds
 BUILD_ENV := CGO_ENABLED=0

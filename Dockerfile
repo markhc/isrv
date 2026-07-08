@@ -43,7 +43,7 @@ RUN export GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} && \
     export BUILD_GO_VERSION=$(go version | awk '{print $3}') && \
     export BUILD_PLATFORM=${GOOS}/${GOARCH} && \
     echo "Cross-compiling for ${GOOS}/${GOARCH}${GOARM:+ (GOARM=${GOARM})}" && \
-    go build -ldflags="-s -w \
+    go build -tags disable_grpc_modules -ldflags="-s -w \
     -X 'github.com/markhc/isrv/internal/configuration.BuildVersion=${BUILD_VERSION}' \
     -X 'github.com/markhc/isrv/internal/configuration.BuildCommit=${BUILD_COMMIT}' \
     -X 'github.com/markhc/isrv/internal/configuration.BuildDate=${BUILD_DATE}' \
