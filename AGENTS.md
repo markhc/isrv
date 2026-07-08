@@ -18,17 +18,21 @@ Run tests for a specific package: `go test ./internal/app/handlers/...`
 
 ```
 cmd/                        # CLI entrypoint (cobra)
+docs/                       # Documentation files (in markdown format)
+  notepad/                  # git-ignored place to store project notes
 internal/
   app/
     application.go          # Server lifecycle, dependency wiring
-    routes.go               # chi router, middleware, endpoint mapping
+    routes.go               # Fiber (gofiber/fiber/v3) router, middleware, endpoint mapping
     handlers/               # HTTP handlers (closure-based DI pattern)
-    middleware/             # Rate limiting, token auth, file ID validation
+    middleware/             # Rate limiting (incl. admin failed-login blocking), token auth, admin session auth
   configuration/            # YAML config + ISRV_* env var overrides
-  database/                 # Database interface + SQLite implementation (modernc/sqlite)
+  database/                 # Database interface + SQLite (modernc/sqlite) and PostgreSQL implementations
   storage/                  # Storage interface + LocalStorage + S3
   cleanup/                  # Background worker: deletes expired files
-  telemetry/                # OpenTelemetry tracing + Prometheus metrics
+  encryption/               # age-based encryption-at-rest for stored files
+  logging/                  # zap-based structured logging; supports an anonymize (no-logs) mode
+  telemetry/                # OpenTelemetry metrics only (no tracing/OTLP logs) + Prometheus exporter
   models/                   # Shared model types
 web/
   src/                      # React frontend source
@@ -44,10 +48,10 @@ Keep comments concise and relevant. Avoid repeating what the code does; focus on
 Do not use `// TODO` or `// FIXME` comments; instead, create a GitHub issue and reference it in the comment. 
 
 ### Handler Pattern
-Handlers are closures that return `http.HandlerFunc`, enabling dependency injection:
+Handlers are closures that return `fiber.Handler`, enabling dependency injection:
 ```go
-func Upload(db database.Database, store storage.Storage, ...) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) { ... }
+func Upload(db database.Database, store storage.Storage, ...) fiber.Handler {
+    return func(c fiber.Ctx) error { ... }
 }
 ```
 
@@ -84,6 +88,9 @@ isrv runs on Linux/Unix-like hosts primarily but should be portable.
 - **Build info injection**: Version, commit, date are injected via ldflags at build time (see Makefile). Do not read them from files at runtime.
 - **GCS + S3 SDK**: If using Google Cloud Storage with the AWS S3 SDK, set `Region: "auto"` and `UsePathStyle: true`. See user memory for details.
 - **Manual rollback in Upload**: If storage succeeds but DB insert fails, the handler manually deletes the stored file. Keep this pattern consistent if adding new upload logic.
+- **Telemetry is metrics-only by design**: traces and OTLP log export are deliberately not configured (request-level records would carry client IPs, filenames, timestamps). Do not reintroduce tracing without revisiting that privacy tradeoff.
+- **Admin login rate limiting**: `RateLimitFailedLogins` (internal/app/middleware/ratelimit.go) only spends budget on requests the handler rejects with 401; successful/non-credential attempts are free. Keep this pattern if touching admin auth.
+- **Logging anonymize mode**: `logging.anonymize: true` drops successful request logs and omits identifying fields (IP, user agent, path, filename, host); it supersedes `logIps`. New log call sites should go through the existing helpers rather than logging identifying fields directly.
 
 ## Frontend
 
