@@ -211,7 +211,7 @@ func (storage *GCSStorage) FileExists(ctx context.Context, fileID string) (bool,
 	return false, fmt.Errorf("failed to check file existence: %w", err)
 }
 
-// Save uploads r to the GCS bucket and returns the object name
+// Save uploads r to the GCS bucket and returns the object name.
 func (storage *GCSStorage) Save(
 	ctx context.Context,
 	fileID string,
