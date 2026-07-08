@@ -110,8 +110,9 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_SERVER_HOST` | `0.0.0.0` | Sets the server host address |
 | `ISRV_SERVER_PORT` | `8080` | Sets the server port |
 | `ISRV_STORAGE_PATH` | - | Sets the storage base path |
-| `ISRV_LOGGING_FILE_ENABLED` | `true` | Whether we should log to a file |
-| `ISRV_LOGGING_IPS_ENABLED` | `true` | Log uploaders IP |
+| `ISRV_LOGGING_LOG_TO_FILE` | `false` | Whether we should log to a file |
+| `ISRV_LOGGING_LOG_IPS` | `true` | Log uploaders IP |
+| `ISRV_LOGGING_ANONYMIZE` | `false` | Minimal-logging mode: drop successful request logs and omit all identifying fields (supersedes `logIps`) |
 | `ISRV_LOGGING_PATH` | - | Sets the log file path |
 | `ISRV_RANDOM_ID_LENGTH` | `12` | Sets the length of randomly generated file IDs |
 | `ISRV_MAX_FILE_SIZE_MB` | `512` | Sets the maximum file size in megabytes |
@@ -120,6 +121,8 @@ When set, environment variables override the corresponding values from the confi
 | `ISRV_ADMIN_USERNAME` | - | Admin panel username (enables the panel when set together with the password) |
 | `ISRV_ADMIN_PASSWORD` | - | Admin panel password |
 | `ISRV_ADMIN_SESSION_SECRET` | - | HMAC key for signing admin session cookies (random if unset) |
+| `ISRV_ADMIN_FAILED_LOGIN_LIMIT` | `5` | Max failed admin login attempts per hour before the IP is blocked |
+| `ISRV_ADMIN_FAILED_LOGIN_BLOCK_DURATION` | `12h` | How long an IP is blocked after exceeding the failed login limit |
 
 ### Reverse proxy
 
@@ -127,6 +130,11 @@ isrv does not terminate TLS, so production deployments normally run behind a
 reverse proxy. See [docs/reverse-proxies/nginx.md](docs/reverse-proxies/nginx.md) for a complete NGINX server
 block and guidance on client IP detection, upload/download buffering, and
 which endpoints to keep private.
+
+### Anonymity-focused deployments
+
+For running isrv as a Tor onion service, along with the no-logs `anonymize`
+logging mode and the privacy trade-offs involved, see [docs/tor.md](docs/tor.md).
 
 ### Observability endpoints
 
@@ -153,6 +161,11 @@ admin:
   sessionSecret: ""
   # Optional: how long a login session stays valid (default 24h).
   sessionTtl: 24h
+  # Max failed login attempts per hour before the offending IP is blocked.
+  failedLoginLimit: 5
+  # How long to block IPs that exceed the failed login limit (backs off
+  # exponentially for repeated offenses).
+  failedLoginBlockDuration: 12h
 ```
 
 ## Development
