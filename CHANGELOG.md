@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/markhc/isrv/compare/v1.3.0...v1.4.0) (2026-07-08)
+
+
+### Features
+
+* **admin:** rate limit failed login attempts ([#46](https://github.com/markhc/isrv/issues/46)) ([29eb160](https://github.com/markhc/isrv/commit/29eb16081eb34556a9bd576a1faaa0d3403a4cd9))
+* **logs:** adds anonymize mode ([#49](https://github.com/markhc/isrv/issues/49)) ([c0043d5](https://github.com/markhc/isrv/commit/c0043d5fe38253d8c90cc248985f0a3e5555b3ec))
+* **storage:** add gcs backend ([#52](https://github.com/markhc/isrv/issues/52)) ([5979e19](https://github.com/markhc/isrv/commit/5979e19ea687e9c894043f83e468b8ad15e3052d))
+
+
+### Bug Fixes
+
+* **config:** seed with default values before parsing ([#47](https://github.com/markhc/isrv/issues/47)) ([47d84e5](https://github.com/markhc/isrv/commit/47d84e5d343ba3c63beacd505f04cb5fbe3de33b))
+
 ## [1.3.0](https://github.com/markhc/isrv/compare/v1.2.1...v1.3.0) (2026-07-06)
 
 
