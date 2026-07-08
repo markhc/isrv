@@ -208,7 +208,10 @@ func (storage *GCSStorage) FileExists(ctx context.Context, fileID string) (bool,
 		return false, nil
 	}
 
-	return false, fmt.Errorf("failed to check file existence: %w", err)
+	// Set err so recordOpDuration logs the failure, then wrap it for the caller.
+	err = fmt.Errorf("failed to check file existence: %w", err)
+
+	return false, err
 }
 
 // Save uploads r to the GCS bucket and returns the object name.
@@ -232,6 +235,7 @@ func (storage *GCSStorage) Save(
 	}
 
 	if err = storage.Client.Upload(ctx, storage.objectName(fileID), meta, r); err != nil {
+		// Set err so recordOpDuration logs the failure, then wrap it for the caller.
 		err = fmt.Errorf("failed to upload file to GCS: %w", err)
 
 		return "", err
