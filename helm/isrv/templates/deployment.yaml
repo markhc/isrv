@@ -1,0 +1,161 @@
+{{- include "isrv.validateValues" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "isrv.fullname" . }}
+  labels:
+    {{- include "isrv.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  {{- if .Values.strategy }}
+  strategy:
+    {{- toYaml .Values.strategy | nindent 4 }}
+  {{- else if .Values.persistence.enabled }}
+  {{- /* A ReadWriteOnce volume cannot attach to old and new pod at once. */}}
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "isrv.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include "isrv.configFile" . | sha256sum }}
+        {{- if include "isrv.createSecret" . }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.metrics.podAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ include "isrv.containerPort" . | quote }}
+        prometheus.io/path: "/metrics"
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "isrv.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "isrv.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ include "isrv.containerPort" . }}
+              protocol: TCP
+          {{- if or (include "isrv.createSecret" .) .Values.secrets.existingSecret .Values.extraEnvFrom }}
+          envFrom:
+            {{- if or (include "isrv.createSecret" .) .Values.secrets.existingSecret }}
+            - secretRef:
+                name: {{ include "isrv.secretName" . }}
+            {{- end }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if or .Values.storage.gcsCredentials.existingSecret .Values.encryption.existingSecret .Values.extraEnv }}
+          env:
+            {{- if .Values.storage.gcsCredentials.existingSecret }}
+            - name: ISRV_STORAGE_CREDENTIALS_FILE
+              value: /etc/isrv/gcs/{{ .Values.storage.gcsCredentials.key }}
+            {{- end }}
+            {{- if .Values.encryption.existingSecret }}
+            - name: ISRV_ENCRYPTION_IDENTITY_FILE
+              value: /etc/isrv/encryption/{{ .Values.encryption.key }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.storage.gcsCredentials.existingSecret }}
+            - name: gcs-credentials
+              mountPath: /etc/isrv/gcs
+              readOnly: true
+            {{- end }}
+            {{- if .Values.encryption.existingSecret }}
+            - name: encryption-identity
+              mountPath: /etc/isrv/encryption
+              readOnly: true
+            {{- end }}
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "isrv.fullname" . }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "isrv.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.storage.gcsCredentials.existingSecret }}
+        - name: gcs-credentials
+          secret:
+            secretName: {{ .Values.storage.gcsCredentials.existingSecret }}
+        {{- end }}
+        {{- if .Values.encryption.existingSecret }}
+        - name: encryption-identity
+          secret:
+            secretName: {{ .Values.encryption.existingSecret }}
+        {{- end }}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

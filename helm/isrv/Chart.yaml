@@ -1,0 +1,18 @@
+apiVersion: v2
+name: isrv
+description: A self-hosted, open source, and privacy-respecting file sharing service.
+type: application
+version: 0.1.0
+appVersion: "1.4.0"
+
+home: https://github.com/markhc/isrv
+sources:
+  - https://github.com/markhc/isrv
+keywords:
+  - file-sharing
+  - upload
+  - privacy
+
+maintainers:
+  - name: markhc
+    email: themarkhc@gmail.com

@@ -1,0 +1,59 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} has been deployed.
+
+Application URL:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "isrv.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch its status with: kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "isrv.fullname" . }}
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "isrv.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "isrv.fullname" . }} 8080:{{ .Values.service.port }}
+  echo http://127.0.0.1:8080
+{{- end }}
+
+{{- $localStorage := eq .Values.storage.type "local" }}
+{{- $sqlite := eq (dig "database" "type" "sqlite" .Values.config) "sqlite" }}
+{{- if and (not .Values.persistence.enabled) (or $localStorage $sqlite) }}
+
+WARNING: persistence is disabled while using
+{{- if $localStorage }} local storage{{ end }}{{ if and $localStorage $sqlite }} and{{ end }}
+{{- if $sqlite }} SQLite{{ end }}. Uploaded files and metadata live on an
+emptyDir and are LOST whenever the pod restarts. Set persistence.enabled=true,
+or switch to s3/gcs storage and postgres.
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+NOTE: isrv serves Prometheus metrics at /metrics on its only HTTP port, so
+the endpoint is reachable through your ingress. If it should stay private,
+block the /metrics path at your ingress controller (see the `ingress` comment
+in values.yaml).
+
+TIP: set config.security.trustedProxies to your ingress controller's pod/CIDR
+ranges so rate limiting and logging see real client IPs.
+{{- end }}
+
+{{- if and (not .Values.secrets.existingSecret) (or .Values.secrets.adminPassword .Values.storage.secretKey .Values.secrets.databasePassword .Values.secrets.encryptionIdentity) }}
+
+NOTE: credentials were passed as inline Helm values and stored in a
+chart-managed Secret. For production, prefer creating the Secret out of band
+and referencing it with secrets.existingSecret.
+{{- end }}
+
+{{- if dig "encryption" "enabled" false .Values.config }}
+
+NOTE: encryption at rest is enabled. Make sure an identity is provided via
+secrets.encryptionIdentity, encryption.existingSecret, or an
+ISRV_ENCRYPTION_IDENTITY key in secrets.existingSecret — and back it up:
+losing the identity makes all encrypted files unrecoverable.
+{{- end }}
