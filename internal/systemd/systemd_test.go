@@ -3,6 +3,7 @@ package systemd_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,6 +50,78 @@ func testOptions(t *testing.T) (systemd.Options, *recorder) {
 		SourceBinary: src,
 		Run:          rec.run,
 	}, rec
+}
+
+func TestDefaultOptions(t *testing.T) {
+	opts, err := systemd.DefaultOptions()
+	require.NoError(t, err)
+
+	assert.Equal(t, "/usr/local/bin/isrv", opts.BinaryPath)
+	assert.Equal(t, "/etc/systemd/system/isrv.service", opts.UnitPath)
+	assert.Equal(t, "/etc/isrv", opts.ConfigDir)
+	assert.Equal(t, "/etc/isrv/config.yaml", opts.ConfigPath)
+	assert.Equal(t, "/etc/isrv/isrv.env", opts.EnvFilePath)
+	assert.Equal(t, "/var/lib/isrv", opts.StateDir)
+	assert.NotEmpty(t, opts.SourceBinary, "SourceBinary should be the running executable")
+	require.NotNil(t, opts.Run, "Run seam should default to the real command runner")
+}
+
+// TestDefaultOptionsRun exercises the default Run seam (runCommand) without
+// touching systemctl: it runs harmless commands and asserts success/error.
+func TestDefaultOptionsRun(t *testing.T) {
+	opts, err := systemd.DefaultOptions()
+	require.NoError(t, err)
+
+	t.Run("successful command returns nil", func(t *testing.T) {
+		assert.NoError(t, opts.Run("true"))
+	})
+
+	t.Run("missing command returns error", func(t *testing.T) {
+		assert.Error(t, opts.Run("isrv-no-such-command-xyz"))
+	})
+}
+
+func TestDetect(t *testing.T) {
+	err := systemd.Detect()
+
+	switch {
+	case runtime.GOOS != "linux":
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Linux")
+	case os.Geteuid() != 0:
+		// Non-root on Linux: fails either because systemd is absent or because
+		// the caller is not root. Both are legitimate non-nil outcomes.
+		require.Error(t, err)
+	default:
+		// Root on a systemd host: Detect may succeed; nothing to assert safely.
+		t.Skip("running as root; Detect outcome depends on host systemd state")
+	}
+}
+
+func TestInstallFailsWhenSourceBinaryMissing(t *testing.T) {
+	opts, rec := testOptions(t)
+	opts.SourceBinary = filepath.Join(t.TempDir(), "does-not-exist")
+	require.NoError(t, os.MkdirAll(filepath.Dir(opts.UnitPath), 0o755))
+
+	err := systemd.Install(opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stat source binary")
+	// The failure happens before any systemctl call.
+	assert.Empty(t, rec.calls)
+}
+
+func TestInstallPropagatesSystemctlFailure(t *testing.T) {
+	opts, rec := testOptions(t)
+	rec.fail = map[string]error{
+		"systemctl daemon-reload": assert.AnError,
+	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(opts.UnitPath), 0o755))
+
+	err := systemd.Install(opts)
+	require.ErrorIs(t, err, assert.AnError)
+	assert.Contains(t, err.Error(), "systemctl daemon-reload")
+	// Aborts on the first failing systemctl call.
+	assert.Equal(t, []string{"systemctl daemon-reload"}, rec.calls)
 }
 
 func TestInstall(t *testing.T) {
