@@ -209,7 +209,12 @@ func Uninstall(opts Options, purge bool) error {
 	}
 
 	if purge {
-		for _, dir := range []string{opts.ConfigDir, opts.StateDir} {
+		// DynamicUser=yes makes systemd store StateDirectory=isrv under
+		// /var/lib/private/isrv and symlink StateDir to it. Removing StateDir
+		// only drops the symlink, so delete the private backing dir too or the
+		// uploads and database survive the purge.
+		backingDir := filepath.Join(filepath.Dir(opts.StateDir), "private", filepath.Base(opts.StateDir))
+		for _, dir := range []string{opts.ConfigDir, opts.StateDir, backingDir} {
 			if err := os.RemoveAll(dir); err != nil {
 				return fmt.Errorf("purge %s: %w", dir, err)
 			}
