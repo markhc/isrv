@@ -174,7 +174,7 @@ func TestUninstallPurge(t *testing.T) {
 	assert.NoDirExists(t, opts.StateDir)
 }
 
-func TestUninstallToleratesDisableFailure(t *testing.T) {
+func TestUninstallPropagatesDisableFailure(t *testing.T) {
 	opts, rec := testOptions(t)
 	rec.fail = map[string]error{
 		"systemctl disable --now isrv.service": assert.AnError,
@@ -182,7 +182,10 @@ func TestUninstallToleratesDisableFailure(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(opts.UnitPath), 0o755))
 	require.NoError(t, os.WriteFile(opts.UnitPath, []byte("[Unit]\n"), 0o644))
 
-	require.NoError(t, systemd.Uninstall(opts, false))
+	err := systemd.Uninstall(opts, false)
+	require.ErrorIs(t, err, assert.AnError)
 
-	assert.NoFileExists(t, opts.UnitPath)
+	// The unit file is left in place so a retry can complete the teardown.
+	assert.FileExists(t, opts.UnitPath)
+	assert.Equal(t, []string{"systemctl disable --now isrv.service"}, rec.calls)
 }
