@@ -173,7 +173,7 @@ cleanup:
 encryption:
   # encrypt new uploads
   enabled: false
-  # age X25519 identity (AGE-SECRET-KEY-1...). Generate one with 'isrv --gen-encryption-key'. 
+  # age X25519 identity (AGE-SECRET-KEY-1...). Generate one with 'isrv gen-encryption-key'. 
   # Prefer using identityFile to avoid storing the secret in plaintext in the config file.
   identity: ""
   # path to a file containing the identity, in age-keygen output format.

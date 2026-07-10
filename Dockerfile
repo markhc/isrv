@@ -72,4 +72,4 @@ RUN mkdir -p /config && \
 USER isrv
 
 # Disable supervisor in the docker build as auto-restart can be handled by the container environment
-CMD ["/app/isrv", "--disable-supervisor"]
+CMD ["/app/isrv", "serve"]
