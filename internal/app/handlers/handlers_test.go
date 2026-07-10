@@ -3,11 +3,9 @@ package handlers_test
 import (
 	"bytes"
 	"context"
-	"embed"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -15,10 +13,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"text/template"
+	"testing/fstest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/app/auth"
 	"github.com/markhc/isrv/internal/app/handlers"
 	"github.com/markhc/isrv/internal/database"
 	dbmocks "github.com/markhc/isrv/internal/database/mocks"
@@ -32,9 +31,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:embed testdata/templates
-var testTemplatesFS embed.FS
-
 func TestMain(m *testing.M) {
 	logging.InitializeNop()
 	os.Exit(m.Run())
@@ -43,13 +39,6 @@ func TestMain(m *testing.M) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-func loadTemplates(t *testing.T) *template.Template {
-	t.Helper()
-	tmpl, err := template.New("").ParseFS(testTemplatesFS, "testdata/templates/*.tmpl")
-	require.NoError(t, err)
-	return tmpl
-}
 
 func defaultConfig() *models.Configuration {
 	return &models.Configuration{
@@ -97,36 +86,6 @@ func bodyString(t *testing.T, resp *http.Response) string {
 }
 
 // ---------------------------------------------------------------------------
-// NotFound
-// ---------------------------------------------------------------------------
-
-func Test_NotFound(t *testing.T) {
-	app := newApp()
-	app.Use(handlers.NotFound(loadTemplates(t), defaultConfig()))
-
-	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/nonexistent", nil))
-	defer resp.Body.Close()
-
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
-}
-
-// ---------------------------------------------------------------------------
-// Index
-// ---------------------------------------------------------------------------
-
-func Test_Index(t *testing.T) {
-	app := newApp()
-	app.Get("/", handlers.Index(loadTemplates(t), defaultConfig()))
-
-	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/", nil))
-	defer resp.Body.Close()
-
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
-}
-
-// ---------------------------------------------------------------------------
 // Favicon
 // ---------------------------------------------------------------------------
 
@@ -143,24 +102,6 @@ func Test_Favicon(t *testing.T) {
 	assert.Equal(t, "image/png", resp.Header.Get("Content-Type"))
 	assert.NotEmpty(t, resp.Header.Get("Cache-Control"))
 	assert.Equal(t, string(faviconBytes), body)
-}
-
-// ---------------------------------------------------------------------------
-// Static
-// ---------------------------------------------------------------------------
-
-func Test_Static(t *testing.T) {
-	staticDir, err := fs.Sub(testTemplatesFS, "testdata")
-	require.NoError(t, err)
-
-	app := newApp()
-	app.Get("/static/*", handlers.Static(staticDir))
-
-	t.Run("path traversal blocked", func(t *testing.T) {
-		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/static/../webserver.go", nil))
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	})
 }
 
 // ---------------------------------------------------------------------------
@@ -750,4 +691,433 @@ func Test_Expire(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+
+func Test_Healthz(t *testing.T) {
+	app := newApp()
+	app.Get("/healthz", handlers.Healthz())
+
+	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	body := bodyString(t, resp)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "application/json")
+	assert.Contains(t, body, `"status":"ok"`)
+}
+
+func Test_Readyz(t *testing.T) {
+	tests := []struct {
+		name       string
+		dbErr      error
+		storErr    error
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "all healthy returns 200",
+			wantStatus: http.StatusOK,
+			wantBody:   `"status":"ok"`,
+		},
+		{
+			name:       "database down returns 503",
+			dbErr:      errors.New("db unreachable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   "db unreachable",
+		},
+		{
+			name:       "storage down returns 503",
+			storErr:    errors.New("bucket unreachable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   "bucket unreachable",
+		},
+		{
+			name:       "both down returns 503",
+			dbErr:      errors.New("db unreachable"),
+			storErr:    errors.New("bucket unreachable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   `"status":"unavailable"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := dbmocks.NewMockDatabase(t)
+			stor := newMockStorage(t)
+			db.EXPECT().Ping(mock.Anything).Return(tt.dbErr)
+			stor.EXPECT().HealthCheck(mock.Anything).Return(tt.storErr)
+
+			app := newApp()
+			app.Get("/readyz", handlers.Readyz(db, stor))
+
+			resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+			body := bodyString(t, resp)
+
+			assert.Equal(t, tt.wantStatus, resp.StatusCode)
+			assert.Contains(t, body, tt.wantBody)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Static (success + not-found)
+// ---------------------------------------------------------------------------
+
+func Test_Static_Serve(t *testing.T) {
+	staticDir := fstest.MapFS{
+		"assets/app.js": {Data: []byte("console.log('hi')")},
+	}
+
+	app := newApp()
+	app.Get("/static/*", handlers.Static(staticDir))
+
+	t.Run("serves existing file", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/static/assets/app.js", nil))
+		body := bodyString(t, resp)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "console.log('hi')", body)
+		assert.NotEmpty(t, resp.Header.Get("Cache-Control"))
+		assert.Contains(t, resp.Header.Get("Content-Type"), "javascript")
+	})
+
+	t.Run("missing file returns 404", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/static/assets/missing.js", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// SPA
+// ---------------------------------------------------------------------------
+
+func Test_SPA(t *testing.T) {
+	distFS := fstest.MapFS{
+		"index.html":    {Data: []byte("<html><head></head><body>app</body></html>")},
+		"assets/app.js": {Data: []byte("console.log('spa')")},
+	}
+	cfg := models.FrontendConfig{}
+
+	app := newApp()
+	app.Use("/*", handlers.SPA(distFS, cfg))
+
+	t.Run("root serves index with injected config", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/", nil))
+		body := bodyString(t, resp)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
+		assert.Contains(t, body, "window.__ISRV_CONFIG__")
+	})
+
+	t.Run("serves existing asset", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
+		body := bodyString(t, resp)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "console.log('spa')", body)
+		assert.NotEmpty(t, resp.Header.Get("Cache-Control"))
+	})
+
+	t.Run("unknown path falls back to index", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/some/client/route", nil))
+		body := bodyString(t, resp)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, body, "app")
+	})
+
+	t.Run("path traversal blocked", func(t *testing.T) {
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/%2e%2e/secret", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+}
+
+func Test_SPA_FrontendNotBuilt(t *testing.T) {
+	// No index.html present -> placeholder handler.
+	distFS := fstest.MapFS{}
+
+	app := newApp()
+	app.Use("/*", handlers.SPA(distFS, models.FrontendConfig{}))
+
+	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := bodyString(t, resp)
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Contains(t, body, "frontend not built")
+}
+
+// ---------------------------------------------------------------------------
+// AdminLogout
+// ---------------------------------------------------------------------------
+
+func Test_AdminLogout_ClearsCookie(t *testing.T) {
+	app := newApp()
+	app.Post("/admin/logout", handlers.AdminLogout())
+
+	resp := doTest(t, app, httptest.NewRequest(http.MethodPost, "/admin/logout", nil))
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+	var cookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.CookieName {
+			cookie = c
+		}
+	}
+	require.NotNil(t, cookie, "logout must emit the session cookie")
+	assert.Empty(t, cookie.Value, "logout must clear the cookie value")
+	// The cookie is expired: either an explicit past Expires or MaxAge<=0.
+	expired := (!cookie.Expires.IsZero() && cookie.Expires.Before(time.Now())) || cookie.MaxAge < 0
+	assert.True(t, expired, "logout must expire the cookie")
+}
+
+// ---------------------------------------------------------------------------
+// Admin list/delete error branches
+// ---------------------------------------------------------------------------
+
+func Test_AdminListFiles_DBError(t *testing.T) {
+	db := dbmocks.NewMockDatabase(t)
+	db.EXPECT().ListFiles(mock.Anything, mock.Anything).Return(nil, 0, errors.New("db down"))
+
+	app := newApp()
+	app.Get("/files", handlers.AdminListFiles(db))
+
+	resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/files", nil))
+	body := bodyString(t, resp)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Contains(t, body, "failed to list files")
+}
+
+func Test_AdminDeleteFile_Branches(t *testing.T) {
+	t.Run("lookup error returns 500", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		st := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, "id").Return(nil, errors.New("db down"))
+
+		app := newApp()
+		app.Delete("/files/:id", handlers.AdminDeleteFile(db, st))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodDelete, "/files/id", nil))
+		body := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, body, "internal server error")
+	})
+
+	t.Run("delete failure returns 500", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		st := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, "id").Return(&models.File{ID: "id"}, nil)
+		st.EXPECT().DeleteFile(mock.Anything, "id").Return(errors.New("disk full"))
+
+		app := newApp()
+		app.Delete("/files/:id", handlers.AdminDeleteFile(db, st))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodDelete, "/files/id", nil))
+		body := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.Contains(t, body, "failed to delete file")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Download edge branches (serveStream / serveEncrypted / Download)
+// ---------------------------------------------------------------------------
+
+func Test_Download_EdgeCases(t *testing.T) {
+	t.Run("file not found returns 404", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, "missing").Return(nil, database.ErrFileNotFound)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/missing", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("database error returns 500", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, "id").Return(nil, database.ErrDatabase)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/id", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("presigned URL redirects", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := &models.File{ID: "id", ContentType: "image/png"}
+		db.EXPECT().GetFile(mock.Anything, "id").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "id").Return(nil)
+		stor.EXPECT().PresignedURL(mock.Anything, file).Return("https://cdn.example/file", true, nil)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/id", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusFound, resp.StatusCode)
+		assert.Equal(t, "https://cdn.example/file", resp.Header.Get("Location"))
+	})
+
+	t.Run("presigned URL error returns 500", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := &models.File{ID: "id"}
+		db.EXPECT().GetFile(mock.Anything, "id").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "id").Return(nil)
+		stor.EXPECT().PresignedURL(mock.Anything, file).Return("", false, errors.New("sign failed"))
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/id", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("stream object not found returns 404", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := &models.File{ID: "id"}
+		db.EXPECT().GetFile(mock.Anything, "id").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "id").Return(nil)
+		stor.EXPECT().PresignedURL(mock.Anything, file).Return("", false, nil)
+		stor.EXPECT().Open(mock.Anything, "id", mock.Anything).Return(nil, storage.ErrObjectNotFound)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/id", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("stream invalid range returns 416", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := &models.File{ID: "id"}
+		db.EXPECT().GetFile(mock.Anything, "id").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "id").Return(nil)
+		stor.EXPECT().PresignedURL(mock.Anything, file).Return("", false, nil)
+		stor.EXPECT().Open(mock.Anything, "id", mock.MatchedBy(func(r *storage.ByteRange) bool {
+			return r != nil && r.Start == 100 && r.End == 200
+		})).Return(nil, storage.ErrInvalidRange)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		r := httptest.NewRequest(http.MethodGet, "/d/id", nil)
+		r.Header.Set("Range", "bytes=100-200")
+		resp := doTest(t, app, r)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	})
+
+	t.Run("stream open error returns 500", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := &models.File{ID: "id"}
+		db.EXPECT().GetFile(mock.Anything, "id").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "id").Return(nil)
+		stor.EXPECT().PresignedURL(mock.Anything, file).Return("", false, nil)
+		stor.EXPECT().Open(mock.Anything, "id", mock.Anything).Return(nil, errors.New("io error"))
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/id", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("partial content returns 206 and uses object content-type", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		// Empty file.ContentType exercises the obj.ContentType fallback.
+		file := &models.File{ID: "id", ContentType: ""}
+		db.EXPECT().GetFile(mock.Anything, "id").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "id").Return(nil)
+		stor.EXPECT().PresignedURL(mock.Anything, file).Return("", false, nil)
+		stor.EXPECT().Open(mock.Anything, "id", mock.Anything).Return(&storage.Object{
+			Body:         io.NopCloser(bytes.NewReader([]byte("PART"))),
+			Size:         10,
+			Length:       4,
+			ContentType:  "text/plain",
+			Partial:      true,
+			ContentRange: "bytes 0-3/10",
+		}, nil)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		r := httptest.NewRequest(http.MethodGet, "/d/id", nil)
+		r.Header.Set("Range", "bytes=0-3")
+		resp := doTest(t, app, r)
+		body := bodyString(t, resp)
+
+		assert.Equal(t, http.StatusPartialContent, resp.StatusCode)
+		assert.Equal(t, "PART", body)
+		assert.Equal(t, "bytes 0-3/10", resp.Header.Get("Content-Range"))
+		assert.Equal(t, "bytes", resp.Header.Get("Accept-Ranges"))
+		assert.Contains(t, resp.Header.Get("Content-Type"), "text/plain")
+	})
+}
+
+func Test_Download_Encrypted_EdgeCases(t *testing.T) {
+	enc := newEncManager(t)
+
+	encFile := func() *models.File {
+		return &models.File{
+			ID:                "enc",
+			Name:              "s.txt",
+			Size:              10,
+			EncryptionVersion: encryption.VersionAgeV1,
+		}
+	}
+
+	t.Run("encrypted object not found returns 404", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := encFile()
+		db.EXPECT().GetFile(mock.Anything, "enc").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "enc").Return(nil)
+		stor.EXPECT().Open(mock.Anything, "enc", (*storage.ByteRange)(nil)).Return(nil, storage.ErrObjectNotFound)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, enc))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/enc", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("encrypted open error returns 500", func(t *testing.T) {
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		file := encFile()
+		db.EXPECT().GetFile(mock.Anything, "enc").Return(file, nil)
+		db.EXPECT().OnFileDownload(mock.Anything, "enc").Return(nil)
+		stor.EXPECT().Open(mock.Anything, "enc", (*storage.ByteRange)(nil)).Return(nil, errors.New("io error"))
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, enc))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/enc", nil))
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
 }

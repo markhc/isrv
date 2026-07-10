@@ -48,6 +48,29 @@ func Test_NewLocalStorage(t *testing.T) {
 	})
 }
 
+func Test_LocalStorage_HealthCheck(t *testing.T) {
+	t.Run("healthy when base path is a directory", func(t *testing.T) {
+		ls := &LocalStorage{BasePath: t.TempDir()}
+		assert.NoError(t, ls.HealthCheck(context.Background()))
+	})
+
+	t.Run("unhealthy when base path does not exist", func(t *testing.T) {
+		ls := &LocalStorage{BasePath: filepath.Join(t.TempDir(), "missing")}
+		err := ls.HealthCheck(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "stat base path")
+	})
+
+	t.Run("unhealthy when base path is a file", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "file")
+		require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+		ls := &LocalStorage{BasePath: file}
+		err := ls.HealthCheck(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is not a directory")
+	})
+}
+
 func Test_LocalStorage_FileExists(t *testing.T) {
 	// Setup
 	tempDir := t.TempDir()
@@ -284,4 +307,38 @@ func Test_LocalStorage_PresignedURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok)
 	assert.Empty(t, url)
+}
+
+func Test_resolveRange(t *testing.T) {
+	tests := []struct {
+		name      string
+		brange    ByteRange
+		size      int64
+		wantStart int64
+		wantEnd   int64
+		wantErr   bool
+	}{
+		{name: "zero-size object is unsatisfiable", brange: ByteRange{Start: 0, End: 0}, size: 0, wantErr: true},
+		{name: "suffix within size", brange: ByteRange{Suffix: 5}, size: 17, wantStart: 12, wantEnd: 16},
+		{name: "suffix larger than size clamps to whole object", brange: ByteRange{Suffix: 100}, size: 17, wantStart: 0, wantEnd: 16},
+		{name: "bounded range", brange: ByteRange{Start: 0, End: 4}, size: 17, wantStart: 0, wantEnd: 4},
+		{name: "open-ended range clamps to eof", brange: ByteRange{Start: 6, End: -1}, size: 17, wantStart: 6, wantEnd: 16},
+		{name: "end beyond eof clamps to eof", brange: ByteRange{Start: 2, End: 999}, size: 17, wantStart: 2, wantEnd: 16},
+		{name: "start beyond eof is invalid", brange: ByteRange{Start: 100, End: -1}, size: 17, wantErr: true},
+		{name: "negative start is invalid", brange: ByteRange{Start: -1, End: 4}, size: 17, wantErr: true},
+		{name: "end before start is invalid", brange: ByteRange{Start: 5, End: 3}, size: 17, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end, err := resolveRange(&tt.brange, tt.size)
+			if tt.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidRange)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStart, start)
+			assert.Equal(t, tt.wantEnd, end)
+		})
+	}
 }
