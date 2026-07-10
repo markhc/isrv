@@ -191,9 +191,7 @@ func Uninstall(opts Options, purge bool) error {
 
 	if _, err := os.Stat(opts.UnitPath); err == nil {
 		if err := opts.Run("systemctl", "disable", "--now", unitName); err != nil {
-			// Keep going: removing the unit file is still the right outcome
-			// even if the unit was already stopped or in a failed state.
-			logf("warning: systemctl disable --now: %v", err)
+			return fmt.Errorf("systemctl disable --now %s: %w", unitName, err)
 		}
 
 		if err := os.Remove(opts.UnitPath); err != nil {
@@ -204,8 +202,10 @@ func Uninstall(opts Options, purge bool) error {
 			return fmt.Errorf("systemctl daemon-reload: %w", err)
 		}
 		logf("removed %s", opts.UnitPath)
-	} else {
+	} else if errors.Is(err, fs.ErrNotExist) {
 		logf("no unit file at %s; nothing to disable", opts.UnitPath)
+	} else {
+		return fmt.Errorf("stat unit file %s: %w", opts.UnitPath, err)
 	}
 
 	if purge {
