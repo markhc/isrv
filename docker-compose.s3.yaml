@@ -33,7 +33,6 @@ services:
       - ./config.yaml:/config/config.yaml
       # Mount the data directory for the sqlite database
       - ./data:/data:rw
-    command: ["./isrv", "--disable-supervisor"]
     depends_on:
       createbuckets:
         condition: service_completed_successfully

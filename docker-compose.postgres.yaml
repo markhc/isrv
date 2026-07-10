@@ -29,7 +29,6 @@ services:
       - ./config.yaml:/config/config.yaml
       # Mount the data directory for uploads
       - ./data:/data:rw
-    command: ["./isrv", "--disable-supervisor"]
     depends_on:
       postgres:
         condition: service_healthy

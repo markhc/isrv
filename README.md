@@ -45,6 +45,15 @@ chmod +x isrv-linux-amd64
 sudo mv isrv-linux-amd64 /usr/local/bin/isrv
 ```
 
+To run isrv as a system service (auto-start on boot, restart on failure), the
+binary can install itself as a systemd unit:
+
+```bash
+sudo isrv install
+```
+
+See [docs/systemd.md](docs/systemd.md) for details, upgrades, and removal.
+
 ### Docker
 
 - Create a `docker-compose.yaml` file (you can use the project's [docker-compose.yaml](docker-compose.yaml) as base)
@@ -75,13 +84,16 @@ Running the server is as easy as starting the binary.
 
 ```bash
 # Generates a default configuration file on $HOME/.config/isrv/config.yaml
-isrv --makeconf
+isrv makeconf
 
 # Starts the webserver (will load config file if it exists)
 isrv
 
 # Starts the webserver with a specific config file
-isrv -c config.yaml
+isrv serve -c config.yaml
+
+# Installs and starts isrv as a systemd service (see docs/systemd.md)
+sudo isrv install
 ```
 
 If no config file is provided the application will look for one in standard places and, if none can be found, default values will be used.

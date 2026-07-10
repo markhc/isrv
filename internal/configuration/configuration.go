@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -234,7 +235,7 @@ func verifyEncryptionConfig(enc *models.EncryptionConfiguration, storageConfig *
 
 	if enc.Enabled && !enc.HasKey() {
 		panic("Invalid configuration: encryption.enabled requires identity or identityFile; " +
-			"generate one with 'isrv --gen-encryption-key'")
+			"generate one with 'isrv gen-encryption-key'")
 	}
 
 	// Identity parsing/reading is deferred to encryption.NewManager: the file
@@ -292,23 +293,28 @@ func getDefaultConfig() models.Configuration {
 	return defaultConfigStruct
 }
 
+// WriteDefaultConfig writes the embedded default configuration to the given
+// path, creating any missing parent directories.
+func WriteDefaultConfig(configPath string) error {
+	if defaultConfig == "" {
+		return errors.New("default configuration is not embedded in the binary")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, []byte(defaultConfig), 0o644); err != nil {
+		return fmt.Errorf("write default config: %w", err)
+	}
+
+	return nil
+}
+
 // GenerateDefaultConfig writes the embedded default configuration to the
 // given path, creating any missing parent directories. It panics on failure.
 func GenerateDefaultConfig(configPath string) {
-	if defaultConfig == "" {
-		panic("Default configuration is not embedded in the binary")
-	}
-
-	dir := filepath.Dir(configPath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, 0o755)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	err := os.WriteFile(configPath, []byte(defaultConfig), 0o644)
-	if err != nil {
+	if err := WriteDefaultConfig(configPath); err != nil {
 		panic(err)
 	}
 }
