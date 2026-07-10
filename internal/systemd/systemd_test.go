@@ -168,10 +168,19 @@ func TestUninstallPurge(t *testing.T) {
 	require.NoError(t, os.MkdirAll(opts.StateDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(opts.StateDir, "isrv.db"), []byte("db"), 0o644))
 
+	// DynamicUser=yes backs StateDir with /var/lib/private/isrv; seed a file
+	// there to confirm purge follows into the private backing directory.
+	backingDir := filepath.Join(filepath.Dir(opts.StateDir), "private", filepath.Base(opts.StateDir))
+	require.NoError(t, os.MkdirAll(backingDir, 0o755))
+	backingDB := filepath.Join(backingDir, "isrv.db")
+	require.NoError(t, os.WriteFile(backingDB, []byte("db"), 0o644))
+
 	require.NoError(t, systemd.Uninstall(opts, true))
 
 	assert.NoDirExists(t, opts.ConfigDir)
 	assert.NoDirExists(t, opts.StateDir)
+	assert.NoFileExists(t, backingDB)
+	assert.NoDirExists(t, backingDir)
 }
 
 func TestUninstallPropagatesDisableFailure(t *testing.T) {
