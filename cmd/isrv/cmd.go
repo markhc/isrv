@@ -156,7 +156,11 @@ func printVersion() {
 }
 
 func writeUserConfig() error {
-	path := filepath.Join(os.Getenv("HOME"), ".config", "isrv", "config.yaml")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	path := filepath.Join(home, ".config", "isrv", "config.yaml")
 	if err := configuration.WriteDefaultConfig(path); err != nil {
 		return fmt.Errorf("generate config: %w", err)
 	}
