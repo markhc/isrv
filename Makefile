@@ -124,6 +124,19 @@ test-race:
 	@echo "Running tests with race detection..."
 	go test -v -race ./...
 
+# Run frontend unit/integration tests (Vitest)
+.PHONY: test-frontend
+test-frontend:
+	@echo "Running frontend tests..."
+	cd web && $(PNPM) test
+
+# Run frontend visual regression tests (Playwright; needs browsers installed:
+# cd web && pnpm exec playwright install chromium)
+.PHONY: test-frontend-e2e
+test-frontend-e2e:
+	@echo "Running frontend visual regression tests..."
+	cd web && $(PNPM) test:e2e
+
 # Format code
 .PHONY: fmt
 fmt:

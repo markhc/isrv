@@ -43,3 +43,10 @@ config.yaml
 data/
 upload_data/
 docs/notepad/**
+
+# Scratch/report area for agents and tooling
+.tmp/
+
+# Playwright artifacts (baselines in web/e2e/*-snapshots/ ARE committed)
+web/test-results/
+web/playwright-report/
