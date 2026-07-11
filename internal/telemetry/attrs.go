@@ -18,6 +18,8 @@ const (
 	AttrOperation = "operation"
 	// AttrDecision labels a rate-limit decision: allow, throttle, block, blocked.
 	AttrDecision = "decision"
+	// AttrLimiter labels which rate limiter an observation belongs to: http or login.
+	AttrLimiter = "limiter"
 )
 
 // Conventional values for AttrResult.

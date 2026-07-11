@@ -180,5 +180,20 @@ encryption:
   # Set either identity or identityFile, not both.
   identityFile: ""
 
+# cluster coordination for multi-replica deployments
+# - if disabled, isrv behaves as a single replica with zero external dependencies. 
+# - if enabled, replicas coordinate shared state (e.g. rate limiting) through Redis.
+# Enabling the cluster mode requires database.type=postgres, a redis address, 
+# an ipHashSecret and, if admin credentials are set, an explicit admin.sessionSecret.
+cluster:
+  enabled: false
+  # shared secret to hash ips with so they dont live in redis in plaintext.
+  ipHashSecret: "generate-a-long-random-string-blah"
+  redis:
+    # host:port of the Redis server; required when cluster is enabled
+    address: ""
+    password: ""
+    db: 0
+
 # enable debug mode for more verbose logging and additional information in responses
 debug: false

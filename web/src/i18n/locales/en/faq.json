@@ -23,7 +23,7 @@
     },
     {
       "question": "Are there any file type restrictions?",
-      "answer": "No. {{config.serverName}} accepts any file type — images, documents, archives, binaries... whatever you want to upload."
+      "answer": "No. {{config.serverName}} accepts any file type: images, documents, archives, binaries... whatever you want to upload."
     },
     {
       "question": "Is there a file size limit?",

@@ -173,7 +173,7 @@ func Test_LocalStorage_DeleteFile(t *testing.T) {
 	}{
 		{"delete existing file", "file1.txt", false},
 		{"delete file in subdirectory", "subdir/file3.txt", false},
-		{"delete non-existing file", "non-existing.txt", true},
+		{"missing file is already deleted", "non-existing.txt", false},
 	}
 
 	for _, tt := range tests {

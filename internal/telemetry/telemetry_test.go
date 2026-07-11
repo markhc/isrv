@@ -119,13 +119,15 @@ func TestSetup(t *testing.T) {
 	t.Run("RegisterBlocklistGauge is observed", func(t *testing.T) {
 		const want = 42
 
-		require.NoError(t, RegisterBlocklistGauge(func() int64 { return want }))
+		require.NoError(t, RegisterBlocklistGauge("http", func() int64 { return want }))
 
 		status, body := scrape(t)
 		assert.Equal(t, http.StatusOK, status)
 		assert.True(t,
 			strings.Contains(body, "isrv_ratelimit_blocklist_size"),
 			"scrape body should expose the blocklist gauge:\n%s", body)
+		assert.Contains(t, body, `limiter="http"`,
+			"gauge should carry the limiter attribute")
 		assert.Contains(t, body, "42")
 	})
 

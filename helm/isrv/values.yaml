@@ -1,0 +1,343 @@
+# Default values for isrv.
+#
+# isrv reads its configuration from /config/config.yaml (rendered from the
+# `config` block below) and from ISRV_* environment variables, which override
+# file values. Keys omitted from `config` fall back to the application's
+# built-in defaults, so only set what you want to change.
+
+replicaCount: 1
+
+image:
+  repository: markhc/isrv
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# -- File storage backend — the heart of a file sharing service, so it lives
+# in its own block together with its credentials. The chart merges the
+# non-secret settings into the rendered config file; do NOT set `storage`
+# inside `config` (the chart refuses to render if you do).
+storage:
+  # Supported types: local, s3, gcs.
+  # local mode with more than 1 replica requires a ReadWriteMany volume (e.g. NFS, CephFS, ...).
+  # recommended for production: s3 or gcs with a multi-replica deployment.
+  type: s3
+  # For local storage this is the upload directory — leave empty to use
+  # /data/uploads, on the volume managed by `persistence` below. For s3/gcs
+  # it is the key prefix within the bucket (empty = bucket root).
+  basePath: ""
+  # Bucket name for s3/gcs.
+  bucketName: ""
+  # AWS region (s3). Required unless `endpoint` is set.
+  region: ""
+  # Custom endpoint for S3-compatible stores (MinIO, ...). Leave empty for AWS.
+  endpoint: ""
+  # Stream downloads through the server instead of redirecting to pre-signed
+  # URLs (s3/gcs). Uses server bandwidth but hides the storage endpoint.
+  proxyDownloads: false
+
+  # S3 credentials (type: s3). These go into the chart-managed Secret and are
+  # injected as env vars — never into the ConfigMap. For production, prefer
+  # secrets.existingSecret with ISRV_STORAGE_ACCESS_KEY /
+  # ISRV_STORAGE_SECRET_KEY keys and leave these empty.
+  accessKey: ""
+  secretKey: ""
+
+  # GCS credentials (type: gcs): an existing Secret containing a service
+  # account JSON key, mounted read-only and wired to isrv via
+  # ISRV_STORAGE_CREDENTIALS_FILE.
+  # On GKE, prefer Workload Identity: leave this empty and annotate the
+  # service account (serviceAccount.annotations) with
+  # iam.gke.io/gcp-service-account instead — no key file needed.
+  gcsCredentials:
+    existingSecret: ""
+    key: credentials.json
+
+# -- isrv application configuration, rendered into a ConfigMap and mounted at
+# /config/config.yaml. See the full reference:
+# https://github.com/markhc/isrv/blob/master/internal/configuration/default_config.yaml
+#
+# Storage is configured via the top-level `storage` block above, not here.
+# Do NOT put secrets here (admin credentials, database password, encryption
+# identity) — the chart refuses to render if you do. Use the `secrets` block instead.
+config:
+  # Public URL used when generating links in responses. Leave empty to derive
+  # it from the first ingress host (https:// when that host has TLS
+  # configured, http:// otherwise).
+  serverUrl: ""
+
+  # serverName: iSRV
+  # maxFileSizeMb: 512
+  # minAgeDays: 30
+  # maxAgeDays: 365
+
+  database:
+    # Supported types: sqlite, postgres.
+    # sqlite lives on the /data volume — enable `persistence` below or the
+    # database is lost when the pod restarts.
+    type: sqlite
+    dsn: "file:/data/isrv.db?cache=shared&mode=rwc"
+    # For postgres, unset dsn (set it to "") and configure instead:
+    # host: ""
+    # port: 5432
+    # user: ""
+    # dbName: ""
+    # ...and put the password in `secrets.databasePassword`.
+
+  security: {}
+    # When running behind an ingress controller, list its pod/CIDR ranges here
+    # so isrv derives the real client IP for rate limiting and logging:
+    # trustedProxies:
+    #   - "10.0.0.0/8"
+
+  # Privacy: `anonymize: true` keeps only warnings/errors and strips
+  # identifying fields (IP, user agent, path, filename) from logs.
+  logging: {}
+    # anonymize: true
+    # logIps: false
+
+  # encryption:
+  #   enabled: true   # requires secrets.encryptionIdentity or encryption.existingSecret
+
+# -- Sensitive settings, injected as ISRV_* environment variables from a
+# Kubernetes Secret. Prefer `existingSecret` so secrets never live in Helm
+# values or release manifests.
+secrets:
+  # Name of an existing Secret whose keys are ISRV_* environment variable
+  # names (e.g. ISRV_ADMIN_PASSWORD, ISRV_STORAGE_SECRET_KEY,
+  # ISRV_DATABASE_PASSWORD, ISRV_ENCRYPTION_IDENTITY). Loaded with envFrom.
+  # When set, the inline values below are ignored.
+  existingSecret: ""
+
+  # Inline values — the chart creates a Secret from them. Convenient for dev,
+  # but they end up in your values files and Helm release history.
+  # Admin panel is enabled only when both username and password are set.
+  adminUsername: ""
+  adminPassword: ""
+  # HMAC key for admin session cookies; set a stable value so sessions
+  # survive pod restarts.
+  adminSessionSecret: ""
+  # PostgreSQL password (database.type: postgres).
+  databasePassword: ""
+  # age identity (AGE-SECRET-KEY-1...) for encryption at rest. Generate with:
+  # docker run --rm markhc/isrv --gen-encryption-key
+  encryptionIdentity: ""
+
+# -- Encryption identity provided as a mounted file instead of an env var
+# (used instead of secrets.encryptionIdentity). The Secret key must contain
+# the identity in age-keygen output format.
+encryption:
+  existingSecret: ""
+  key: identity
+
+# -- Multi-replica coordination. Required for more than one replica
+# (replicaCount > 1, or autoscaling with maxReplicas > 1): replicas share
+# rate-limit state through an external Redis, and the chart refuses to render
+# a multi-replica deployment while this is disabled.
+#
+# Running multiple replicas also requires postgres (config.database.type),
+# s3/gcs storage (storage.type), and a stable admin session secret
+# (secrets.adminSessionSecret) when admin credentials are set — the chart and
+# the application both enforce this.
+#
+# The chart deliberately does not bundle a Redis. Point `redis.address` at an
+# external one: a managed service, or your own deployment (e.g. the
+# bitnami/redis or ot-container-kit/redis-operator charts).
+cluster:
+  enabled: false
+  # Shared HMAC key for hashing client IPs before they are used as Redis
+  # keys. Every replica must use the SAME value or rate-limit state silently
+  # fragments back into per-replica state. Goes into the chart-managed
+  # Secret — for production, prefer secrets.existingSecret with an
+  # ISRV_CLUSTER_IP_HASH_SECRET key and leave this empty.
+  ipHashSecret: ""
+  redis:
+    # host:port of the external Redis. Required when cluster.enabled.
+    address: ""
+    # Redis password (empty = no auth). Goes into the chart-managed Secret —
+    # for production, prefer secrets.existingSecret with an
+    # ISRV_CLUSTER_REDIS_PASSWORD key and leave this empty.
+    password: ""
+    db: 0
+
+# -- Persistent storage for local uploads and/or the SQLite database, mounted
+# at /data. When disabled, /data is an emptyDir and its contents are LOST on
+# pod restart — fine only when using s3/gcs storage together with postgres.
+persistence:
+  enabled: false
+  # Use an existing PersistentVolumeClaim instead of creating one.
+  existingClaim: ""
+  # storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+# Deployment update strategy. Defaults to Recreate when persistence is
+# enabled (a ReadWriteOnce volume cannot be attached to two pods during a
+# rolling update), RollingUpdate otherwise.
+strategy: {}
+
+serviceAccount:
+  create: true
+  # isrv does not talk to the Kubernetes API, so no token is mounted.
+  automount: false
+  # e.g. for GKE Workload Identity:
+  #   iam.gke.io/gcp-service-account: isrv@my-project.iam.gserviceaccount.com
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# Restrictive defaults matching the image (non-root, UID/GID 1000). All
+# writable paths (/data, /tmp) are mounted volumes.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# isrv does not terminate TLS itself — terminate it at the ingress.
+# NOTE: isrv serves /metrics on its only HTTP port, so it is reachable
+# through the ingress too. Block it at your controller if it should stay
+# private, e.g. for ingress-nginx:
+#   nginx.ingress.kubernetes.io/server-snippet: |
+#     location = /metrics { return 404; }
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: chart-example-tls
+    #   hosts:
+    #     - chart-example.local
+
+# -- Prometheus metrics. isrv always exposes Prometheus metrics at /metrics
+# on the main HTTP port; these options only configure scraping.
+metrics:
+  # Add prometheus.io/scrape annotations to the pod (annotation-based
+  # discovery).
+  podAnnotations: false
+  # ServiceMonitor for the Prometheus Operator.
+  serviceMonitor:
+    enabled: false
+    # Namespace to create the ServiceMonitor in (defaults to release
+    # namespace).
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: ""
+    # Extra labels, e.g. to match your Prometheus serviceMonitorSelector.
+    labels: {}
+    relabelings: []
+    metricRelabelings: []
+
+# -- Restrict pod traffic with a NetworkPolicy (requires a CNI that enforces
+# them). Ingress to the HTTP port is allowed from `ingressFrom` peers, or
+# from everywhere when the list is empty. Egress is not restricted (isrv may
+# need DNS, S3/GCS, postgres).
+networkPolicy:
+  enabled: false
+  # e.g. only the ingress controller and Prometheus:
+  # ingressFrom:
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         kubernetes.io/metadata.name: ingress-nginx
+  ingressFrom: []
+
+resources: {}
+  # Memory usage scales with upload concurrency and maxFileSizeMb.
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # limits:
+  #   memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+# /readyz verifies database and storage backend connectivity.
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# isrv drains in-flight requests for up to 30s on SIGTERM.
+terminationGracePeriodSeconds: 60
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
+# Additional environment variables for the isrv container.
+extraEnv: []
+  # - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+  #   value: http://otel-collector:4318
+
+# Additional envFrom sources (ConfigMaps/Secrets) for the isrv container.
+extraEnvFrom: []
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# -- Extra Kubernetes manifests deployed alongside the chart. Entries may be
+# plain YAML objects or strings; both are rendered through tpl, so Helm
+# templating works inside them.
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: '{{ include "isrv.fullname" . }}-extra'
+  #   data:
+  #     key: value
+  # - |
+  #   apiVersion: v1
+  #   kind: Secret
+  #   metadata:
+  #     name: {{ include "isrv.fullname" . }}-extra-secret
+  #   stringData:
+  #     foo: bar

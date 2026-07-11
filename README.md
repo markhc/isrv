@@ -150,6 +150,11 @@ which endpoints to keep private.
 For running isrv as a Tor onion service, along with the no-logs `anonymize`
 logging mode and the privacy trade-offs involved, see [docs/tor.md](docs/tor.md).
 
+### Multi-replica / high availability
+
+isrv defaults to a single replica with zero external dependencies. To run
+several replicas behind a load balancer (e.g Kubernetes), see [docs/multi-replica.md](docs/multi-replica.md).
+
 ### Observability endpoints
 
 When the server is running, the following infrastructure endpoints are always available:

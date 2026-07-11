@@ -77,7 +77,7 @@ func NewApplication(
 
 		Middleware: AppMiddleware{
 			RequireToken: middleware.RequireToken(db),
-			RateLimit:    middleware.RateLimit(ctx, config.Security.RateLimit),
+			RateLimit:    middleware.RateLimit(ctx, config.Security.RateLimit, config.Cluster),
 		},
 	}
 
@@ -91,7 +91,7 @@ func NewApplication(
 		a.AdminListHandler = handlers.AdminListFiles(db)
 		a.AdminDeleteHandler = handlers.AdminDeleteFile(db, stor)
 		a.Middleware.RequireAdmin = middleware.RequireAdmin(config.Admin)
-		a.Middleware.AdminRateLimit = middleware.RateLimitFailedLogins(ctx, config.Admin)
+		a.Middleware.AdminRateLimit = middleware.RateLimitFailedLogins(ctx, config.Admin, config.Cluster)
 	}
 
 	if config.FaviconURL != "" && faviconData != nil {
@@ -158,7 +158,17 @@ func StartApp(ctx context.Context) error {
 		}
 	}()
 
-	cleanupService := cleanup.NewService(dbInstance, storageClient, config.Cleanup.Enabled, config.Cleanup.Interval)
+	// In cluster mode, cleanup cycles are serialized across replicas via an
+	// optional locking capability of the database backend. Startup validation
+	// guarantees Postgres (the only implementer) in cluster mode;
+	var cycleLocker cleanup.CycleLocker
+	if config.Cluster.Enabled {
+		cycleLocker, _ = dbInstance.(cleanup.CycleLocker)
+	}
+
+	cleanupService := cleanup.NewService(
+		dbInstance, storageClient, config.Cleanup.Enabled, config.Cleanup.Interval, cycleLocker,
+	)
 	cancelCleanup := cleanupService.Start(ctx)
 
 	faviconData, err := favicon.FetchFavicon(ctx, config.FaviconURL)

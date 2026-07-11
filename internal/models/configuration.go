@@ -104,6 +104,25 @@ func (e EncryptionConfiguration) HasKey() bool {
 	return e.Identity != "" || e.IdentityFile != ""
 }
 
+// ClusterRedisConfiguration holds the Redis connection settings used for
+// cross-replica coordination.
+type ClusterRedisConfiguration struct {
+	Address  string `yaml:"address"` // host:port; required when cluster is enabled.
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
+}
+
+// ClusterConfiguration holds coordination settings for multi-replica
+// deployments. Disabled means single-replica behavior with zero external
+// dependencies.
+type ClusterConfiguration struct {
+	Enabled bool `yaml:"enabled"`
+	// IPHashSecret is the shared HMAC key for hashing client IPs before they
+	// are used as Redis keys. Every replica must use the same value.
+	IPHashSecret string                    `yaml:"ipHashSecret"`
+	Redis        ClusterRedisConfiguration `yaml:"redis"`
+}
+
 type RateLimitExceededAction string
 
 const (
@@ -151,6 +170,7 @@ type Configuration struct {
 	Logging              LoggingConfiguration    `yaml:"logging"`
 	Cleanup              CleanupConfiguration    `yaml:"cleanup"`
 	Encryption           EncryptionConfiguration `yaml:"encryption"`
+	Cluster              ClusterConfiguration    `yaml:"cluster"`
 	DebugMode            bool                    `yaml:"debug"`
 }
 

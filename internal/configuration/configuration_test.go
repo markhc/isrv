@@ -333,6 +333,24 @@ func TestApplyEnvOverrides(t *testing.T) {
 			},
 		},
 		{
+			name: "cluster configuration overrides",
+			envVars: map[string]string{
+				"ISRV_CLUSTER_ENABLED":        "true",
+				"ISRV_CLUSTER_IP_HASH_SECRET": "shared-hmac-key",
+				"ISRV_CLUSTER_REDIS_ADDRESS":  "redis.example.com:6379",
+				"ISRV_CLUSTER_REDIS_PASSWORD": "redis-secret",
+				"ISRV_CLUSTER_REDIS_DB":       "2",
+			},
+			expectPanic: false,
+			expected: func(t *testing.T, cfg models.Configuration) {
+				assert.True(t, cfg.Cluster.Enabled)
+				assert.Equal(t, "shared-hmac-key", cfg.Cluster.IPHashSecret)
+				assert.Equal(t, "redis.example.com:6379", cfg.Cluster.Redis.Address)
+				assert.Equal(t, "redis-secret", cfg.Cluster.Redis.Password)
+				assert.Equal(t, 2, cfg.Cluster.Redis.DB)
+			},
+		},
+		{
 			name: "logging level override parses named level",
 			envVars: map[string]string{
 				"ISRV_LOGGING_LEVEL": "warn",
@@ -435,6 +453,20 @@ func TestConfigFileExists(t *testing.T) {
 			assert.Equal(t, tt.expectedPath, path)
 		})
 	}
+}
+
+// validClusterConfig returns a configuration that passes every cluster-mode
+// validation rule: postgres database, Redis address, ipHashSecret and non-local
+// storage. Tests flip individual fields back to invalid values.
+func validClusterConfig() models.Configuration {
+	cfg := getDefaultConfig()
+	cfg.Cluster.Enabled = true
+	cfg.Cluster.IPHashSecret = "shared-hmac-key"
+	cfg.Cluster.Redis.Address = "redis.example.com:6379"
+	cfg.Database.Type = "postgres"
+	cfg.Storage.Type = "s3"
+	cfg.Storage.Region = "us-east-1"
+	return cfg
 }
 
 func TestVerifyConfiguration(t *testing.T) {
@@ -646,6 +678,94 @@ func TestVerifyConfiguration(t *testing.T) {
 			expectPanic:  true,
 			panicMessage: "Invalid configuration: storage.upload_concurrency cannot be negative",
 		},
+		{
+			name: "cluster disabled skips cluster validation entirely",
+			setupFunc: func() models.Configuration {
+				// Defaults use sqlite, no Redis and no ipHashSecret: all of
+				// these are fine as long as the cluster mode stays off.
+				cfg := getDefaultConfig()
+				cfg.Cluster.Enabled = false
+				return cfg
+			},
+			expectPanic: false,
+		},
+		{
+			name: "valid cluster configuration",
+			setupFunc: func() models.Configuration {
+				return validClusterConfig()
+			},
+			expectPanic: false,
+		},
+		{
+			name: "cluster enabled requires postgres database",
+			setupFunc: func() models.Configuration {
+				cfg := validClusterConfig()
+				cfg.Database.Type = "sqlite"
+				return cfg
+			},
+			expectPanic: true,
+			panicMessage: "Invalid configuration: cluster.enabled requires database.type 'postgres'; " +
+				"SQLite cannot be safely written to by multiple replicas",
+		},
+		{
+			name: "cluster enabled with admin credentials requires explicit session secret",
+			setupFunc: func() models.Configuration {
+				cfg := validClusterConfig()
+				cfg.Admin.Username = "admin"
+				cfg.Admin.Password = "hunter2"
+				cfg.Admin.SessionSecret = ""
+				return cfg
+			},
+			expectPanic: true,
+			panicMessage: "Invalid configuration: cluster.enabled requires an explicit admin.sessionSecret when " +
+				"admin credentials are set; auto-generated per-replica secrets break admin sessions across replicas",
+		},
+		{
+			name: "cluster enabled with admin credentials and explicit session secret",
+			setupFunc: func() models.Configuration {
+				cfg := validClusterConfig()
+				cfg.Admin.Username = "admin"
+				cfg.Admin.Password = "hunter2"
+				cfg.Admin.SessionSecret = "stable-shared-secret"
+				return cfg
+			},
+			expectPanic: false,
+			postCheck: func(t *testing.T, cfg models.Configuration) {
+				// The explicit secret must survive verifyAdminConfig untouched.
+				assert.Equal(t, "stable-shared-secret", cfg.Admin.SessionSecret)
+			},
+		},
+		{
+			name: "cluster enabled requires redis address",
+			setupFunc: func() models.Configuration {
+				cfg := validClusterConfig()
+				cfg.Cluster.Redis.Address = ""
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: cluster.redis.address is required when cluster.enabled is true",
+		},
+		{
+			name: "cluster enabled requires ip hash secret",
+			setupFunc: func() models.Configuration {
+				cfg := validClusterConfig()
+				cfg.Cluster.IPHashSecret = ""
+				return cfg
+			},
+			expectPanic: true,
+			panicMessage: "Invalid configuration: cluster.ipHashSecret is required when cluster.enabled is true; " +
+				"every replica must be configured with the same value",
+		},
+		{
+			name: "cluster enabled with local storage warns but does not fail",
+			setupFunc: func() models.Configuration {
+				cfg := validClusterConfig()
+				cfg.Storage.Type = "local"
+				cfg.Storage.BasePath = "/shared/volume/"
+				return cfg
+			},
+			expectPanic: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -699,6 +819,13 @@ func TestGetDefaultConfig(t *testing.T) {
 	assert.True(t, cfg.Logging.LogIps)
 	assert.Equal(t, zap.InfoLevel, cfg.Logging.Level)
 	assert.Equal(t, "./isrv.log", cfg.Logging.Path)
+
+	// Verify cluster defaults
+	assert.False(t, cfg.Cluster.Enabled)
+	assert.Equal(t, "generate-a-long-random-string-blah", cfg.Cluster.IPHashSecret)
+	assert.Equal(t, "", cfg.Cluster.Redis.Address)
+	assert.Equal(t, "", cfg.Cluster.Redis.Password)
+	assert.Equal(t, 0, cfg.Cluster.Redis.DB)
 }
 
 func TestGenerateDefaultConfig(t *testing.T) {
