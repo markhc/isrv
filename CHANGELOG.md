@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/markhc/isrv/compare/v1.5.0...v1.5.1) (2026-07-11)
+
+
+### Bug Fixes
+
+* **ci:** set CI=true; copy pnpm-workspace to docker build ([#62](https://github.com/markhc/isrv/issues/62)) ([55edeeb](https://github.com/markhc/isrv/commit/55edeeb3a42acc87696daae5a6f52987a2245b6e))
+
 ## [1.5.0](https://github.com/markhc/isrv/compare/v1.4.0...v1.5.0) (2026-07-11)
 
 
