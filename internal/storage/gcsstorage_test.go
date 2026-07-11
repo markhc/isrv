@@ -26,6 +26,33 @@ func newTestGCSStorage(bucket storage.GCSBucket) *storage.GCSStorage {
 	}
 }
 
+func Test_GCSStorage_HealthCheck(t *testing.T) {
+	tests := []struct {
+		name    string
+		pingErr error
+		wantErr bool
+	}{
+		{name: "bucket reachable"},
+		{name: "bucket unreachable", pingErr: errors.New("permission denied"), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bucket := mocks.NewMockGCSBucket(t)
+			bucket.EXPECT().Ping(mock.Anything, "files").Return(tt.pingErr)
+
+			s := newTestGCSStorage(bucket)
+			err := s.HealthCheck(context.Background())
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_GCSStorage_FileExists(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -360,33 +387,6 @@ func Test_GCSStorage_PresignedURL(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.wantURL, gotURL)
 				assert.Equal(t, tt.wantOK, gotOK)
-			}
-		})
-	}
-}
-
-func Test_GCSStorage_HealthCheck(t *testing.T) {
-	tests := []struct {
-		name    string
-		pingErr error
-		wantErr bool
-	}{
-		{name: "bucket reachable"},
-		{name: "bucket unreachable", pingErr: errors.New("permission denied"), wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			bucket := mocks.NewMockGCSBucket(t)
-			bucket.EXPECT().Ping(mock.Anything, "files").Return(tt.pingErr)
-
-			s := newTestGCSStorage(bucket)
-			err := s.HealthCheck(context.Background())
-
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
 			}
 		})
 	}

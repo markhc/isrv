@@ -37,7 +37,6 @@ func SetupRoutes(app *fiber.App, a *Application) {
 		},
 	}))
 
-	// 404 handler — registered via the app's NotFound mechanism below.
 	if a.FaviconHandler != nil {
 		app.Get("/favicon.:format", a.FaviconHandler)
 	}

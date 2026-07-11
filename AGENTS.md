@@ -33,6 +33,7 @@ internal/
   encryption/               # age-based encryption-at-rest for stored files
   logging/                  # zap-based structured logging; supports an anonymize (no-logs) mode
   telemetry/                # OpenTelemetry metrics only (no tracing/OTLP logs) + Prometheus exporter
+  systemd/                  # isrv install/uninstall: systemd unit generation + service management
   models/                   # Shared model types
 web/
   src/                      # React frontend source
@@ -93,6 +94,7 @@ isrv runs on Linux/Unix-like hosts primarily but should be portable.
 - **Build info injection**: Version, commit, date are injected via ldflags at build time (see Makefile). Do not read them from files at runtime.
 - **GCS + S3 SDK**: There is a native GCS backend (`storage.type: gcs`); prefer it over GCS's S3-compatibility layer. If GCS must be used through the AWS S3 SDK anyway, set `Region: "auto"` and `UsePathStyle: true`.
 - **Manual rollback in Upload**: If storage succeeds but DB insert fails, the handler manually deletes the stored file. Keep this pattern consistent if adding new upload logic.
+- **Crash-only process**: There is deliberately no in-process supervisor (suture was removed); on failure the process exits non-zero and the external supervisor (systemd via `isrv install`, docker `restart:`, k8s) restarts it. Do not add in-process restart/retry loops around `app.StartApp`; see docs/notepad/systemd-install-plan.md.
 - **Telemetry is metrics-only by design**: traces and OTLP log export are deliberately not configured (request-level records would carry client IPs, filenames, timestamps). Do not reintroduce tracing without revisiting that privacy tradeoff.
 - **Admin login rate limiting**: `RateLimitFailedLogins` (internal/app/middleware/ratelimit.go) only spends budget on requests the handler rejects with 401; successful/non-credential attempts are free. Keep this pattern if touching admin auth.
 - **Logging anonymize mode**: `logging.anonymize: true` drops successful request logs and omits identifying fields (IP, user agent, path, filename, host); it supersedes `logIps`. New log call sites should go through the existing helpers rather than logging identifying fields directly.

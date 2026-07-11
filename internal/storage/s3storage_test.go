@@ -36,6 +36,35 @@ func newTestS3Storage(
 	}
 }
 
+func Test_S3Storage_HealthCheck(t *testing.T) {
+	tests := []struct {
+		name    string
+		headErr error
+		wantErr bool
+	}{
+		{name: "healthy bucket", headErr: nil},
+		{name: "unreachable bucket", headErr: errors.New("connection refused"), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := mocks.NewMockS3Client(t)
+			client.EXPECT().HeadBucket(mock.Anything, mock.MatchedBy(func(p *s3.HeadBucketInput) bool {
+				return p.Bucket != nil && *p.Bucket == "test-bucket"
+			})).Return(nil, tt.headErr)
+
+			s := newTestS3Storage(client, nil, nil)
+			err := s.HealthCheck(context.Background())
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_S3Storage_FileExists(t *testing.T) {
 	tests := []struct {
 		name       string
