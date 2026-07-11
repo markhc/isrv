@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/markhc/isrv/compare/v1.4.0...v1.5.0) (2026-07-11)
+
+
+### Features
+
+* add cluster mode ([#61](https://github.com/markhc/isrv/issues/61)) ([bbd2c76](https://github.com/markhc/isrv/commit/bbd2c76327aacea1bc2d8cb934c1fa7dfea253f9))
+* **process:** enable systemd service ([#54](https://github.com/markhc/isrv/issues/54)) ([8a47c83](https://github.com/markhc/isrv/commit/8a47c83f4dacf5cccac82e9d9c94a42b626e93e7))
+
 ## [1.4.0](https://github.com/markhc/isrv/compare/v1.3.0...v1.4.0) (2026-07-08)
 
 
