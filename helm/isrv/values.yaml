@@ -23,9 +23,9 @@ fullnameOverride: ""
 # inside `config` (the chart refuses to render if you do).
 storage:
   # Supported types: local, s3, gcs.
-  # `local` stores files on the pod filesystem — enable `persistence` below
-  # or uploads are lost when the pod restarts.
-  type: local
+  # local mode with more than 1 replica requires a ReadWriteMany volume (e.g. NFS, CephFS, ...).
+  # recommended for production: s3 or gcs with a multi-replica deployment.
+  type: s3
   # For local storage this is the upload directory — leave empty to use
   # /data/uploads, on the volume managed by `persistence` below. For s3/gcs
   # it is the key prefix within the bucket (empty = bucket root).
