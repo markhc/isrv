@@ -5,7 +5,7 @@ remains the default: one replica, SQLite, local storage, everything
 in-process. Most deployments should stay there.
 
 To be able to scale horizontally across multiple replicas, we need cross-process
-state sinchronization mechanisms. This is where cluster mode comes in.
+state synchronization mechanisms. This is where cluster mode comes in.
 
 ## Cluster mode requirements
 
