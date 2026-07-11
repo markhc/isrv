@@ -154,6 +154,7 @@ jobs:
           build-args: |
             BUILD_VERSION=${{ needs.release-please.outputs.tag_name }}
             BUILD_COMMIT=${{ github.sha }}
+            CI=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
