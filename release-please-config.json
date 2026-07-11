@@ -6,6 +6,12 @@
       "draft": true,
       "force-tag-creation": true,
       "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "helm/isrv/Chart.yaml"
+        }
+      ],
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },
