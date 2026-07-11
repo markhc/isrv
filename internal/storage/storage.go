@@ -83,7 +83,9 @@ type Storage interface {
 	// storage path or key. opts carries optional object metadata; a Size of
 	// -1 signals an unknown-length reader (e.g. an encrypting stream).
 	Save(ctx context.Context, fileID string, r io.Reader, opts SaveOptions) (string, error)
-	// DeleteFile removes the file with the given ID from storage.
+	// DeleteFile removes the file with the given ID from storage. Deletes are
+	// idempotent: deleting an object that does not exist is not an error, so
+	// concurrent or repeated deletes of the same object all succeed.
 	DeleteFile(ctx context.Context, fileID string) error
 	// Open returns a reader over the stored object's bytes. When brange is
 	// non-nil the reader is positioned to serve only that byte range and the

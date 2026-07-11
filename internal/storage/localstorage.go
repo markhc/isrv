@@ -112,13 +112,21 @@ func (ls *LocalStorage) Save(
 	return filePath, nil
 }
 
-// DeleteFile removes the file with the given ID from disk.
+// DeleteFile removes the file with the given ID from disk. A missing file is
+// treated as already deleted, per the Storage.DeleteFile contract.
 func (ls *LocalStorage) DeleteFile(ctx context.Context, fileID string) error {
 	var err error
 	defer recordOpDuration(ctx, BackendLocal, OperationDelete, time.Now(), &err)
 
 	filePath := filepath.Join(ls.BasePath, fileID)
 	err = os.Remove(filePath)
+
+	if os.IsNotExist(err) {
+		err = nil
+
+		return nil
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to delete file: %w", err)
 	}
