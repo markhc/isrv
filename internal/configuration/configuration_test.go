@@ -822,7 +822,7 @@ func TestGetDefaultConfig(t *testing.T) {
 
 	// Verify cluster defaults
 	assert.False(t, cfg.Cluster.Enabled)
-	assert.Equal(t, "", cfg.Cluster.IPHashSecret)
+	assert.Equal(t, "generate-a-long-random-string-blah", cfg.Cluster.IPHashSecret)
 	assert.Equal(t, "", cfg.Cluster.Redis.Address)
 	assert.Equal(t, "", cfg.Cluster.Redis.Password)
 	assert.Equal(t, 0, cfg.Cluster.Redis.DB)
