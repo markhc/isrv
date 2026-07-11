@@ -245,7 +245,7 @@ func TestRateLimit_ExponentialBackoff(t *testing.T) {
 	c := cfg(60, 1, models.RateLimitActionBlock)
 	c.BlockDuration = base
 
-	rl := newRateLimiter(t.Context(), c, newMemoryLimiterStore(t.Context()))
+	rl := newRateLimiter(t.Context(), c, newMemoryLimiterStore(t.Context()), limiterNamespaceHTTP)
 	store := rl.store.(*memoryLimiterStore)
 
 	var prevUntil time.Time
@@ -267,7 +267,8 @@ func TestRateLimit_ExponentialBackoff(t *testing.T) {
 
 func TestRateLimit_BackoffCappedAtMax(t *testing.T) {
 	const base = time.Millisecond
-	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock), newMemoryLimiterStore(t.Context()))
+	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock), newMemoryLimiterStore(t.Context()),
+		limiterNamespaceHTTP)
 	store := rl.store.(*memoryLimiterStore)
 
 	for range maxBackoffFactor + 10 {
@@ -645,7 +646,7 @@ func (s *failingLimiterStore) IsBlocked(_ context.Context, _ string) (bool, erro
 
 func TestRateLimit_AllowFailsOpenOnStoreError(t *testing.T) {
 	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
-		&failingLimiterStore{err: errStore, allow: false})
+		&failingLimiterStore{err: errStore, allow: false}, limiterNamespaceHTTP)
 
 	assert.True(t, rl.allow(t.Context(), "1.2.3.4"),
 		"a store error must serve the request, not reject it")
@@ -653,7 +654,7 @@ func TestRateLimit_AllowFailsOpenOnStoreError(t *testing.T) {
 
 func TestRateLimit_IsBlockedFailsOpenOnStoreError(t *testing.T) {
 	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
-		&failingLimiterStore{err: errStore, isBlocked: true})
+		&failingLimiterStore{err: errStore, isBlocked: true}, limiterNamespaceHTTP)
 
 	assert.False(t, rl.isBlocked(t.Context(), "1.2.3.4"),
 		"a store error must not report the IP as blocked")
@@ -661,7 +662,7 @@ func TestRateLimit_IsBlockedFailsOpenOnStoreError(t *testing.T) {
 
 func TestRateLimit_BlockSwallowsStoreError(t *testing.T) {
 	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
-		&failingLimiterStore{err: errStore})
+		&failingLimiterStore{err: errStore}, limiterNamespaceHTTP)
 
 	assert.NotPanics(t, func() {
 		rl.block(t.Context(), "1.2.3.4")
@@ -670,7 +671,7 @@ func TestRateLimit_BlockSwallowsStoreError(t *testing.T) {
 
 func TestRateLimit_StoreResultsPropagateWithoutError(t *testing.T) {
 	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
-		&failingLimiterStore{allow: false, isBlocked: true})
+		&failingLimiterStore{allow: false, isBlocked: true}, limiterNamespaceHTTP)
 
 	assert.False(t, rl.allow(t.Context(), "1.2.3.4"), "a denied verdict must pass through unchanged")
 	assert.True(t, rl.isBlocked(t.Context(), "1.2.3.4"), "a blocked verdict must pass through unchanged")

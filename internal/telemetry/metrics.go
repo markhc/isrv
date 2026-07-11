@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -130,11 +131,13 @@ func registerMetrics(meter metric.Meter) error {
 }
 
 // RegisterBlocklistGauge installs an ObservableGauge that reports the current
-// rate-limit blocklist size on every metric collection cycle. The supplied
-// callback is invoked from the metric SDK and must be safe for concurrent use.
+// rate-limit blocklist size on every metric collection cycle, labeled with the
+// limiter it belongs to (AttrLimiter) so multiple limiters produce distinct
+// series. The supplied callback is invoked from the metric SDK and must be
+// safe for concurrent use.
 //
 // It is a no-op if the meter provider has not been registered yet.
-func RegisterBlocklistGauge(observe func() int64) error {
+func RegisterBlocklistGauge(limiter string, observe func() int64) error {
 	meter := otel.Meter(InstrumentationName)
 
 	gauge, err := meter.Int64ObservableGauge(
@@ -146,9 +149,11 @@ func RegisterBlocklistGauge(observe func() int64) error {
 		return fmt.Errorf("register isrv.ratelimit.blocklist.size: %w", err)
 	}
 
+	attrs := metric.WithAttributes(attribute.String(AttrLimiter, limiter))
+
 	if _, err := meter.RegisterCallback(
 		func(_ context.Context, obs metric.Observer) error {
-			obs.ObserveInt64(gauge, observe())
+			obs.ObserveInt64(gauge, observe(), attrs)
 
 			return nil
 		},

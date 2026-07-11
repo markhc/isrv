@@ -37,7 +37,9 @@ type rateLimiter struct {
 	store      LimiterStore
 }
 
-func newRateLimiter(ctx context.Context, config models.RateLimitConfiguration, store LimiterStore) *rateLimiter {
+func newRateLimiter(
+	ctx context.Context, config models.RateLimitConfiguration, store LimiterStore, namespace string,
+) *rateLimiter {
 	rl := &rateLimiter{
 		config:     config,
 		refillRate: rate.Limit(config.RequestsPerMinute) / 60.0,
@@ -47,8 +49,9 @@ func newRateLimiter(ctx context.Context, config models.RateLimitConfiguration, s
 
 	// Both store implementations expose a local blocklist size (the Redis
 	// store reports its fallback's view; see redisLimiterStore.blockListSize).
+	// The namespace attribute keeps each limiter's gauge a distinct series.
 	if sizer, ok := store.(interface{ blockListSize() int64 }); ok {
-		if err := telemetry.RegisterBlocklistGauge(sizer.blockListSize); err != nil {
+		if err := telemetry.RegisterBlocklistGauge(namespace, sizer.blockListSize); err != nil {
 			logging.ErrorCtx(ctx, "failed to register rate-limit blocklist gauge", logging.Error(err))
 		}
 	}
@@ -62,7 +65,7 @@ func newRateLimiter(ctx context.Context, config models.RateLimitConfiguration, s
 func RateLimit(
 	ctx context.Context, config models.RateLimitConfiguration, cluster models.ClusterConfiguration,
 ) fiber.Handler {
-	rl := newRateLimiter(ctx, config, newLimiterStore(ctx, cluster, limiterNamespaceHTTP))
+	rl := newRateLimiter(ctx, config, newLimiterStore(ctx, cluster, limiterNamespaceHTTP), limiterNamespaceHTTP)
 
 	return func(c fiber.Ctx) error {
 		if !config.Enabled || config.RequestsPerMinute <= 0 {
@@ -104,7 +107,7 @@ func RateLimitFailedLogins(
 		Enabled:         true,
 		OnLimitExceeded: models.RateLimitActionBlock,
 		BlockDuration:   config.FailedLoginBlockDuration,
-	}, newLimiterStore(ctx, cluster, limiterNamespaceLogin))
+	}, newLimiterStore(ctx, cluster, limiterNamespaceLogin), limiterNamespaceLogin)
 
 	// Allow up to maxFailedLoginsPerHour failed attempts before blocking.
 	rl.refillRate = rate.Every(time.Hour / time.Duration(config.FailedLoginLimit))
