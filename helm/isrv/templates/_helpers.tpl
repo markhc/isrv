@@ -81,7 +81,7 @@ Whether the chart should create a Secret from inline `secrets` values.
 */}}
 {{- define "isrv.createSecret" -}}
 {{- $s := .Values.secrets -}}
-{{- if and (not $s.existingSecret) (or $s.adminUsername $s.adminPassword $s.adminSessionSecret $s.databasePassword $s.encryptionIdentity .Values.storage.accessKey .Values.storage.secretKey) -}}
+{{- if and (not $s.existingSecret) (or $s.adminUsername $s.adminPassword $s.adminSessionSecret $s.databasePassword $s.encryptionIdentity .Values.storage.accessKey .Values.storage.secretKey .Values.cluster.ipHashSecret .Values.cluster.redis.password) -}}
 true
 {{- end }}
 {{- end }}
@@ -135,14 +135,31 @@ Guard rails, evaluated once from the Deployment template.
 {{- if or (dig "admin" "username" "" $cfg) (dig "admin" "password" "" $cfg) (dig "admin" "sessionSecret" "" $cfg) (dig "database" "password" "" $cfg) (dig "encryption" "identity" "" $cfg) }}
 {{- fail "Credentials must not be set in `config` (admin.*, database.password, encryption.identity): they would be stored in a world-readable ConfigMap. Use the `secrets` block or `secrets.existingSecret` instead." }}
 {{- end }}
+{{- if hasKey $cfg "cluster" }}
+{{- fail "`config.cluster` must not be set: configure cluster mode via the top-level `cluster` block instead (its ipHashSecret would be stored in a world-readable ConfigMap)." }}
+{{- end }}
 {{- $replicas := int .Values.replicaCount }}
 {{- if .Values.autoscaling.enabled }}{{- $replicas = int .Values.autoscaling.maxReplicas }}{{- end }}
 {{- if gt $replicas 1 }}
+{{- if not .Values.cluster.enabled }}
+{{- fail "More than one replica requires cluster mode: without it every pod keeps its own rate-limit state. Set cluster.enabled=true and point cluster.redis.address at an external Redis, or set replicaCount to 1 (and autoscaling.maxReplicas to 1)." }}
+{{- end }}
 {{- if eq .Values.storage.type "local" }}
 {{- fail "storage.type \"local\" does not support more than one replica (each pod would have its own files). Use s3/gcs storage, or set replicaCount to 1 and disable autoscaling." }}
 {{- end }}
 {{- if eq (dig "database" "type" "sqlite" $cfg) "sqlite" }}
 {{- fail "config.database.type \"sqlite\" does not support more than one replica. Use postgres, or set replicaCount to 1 and disable autoscaling." }}
+{{- end }}
+{{- end }}
+{{- if .Values.cluster.enabled }}
+{{- if not .Values.cluster.redis.address }}
+{{- fail "cluster.redis.address is required when cluster.enabled=true (host:port of an external Redis; the chart does not bundle one)." }}
+{{- end }}
+{{- if and (not .Values.cluster.ipHashSecret) (not .Values.secrets.existingSecret) }}
+{{- fail "cluster.ipHashSecret is required when cluster.enabled=true: every replica must hash client IPs with the same key. Set it inline, or provide an ISRV_CLUSTER_IP_HASH_SECRET key via secrets.existingSecret." }}
+{{- end }}
+{{- if and (not .Values.secrets.existingSecret) (or .Values.secrets.adminUsername .Values.secrets.adminPassword) (not .Values.secrets.adminSessionSecret) }}
+{{- fail "cluster mode with admin credentials requires secrets.adminSessionSecret: without a stable session secret each replica mints its own and admin sessions break across pods." }}
 {{- end }}
 {{- end }}
 {{- end }}

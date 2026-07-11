@@ -43,7 +43,17 @@ TIP: set config.security.trustedProxies to your ingress controller's pod/CIDR
 ranges so rate limiting and logging see real client IPs.
 {{- end }}
 
-{{- if and (not .Values.secrets.existingSecret) (or .Values.secrets.adminPassword .Values.storage.secretKey .Values.secrets.databasePassword .Values.secrets.encryptionIdentity) }}
+{{- if .Values.cluster.enabled }}
+
+NOTE: cluster mode is enabled — replicas share rate-limit state through the
+Redis at {{ .Values.cluster.redis.address }}. Multi-replica operation needs
+postgres, s3/gcs storage, that external Redis, the same
+ISRV_CLUSTER_IP_HASH_SECRET on every replica, and a stable admin session
+secret when admin credentials are set. The application refuses to start if
+these are not met.
+{{- end }}
+
+{{- if and (not .Values.secrets.existingSecret) (or .Values.secrets.adminPassword .Values.storage.secretKey .Values.secrets.databasePassword .Values.secrets.encryptionIdentity .Values.cluster.ipHashSecret .Values.cluster.redis.password) }}
 
 NOTE: credentials were passed as inline Helm values and stored in a
 chart-managed Secret. For production, prefer creating the Secret out of band

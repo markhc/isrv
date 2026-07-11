@@ -23,7 +23,7 @@
     },
     {
       "question": "Há restrições de tipo de arquivo?",
-      "answer": "Não. {{config.serverName}} aceita qualquer tipo de arquivo — imagens, documentos, arquivos compactados, binários e muito mais."
+      "answer": "Não. {{config.serverName}} aceita qualquer tipo de arquivo: imagens, documentos, arquivos compactados, binários e muito mais."
     },
     {
       "question": "Há um limite de tamanho de arquivo?",

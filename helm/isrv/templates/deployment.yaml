@@ -74,8 +74,16 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-          {{- if or .Values.storage.gcsCredentials.existingSecret .Values.encryption.existingSecret .Values.extraEnv }}
+          {{- if or .Values.cluster.enabled .Values.storage.gcsCredentials.existingSecret .Values.encryption.existingSecret .Values.extraEnv }}
           env:
+            {{- if .Values.cluster.enabled }}
+            - name: ISRV_CLUSTER_ENABLED
+              value: "true"
+            - name: ISRV_CLUSTER_REDIS_ADDRESS
+              value: {{ .Values.cluster.redis.address | quote }}
+            - name: ISRV_CLUSTER_REDIS_DB
+              value: {{ .Values.cluster.redis.db | quote }}
+            {{- end }}
             {{- if .Values.storage.gcsCredentials.existingSecret }}
             - name: ISRV_STORAGE_CREDENTIALS_FILE
               value: /etc/isrv/gcs/{{ .Values.storage.gcsCredentials.key }}

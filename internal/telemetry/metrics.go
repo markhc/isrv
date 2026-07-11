@@ -25,6 +25,7 @@ var (
 	CleanupFilesProcessed metric.Int64Counter
 	RateLimitDecisions    metric.Int64Counter
 	StorageOpDuration     metric.Float64Histogram
+	ClusterRedisErrors    metric.Int64Counter
 )
 
 // init binds the application metric vars to no-op instruments via the global Meter
@@ -106,6 +107,15 @@ func registerMetrics(meter metric.Meter) error {
 		metric.WithUnit("{decision}"),
 	); err != nil {
 		return fmt.Errorf("register isrv.ratelimit.decisions: %w", err)
+	}
+
+	if ClusterRedisErrors, err = meter.Int64Counter(
+		"isrv.cluster.redis.errors",
+		metric.WithDescription(
+			"Redis coordination failures, by operation; each one is a decision degraded to the memory fallback."),
+		metric.WithUnit("{error}"),
+	); err != nil {
+		return fmt.Errorf("register isrv.cluster.redis.errors: %w", err)
 	}
 
 	if StorageOpDuration, err = meter.Float64Histogram(

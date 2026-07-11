@@ -138,6 +138,13 @@ func applyEnvOverrides() {
 		"ISRV_ENCRYPTION_ENABLED":       "Encryption.Enabled",
 		"ISRV_ENCRYPTION_IDENTITY":      "Encryption.Identity",
 		"ISRV_ENCRYPTION_IDENTITY_FILE": "Encryption.IdentityFile",
+
+		// Cluster coordination for multi-replica deployments.
+		"ISRV_CLUSTER_ENABLED":        "Cluster.Enabled",
+		"ISRV_CLUSTER_IP_HASH_SECRET": "Cluster.IPHashSecret",
+		"ISRV_CLUSTER_REDIS_ADDRESS":  "Cluster.Redis.Address",
+		"ISRV_CLUSTER_REDIS_PASSWORD": "Cluster.Redis.Password",
+		"ISRV_CLUSTER_REDIS_DB":       "Cluster.Redis.DB",
 	}
 
 	for envVar, configField := range mapEnv {
@@ -221,8 +228,48 @@ func verifyConfiguration() {
 	verifyStorageConfig(&config.Storage)
 	verifyCleanupConfig(&config.Cleanup)
 	verifyRateLimitConfig(&config.Security.RateLimit)
+	// Cluster validation must run before verifyAdminConfig: the latter
+	// auto-generates a session secret when empty, which would hide the
+	// missing-secret misconfiguration in cluster mode.
+	verifyClusterConfig(&config.Cluster, &config)
 	verifyAdminConfig(&config.Admin)
 	verifyEncryptionConfig(&config.Encryption, &config.Storage)
+}
+
+// verifyClusterConfig validates the multi-replica coordination settings. When
+// the cluster mode is disabled it does nothing, keeping single-replica
+// behavior untouched.
+func verifyClusterConfig(clusterConfig *models.ClusterConfiguration, cfg *models.Configuration) {
+	if !clusterConfig.Enabled {
+		return
+	}
+
+	if cfg.Database.Type != "postgres" {
+		panic("Invalid configuration: cluster.enabled requires database.type 'postgres'; " +
+			"SQLite cannot be safely written to by multiple replicas")
+	}
+
+	// A per-replica auto-generated session secret would sign cookies that the
+	// other replicas reject, so cluster mode demands an explicit shared one.
+	if cfg.Admin.Enabled() && cfg.Admin.SessionSecret == "" {
+		panic("Invalid configuration: cluster.enabled requires an explicit admin.sessionSecret when " +
+			"admin credentials are set; auto-generated per-replica secrets break admin sessions across replicas")
+	}
+
+	if clusterConfig.Redis.Address == "" {
+		panic("Invalid configuration: cluster.redis.address is required when cluster.enabled is true")
+	}
+
+	if clusterConfig.IPHashSecret == "" {
+		panic("Invalid configuration: cluster.ipHashSecret is required when cluster.enabled is true; " +
+			"every replica must be configured with the same value")
+	}
+
+	if cfg.Storage.Type == "local" {
+		fmt.Fprintln(os.Stderr, "warning: cluster.enabled is true with storage.type 'local'; "+
+			"isrv cannot verify that the volume is shared, so make sure every replica mounts "+
+			"the same storage path or uploads will only exist on the replica that received them")
+	}
 }
 
 // verifyEncryptionConfig validates the server-side encryption settings. It

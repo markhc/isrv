@@ -46,7 +46,6 @@ func Static(staticFilesDir fs.FS) fiber.Handler {
 func SPA(distFS fs.FS, cfg models.FrontendConfig) fiber.Handler {
 	indexHTML, err := fs.ReadFile(distFS, "index.html")
 	if err != nil {
-		// Frontend has not been built yet — serve a minimal placeholder.
 		return func(c fiber.Ctx) error {
 			c.Set(fiber.HeaderContentType, "text/plain; charset=utf-8")
 			return c.Status(fiber.StatusServiceUnavailable).SendString("frontend not built: run 'make frontend'")
@@ -82,7 +81,6 @@ func SPA(distFS fs.FS, cfg models.FrontendConfig) fiber.Handler {
 
 		data, err := fs.ReadFile(distFS, path)
 		if err != nil {
-			// Unknown path — let the SPA router handle it.
 			return serveIndex(c)
 		}
 

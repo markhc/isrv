@@ -134,6 +134,36 @@ encryption:
   existingSecret: ""
   key: identity
 
+# -- Multi-replica coordination. Required for more than one replica
+# (replicaCount > 1, or autoscaling with maxReplicas > 1): replicas share
+# rate-limit state through an external Redis, and the chart refuses to render
+# a multi-replica deployment while this is disabled.
+#
+# Running multiple replicas also requires postgres (config.database.type),
+# s3/gcs storage (storage.type), and a stable admin session secret
+# (secrets.adminSessionSecret) when admin credentials are set — the chart and
+# the application both enforce this.
+#
+# The chart deliberately does not bundle a Redis. Point `redis.address` at an
+# external one: a managed service, or your own deployment (e.g. the
+# bitnami/redis or ot-container-kit/redis-operator charts).
+cluster:
+  enabled: false
+  # Shared HMAC key for hashing client IPs before they are used as Redis
+  # keys. Every replica must use the SAME value or rate-limit state silently
+  # fragments back into per-replica state. Goes into the chart-managed
+  # Secret — for production, prefer secrets.existingSecret with an
+  # ISRV_CLUSTER_IP_HASH_SECRET key and leave this empty.
+  ipHashSecret: ""
+  redis:
+    # host:port of the external Redis. Required when cluster.enabled.
+    address: ""
+    # Redis password (empty = no auth). Goes into the chart-managed Secret —
+    # for production, prefer secrets.existingSecret with an
+    # ISRV_CLUSTER_REDIS_PASSWORD key and leave this empty.
+    password: ""
+    db: 0
+
 # -- Persistent storage for local uploads and/or the SQLite database, mounted
 # at /data. When disabled, /data is an emptyDir and its contents are LOST on
 # pod restart — fine only when using s3/gcs storage together with postgres.

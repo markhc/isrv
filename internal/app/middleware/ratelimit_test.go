@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -49,7 +51,7 @@ func newApp(t *testing.T, c models.RateLimitConfiguration) *fiber.App {
 			Proxies: []string{"0.0.0.0/0"},
 		},
 	})
-	app.Use(RateLimit(t.Context(), c))
+	app.Use(RateLimit(t.Context(), c, models.ClusterConfiguration{}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -243,15 +245,16 @@ func TestRateLimit_ExponentialBackoff(t *testing.T) {
 	c := cfg(60, 1, models.RateLimitActionBlock)
 	c.BlockDuration = base
 
-	rl := newRateLimiter(t.Context(), c)
+	rl := newRateLimiter(t.Context(), c, newMemoryLimiterStore(t.Context()))
+	store := rl.store.(*memoryLimiterStore)
 
 	var prevUntil time.Time
 	for offense := range 5 {
-		rl.blockIP("1.2.3.4", base)
+		require.NoError(t, store.Block(t.Context(), "1.2.3.4", base))
 
-		rl.blockMu.Lock()
-		entry := rl.blockList["1.2.3.4"]
-		rl.blockMu.Unlock()
+		store.blockMu.Lock()
+		entry := store.blockList["1.2.3.4"]
+		store.blockMu.Unlock()
 
 		assert.Equal(t, offense+1, entry.offenses, "offense count should be %d", offense+1)
 		if offense > 0 {
@@ -264,15 +267,16 @@ func TestRateLimit_ExponentialBackoff(t *testing.T) {
 
 func TestRateLimit_BackoffCappedAtMax(t *testing.T) {
 	const base = time.Millisecond
-	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock))
+	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock), newMemoryLimiterStore(t.Context()))
+	store := rl.store.(*memoryLimiterStore)
 
 	for range maxBackoffFactor + 10 {
-		rl.blockIP("2.3.4.5", base)
+		require.NoError(t, store.Block(t.Context(), "2.3.4.5", base))
 	}
 
-	rl.blockMu.Lock()
-	entry := rl.blockList["2.3.4.5"]
-	rl.blockMu.Unlock()
+	store.blockMu.Lock()
+	entry := store.blockList["2.3.4.5"]
+	store.blockMu.Unlock()
 
 	maxDuration := base * time.Duration(1<<maxBackoffFactor)
 	assert.LessOrEqual(t, time.Until(entry.until), maxDuration+50*time.Millisecond,
@@ -413,45 +417,45 @@ func TestRateLimit_Recovery(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRateLimit_CleanupRemovesExpiredVisitors(t *testing.T) {
-	rl := newRateLimiter(t.Context(), cfg(60, 5, models.RateLimitActionThrottle))
+	s := newMemoryLimiterStore(t.Context())
 
 	// inject a visitor with a lastSeen well in the past
-	rl.visitorsMu.Lock()
-	rl.visitors["old.ip"] = &visitorEntry{
+	s.visitorsMu.Lock()
+	s.visitors["old.ip"] = &visitorEntry{
 		limiter:  rate.NewLimiter(1, 1),
 		lastSeen: time.Now().Add(-(visitorTTL + time.Minute)),
 	}
-	rl.visitors["recent.ip"] = &visitorEntry{
+	s.visitors["recent.ip"] = &visitorEntry{
 		limiter:  rate.NewLimiter(1, 1),
 		lastSeen: time.Now(),
 	}
-	rl.visitorsMu.Unlock()
+	s.visitorsMu.Unlock()
 
-	rl.cleanup()
+	s.cleanup()
 
-	rl.visitorsMu.Lock()
-	_, oldExists := rl.visitors["old.ip"]
-	_, recentExists := rl.visitors["recent.ip"]
-	rl.visitorsMu.Unlock()
+	s.visitorsMu.Lock()
+	_, oldExists := s.visitors["old.ip"]
+	_, recentExists := s.visitors["recent.ip"]
+	s.visitorsMu.Unlock()
 
 	assert.False(t, oldExists, "expired visitor should be removed")
 	assert.True(t, recentExists, "recent visitor should be kept")
 }
 
 func TestRateLimit_CleanupRemovesExpiredBlocks(t *testing.T) {
-	rl := newRateLimiter(t.Context(), cfg(60, 5, models.RateLimitActionBlock))
+	s := newMemoryLimiterStore(t.Context())
 
-	rl.blockMu.Lock()
-	rl.blockList["expired.ip"] = blockEntry{until: time.Now().Add(-time.Minute), offenses: 1}
-	rl.blockList["active.ip"] = blockEntry{until: time.Now().Add(time.Minute), offenses: 1}
-	rl.blockMu.Unlock()
+	s.blockMu.Lock()
+	s.blockList["expired.ip"] = blockEntry{until: time.Now().Add(-time.Minute), offenses: 1}
+	s.blockList["active.ip"] = blockEntry{until: time.Now().Add(time.Minute), offenses: 1}
+	s.blockMu.Unlock()
 
-	rl.cleanup()
+	s.cleanup()
 
-	rl.blockMu.Lock()
-	_, expiredExists := rl.blockList["expired.ip"]
-	_, activeExists := rl.blockList["active.ip"]
-	rl.blockMu.Unlock()
+	s.blockMu.Lock()
+	_, expiredExists := s.blockList["expired.ip"]
+	_, activeExists := s.blockList["active.ip"]
+	s.blockMu.Unlock()
 
 	assert.False(t, expiredExists, "expired block should be removed")
 	assert.True(t, activeExists, "active block should be kept")
@@ -479,7 +483,7 @@ func newLoginApp(t *testing.T) *fiber.App {
 		FailedLoginLimit:         5,
 		FailedLoginBlockDuration: 12 * time.Hour,
 	}
-	app.Use(RateLimitFailedLogins(t.Context(), cfg))
+	app.Use(RateLimitFailedLogins(t.Context(), cfg, models.ClusterConfiguration{}))
 	app.Post("/login", func(c fiber.Ctx) error {
 		if c.Get("X-Login") == "fail" {
 			return c.SendStatus(fiber.StatusUnauthorized)
@@ -573,7 +577,7 @@ func TestRateLimitFailedLogins_BlockedRequestSkipsHandler(t *testing.T) {
 		FailedLoginBlockDuration: 12 * time.Hour,
 	}
 
-	app.Use(RateLimitFailedLogins(t.Context(), cfg))
+	app.Use(RateLimitFailedLogins(t.Context(), cfg, models.ClusterConfiguration{}))
 	app.Post("/login", func(c fiber.Ctx) error {
 		calls.Add(1)
 		return c.SendStatus(fiber.StatusUnauthorized)
@@ -602,11 +606,72 @@ func TestRateLimitFailedLogins_HandlerErrorPropagates(t *testing.T) {
 		FailedLoginLimit:         5,
 		FailedLoginBlockDuration: 12 * time.Hour,
 	}
-	app.Use(RateLimitFailedLogins(t.Context(), cfg))
+	app.Use(RateLimitFailedLogins(t.Context(), cfg, models.ClusterConfiguration{}))
 	app.Post("/login", func(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "boom")
 	})
 
 	assert.Equal(t, http.StatusInternalServerError, do(app, loginReq("11.3.0.1", true)),
 		"handler errors must propagate to Fiber's error handler")
+}
+
+// ---------------------------------------------------------------------------
+// Fail-open on store errors
+//
+// Neither concrete store can be made to error (the memory store never errors
+// and the Redis store degrades to its fallback internally), so a hand-written
+// fake drives the err != nil branches
+// ---------------------------------------------------------------------------
+
+var errStore = errors.New("store unavailable")
+
+type failingLimiterStore struct {
+	err       error
+	allow     bool
+	isBlocked bool
+}
+
+func (s *failingLimiterStore) Allow(_ context.Context, _ string, _ float64, _ int) (bool, error) {
+	return s.allow, s.err
+}
+
+func (s *failingLimiterStore) Block(_ context.Context, _ string, _ time.Duration) error {
+	return s.err
+}
+
+func (s *failingLimiterStore) IsBlocked(_ context.Context, _ string) (bool, error) {
+	return s.isBlocked, s.err
+}
+
+func TestRateLimit_AllowFailsOpenOnStoreError(t *testing.T) {
+	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
+		&failingLimiterStore{err: errStore, allow: false})
+
+	assert.True(t, rl.allow(t.Context(), "1.2.3.4"),
+		"a store error must serve the request, not reject it")
+}
+
+func TestRateLimit_IsBlockedFailsOpenOnStoreError(t *testing.T) {
+	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
+		&failingLimiterStore{err: errStore, isBlocked: true})
+
+	assert.False(t, rl.isBlocked(t.Context(), "1.2.3.4"),
+		"a store error must not report the IP as blocked")
+}
+
+func TestRateLimit_BlockSwallowsStoreError(t *testing.T) {
+	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
+		&failingLimiterStore{err: errStore})
+
+	assert.NotPanics(t, func() {
+		rl.block(t.Context(), "1.2.3.4")
+	})
+}
+
+func TestRateLimit_StoreResultsPropagateWithoutError(t *testing.T) {
+	rl := newRateLimiter(t.Context(), cfg(60, 1, models.RateLimitActionBlock),
+		&failingLimiterStore{allow: false, isBlocked: true})
+
+	assert.False(t, rl.allow(t.Context(), "1.2.3.4"), "a denied verdict must pass through unchanged")
+	assert.True(t, rl.isBlocked(t.Context(), "1.2.3.4"), "a blocked verdict must pass through unchanged")
 }

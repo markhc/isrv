@@ -18,11 +18,29 @@ import (
 // background cleanup loop.
 var cleanupDeleteSource = attribute.String(telemetry.AttrSource, "cleanup")
 
+// CycleLocker serializes cleanup cycles across replicas. TryLock attempts to
+// acquire the cluster-wide cleanup lock without blocking: on success it
+// returns acquired=true and a release function that must be called once the
+// cycle finishes; when another replica holds the lock it returns
+// acquired=false with a nil release and a nil error.
+type CycleLocker interface {
+	TryLock(ctx context.Context) (func(), bool, error)
+}
+
+// nopCycleLocker always grants the lock. It preserves single-replica
+// behavior when clustering is disabled.
+type nopCycleLocker struct{}
+
+func (nopCycleLocker) TryLock(context.Context) (func(), bool, error) {
+	return func() {}, true, nil
+}
+
 // Service periodically scans for expired files and removes them from both
 // storage and the database.
 type Service struct {
 	db       database.Database
 	storage  storage.Storage
+	locker   CycleLocker
 	interval time.Duration
 	enabled  bool
 
@@ -30,11 +48,23 @@ type Service struct {
 }
 
 // NewService returns a cleanup Service. When enabled is false, Start is a
-// no-op and the service performs no work.
-func NewService(db database.Database, storage storage.Storage, enabled bool, interval time.Duration) *Service {
+// no-op and the service performs no work. A nil locker means uncoordinated
+// (single-replica) operation: every cycle runs unconditionally.
+func NewService(
+	db database.Database,
+	storage storage.Storage,
+	enabled bool,
+	interval time.Duration,
+	locker CycleLocker,
+) *Service {
+	if locker == nil {
+		locker = nopCycleLocker{}
+	}
+
 	return &Service{
 		db:       db,
 		storage:  storage,
+		locker:   locker,
 		enabled:  enabled,
 		interval: interval,
 	}
@@ -78,9 +108,30 @@ func (s *Service) cleanupLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.performCleanup(ctx)
+			s.runCleanupCycle(ctx)
 		}
 	}
+}
+
+// runCleanupCycle acquires the cluster-wide cycle lock and performs one
+// cleanup pass while holding it.
+func (s *Service) runCleanupCycle(ctx context.Context) {
+	release, acquired, err := s.locker.TryLock(ctx)
+	if err != nil {
+		logging.ErrorCtx(ctx, "failed to acquire cleanup cycle lock, skipping cycle", logging.Error(err))
+
+		return
+	}
+
+	if !acquired {
+		logging.DebugCtx(ctx, "cleanup cycle lock held by another replica, skipping cycle")
+
+		return
+	}
+
+	defer release()
+
+	s.performCleanup(ctx)
 }
 
 func (s *Service) performCleanup(ctx context.Context) {
