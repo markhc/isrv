@@ -1,9 +1,5 @@
 # Default values for isrv.
-#
-# isrv reads its configuration from /config/config.yaml (rendered from the
-# `config` block below) and from ISRV_* environment variables, which override
-# file values. Keys omitted from `config` fall back to the application's
-# built-in defaults, so only set what you want to change.
+# This is a YAML-formatted file.
 
 replicaCount: 1
 
@@ -17,10 +13,7 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# -- File storage backend — the heart of a file sharing service, so it lives
-# in its own block together with its credentials. The chart merges the
-# non-secret settings into the rendered config file; do NOT set `storage`
-# inside `config` (the chart refuses to render if you do).
+# -- File storage backend
 storage:
   # Supported types: local, s3, gcs.
   # local mode with more than 1 replica requires a ReadWriteMany volume (e.g. NFS, CephFS, ...).
@@ -62,8 +55,6 @@ storage:
 # https://github.com/markhc/isrv/blob/master/internal/configuration/default_config.yaml
 #
 # Storage is configured via the top-level `storage` block above, not here.
-# Do NOT put secrets here (admin credentials, database password, encryption
-# identity) — the chart refuses to render if you do. Use the `secrets` block instead.
 config:
   # Public URL used when generating links in responses. Leave empty to derive
   # it from the first ingress host (https:// when that host has TLS
