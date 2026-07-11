@@ -1,12 +1,15 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 
+ARG CI=false
+ENV CI=${CI}
+
 WORKDIR /app/web
 
 RUN apk add --no-cache git
 
 RUN npm install -g corepack@latest && corepack enable
 
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web ./
