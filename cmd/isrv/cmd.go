@@ -1,32 +1,26 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
-	"time"
+	"slices"
 
-	"github.com/markhc/isrv/internal/app"
+	"github.com/markhc/isrv/cmd/isrv/client"
+	"github.com/markhc/isrv/cmd/isrv/server"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/encryption"
-	"github.com/markhc/isrv/internal/logging"
 	"github.com/markhc/isrv/internal/systemd"
 	"github.com/spf13/cobra"
-
-	"github.com/markhc/isrv/internal/telemetry"
+	"github.com/spf13/pflag"
 )
 
 var (
 	versionFlag       bool
-	debugFlag         bool
 	makeConfig        bool
 	genEncryptionKey  bool
 	disableSupervisor bool
 	purgeFlag         bool
-	configPath        string
 )
 
 var rootCmd = &cobra.Command{
@@ -49,15 +43,10 @@ var rootCmd = &cobra.Command{
 			return printEncryptionKey()
 		}
 
-		return runServer(cmd.Context())
-	},
-}
+		configPath := cmd.Flags().Lookup("config").Value.String()
+		debugFlag := cmd.Flags().Lookup("debug").Value.String() == "true"
 
-var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "Run the isrv server (the default when no subcommand is given)",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runServer(cmd.Context())
+		return server.Run(cmd.Context(), configPath, debugFlag)
 	},
 }
 
@@ -179,55 +168,26 @@ func printEncryptionKey() error {
 	return nil
 }
 
-// runServer is the long-running entrypoint invoked by the root and serve
-// commands. The process is crash-only: on failure it exits non-zero and the
-// external supervisor (systemd, docker, k8s) applies its restart policy.
-func runServer(parentCtx context.Context) error {
-	configuration.Load(configPath, debugFlag)
-	logging.Initialize()
-	defer func() {
-		if err := logging.Shutdown(); err != nil {
-			fmt.Fprintf(os.Stderr, "logging shutdown: %v\n", err)
+func Filtered[T any](ss []T, keep func(T) bool) []T {
+	res := make([]T, 0, len(ss))
+	for _, x := range ss {
+		if keep(x) {
+			res = append(res, x)
 		}
-	}()
-
-	// Install signal handling once for the whole process.
-	ctx, stop := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// Telemetry is set up once at process start and torn down on exit.
-	shutdownTelemetry, err := telemetry.Setup(ctx, configuration.BuildVersion)
-	if err != nil {
-		logging.LogError("failed to initialise telemetry", logging.Error(err))
-
-		return fmt.Errorf("initialise telemetry: %w", err)
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancel()
-		if err := shutdownTelemetry(shutdownCtx); err != nil {
-			logging.LogError("failed to flush telemetry", logging.Error(err))
-		}
-	}()
+	return res
+}
 
-	if configuration.Get().DebugMode {
-		logging.LogDebug("debug mode is enabled")
-	}
-
-	if err := app.StartApp(ctx); err != nil {
-		logging.LogError("isrv stopped with error", logging.Error(err))
-
-		return fmt.Errorf("run app: %w", err)
-	}
-
-	logging.LogInfo("shutting down iSrv service")
-
-	return nil
+func IsServerCmd(c *cobra.Command) bool {
+	return slices.Contains(server.ServerCmds, c)
+}
+func IsClientCmd(c *cobra.Command) bool {
+	return slices.Contains(client.ClientCmds, c)
 }
 
 func Execute() {
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to configuration file")
-	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false, "Enable debug mode")
+	rootCmd.PersistentFlags().StringP("config", "c", "", "Path to configuration file")
+	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Enable debug mode")
 
 	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Display the version of isrv")
 
@@ -251,12 +211,40 @@ func Execute() {
 	uninstallCmd.Flags().BoolVar(&purgeFlag, "purge", false,
 		"Also delete /etc/isrv and /var/lib/isrv (config, uploads, database)")
 
-	rootCmd.AddCommand(serveCmd, versionCmd, makeconfCmd, genEncryptionKeyCmd, installCmd, uninstallCmd)
+	rootCmd.AddCommand(versionCmd, makeconfCmd, genEncryptionKeyCmd, installCmd, uninstallCmd)
+	rootCmd.AddCommand(server.ServerCmds...)
+	rootCmd.AddCommand(client.ClientCmds...)
 
 	// Silence cobra's automatic error/usage output: errors are already
 	// logged through the structured logger inside runServer.
 	rootCmd.SilenceErrors = true
 	rootCmd.SilenceUsage = true
+
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		printf("isrv: A file sharing web server")
+		printf("Usage:")
+		printf("  isrv [flags] [subcommand]")
+		printf("")
+		printf("Flags:")
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if f.Deprecated != "" {
+				return
+			}
+			printf("  -%s, --%-21s\t%s", f.Shorthand, f.Name, f.Usage)
+		})
+		printf("\n  ===== General commands =====")
+		for _, c := range Filtered(cmd.Commands(), func(c *cobra.Command) bool { return !IsServerCmd(c) && !IsClientCmd(c) }) {
+			printf("  %-25s\t%s", c.Use, c.Short)
+		}
+		printf("\n  ===== Server commands =====")
+		for _, c := range Filtered(cmd.Commands(), IsServerCmd) {
+			printf("  %-25s\t%s", c.Use, c.Short)
+		}
+		printf("\n  ===== Client commands =====")
+		for _, c := range Filtered(cmd.Commands(), IsClientCmd) {
+			printf("  %-25s\t%s", c.Use, c.Short)
+		}
+	})
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
