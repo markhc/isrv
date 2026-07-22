@@ -44,11 +44,11 @@ func SetupRoutes(app *fiber.App, a *Application) {
 	app.Get("/d/:id", a.DownloadHandler)
 	app.Get("/d/:id/:filename", a.DownloadHandler)
 
-	// Rate-limited group.
-	rateLimited := app.Group("", a.Middleware.RateLimit)
-	rateLimited.Post("/", a.UploadHandler)
-	rateLimited.Delete("/:id", a.Middleware.RequireToken, a.DeleteHandler)
-	rateLimited.Patch("/:id/expire", a.Middleware.RequireToken, a.ExpireHandler)
+	// Rate limit mutation endpoints without placing middleware in front of the
+	// SPA catch-all, which also serves static assets.
+	app.Post("/", a.Middleware.RateLimit, a.UploadHandler)
+	app.Delete("/:id", a.Middleware.RateLimit, a.Middleware.RequireToken, a.DeleteHandler)
+	app.Patch("/:id/expire", a.Middleware.RateLimit, a.Middleware.RequireToken, a.ExpireHandler)
 
 	// Operational endpoints.
 	if a.HealthzHandler != nil {
