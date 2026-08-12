@@ -21,61 +21,66 @@ func TestMain(m *testing.M) {
 }
 
 func TestSetupRoutes_StaticAssetsDoNotConsumeRateLimitBudget(t *testing.T) {
-	rateLimit := appmiddleware.RateLimit(t.Context(), models.RateLimitConfiguration{
-		Enabled:           true,
-		RequestsPerMinute: 1,
-		BurstSize:         1,
-		OnLimitExceeded:   models.RateLimitActionThrottle,
-	}, models.ClusterConfiguration{})
-
-	a := &Application{
-		DownloadHandler: func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		},
-		UploadHandler: func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusCreated)
-		},
-		DeleteHandler: func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusNoContent)
-		},
-		ExpireHandler: func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusNoContent)
-		},
-		SPAHandler: func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		},
-		Middleware: AppMiddleware{
-			RateLimit: rateLimit,
-			RequireToken: func(c fiber.Ctx) error {
-				return c.Next()
-			},
-		},
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+	}{
+		{name: "upload", method: http.MethodPost, path: "/", wantStatus: http.StatusCreated},
+		{name: "delete", method: http.MethodDelete, path: "/file-id", wantStatus: http.StatusNoContent},
+		{name: "expire", method: http.MethodPatch, path: "/file-id/expire", wantStatus: http.StatusNoContent},
 	}
 
-	server := fiber.New()
-	SetupRoutes(server, a)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rateLimit := appmiddleware.RateLimit(t.Context(), models.RateLimitConfiguration{
+				Enabled:           true,
+				RequestsPerMinute: 1,
+				BurstSize:         1,
+				OnLimitExceeded:   models.RateLimitActionThrottle,
+			}, models.ClusterConfiguration{})
 
-	assetResponse, err := server.Test(httptest.NewRequest(http.MethodGet, "/assets/index.js", nil), fiber.TestConfig{
-		Timeout:       5 * time.Second,
-		FailOnTimeout: true,
-	})
-	require.NoError(t, err)
-	require.NoError(t, assetResponse.Body.Close())
-	assert.Equal(t, http.StatusOK, assetResponse.StatusCode)
+			a := &Application{
+				DownloadHandler: func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				},
+				UploadHandler: func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusCreated)
+				},
+				DeleteHandler: func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusNoContent)
+				},
+				ExpireHandler: func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusNoContent)
+				},
+				SPAHandler: func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				},
+				Middleware: AppMiddleware{
+					RateLimit: rateLimit,
+					RequireToken: func(c fiber.Ctx) error {
+						return c.Next()
+					},
+				},
+			}
 
-	firstUpload, err := server.Test(httptest.NewRequest(http.MethodPost, "/", nil), fiber.TestConfig{
-		Timeout:       5 * time.Second,
-		FailOnTimeout: true,
-	})
-	require.NoError(t, err)
-	require.NoError(t, firstUpload.Body.Close())
-	assert.Equal(t, http.StatusCreated, firstUpload.StatusCode)
+			server := fiber.New()
+			SetupRoutes(server, a)
 
-	secondUpload, err := server.Test(httptest.NewRequest(http.MethodPost, "/", nil), fiber.TestConfig{
-		Timeout:       5 * time.Second,
-		FailOnTimeout: true,
-	})
-	require.NoError(t, err)
-	require.NoError(t, secondUpload.Body.Close())
-	assert.Equal(t, http.StatusTooManyRequests, secondUpload.StatusCode)
+			sendRequest := func(method, path string) int {
+				response, err := server.Test(httptest.NewRequest(method, path, nil), fiber.TestConfig{
+					Timeout:       5 * time.Second,
+					FailOnTimeout: true,
+				})
+				require.NoError(t, err)
+				require.NoError(t, response.Body.Close())
+				return response.StatusCode
+			}
+
+			assert.Equal(t, http.StatusOK, sendRequest(http.MethodGet, "/assets/index.js"))
+			assert.Equal(t, tt.wantStatus, sendRequest(tt.method, tt.path))
+			assert.Equal(t, http.StatusTooManyRequests, sendRequest(tt.method, tt.path))
+		})
+	}
 }
