@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/markhc/isrv/compare/v1.5.1...v1.5.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **rate-limit:** do not rate limit asset serving ([#67](https://github.com/markhc/isrv/issues/67)) ([fbb22d5](https://github.com/markhc/isrv/commit/fbb22d50a90c2558eddb47284e2e1302ce4cf840))
+
 ## [1.5.1](https://github.com/markhc/isrv/compare/v1.5.0...v1.5.1) (2026-07-11)
 
 
