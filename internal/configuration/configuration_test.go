@@ -610,6 +610,7 @@ func TestVerifyConfiguration(t *testing.T) {
 			name: "invalid E2EE max file size",
 			setupFunc: func() models.Configuration {
 				cfg := getDefaultConfig()
+				cfg.E2EE.Enabled = true
 				cfg.E2EE.MaxFileSizeMB = 0
 				return cfg
 			},
@@ -620,11 +621,32 @@ func TestVerifyConfiguration(t *testing.T) {
 			name: "E2EE max file size exceeds normal limit",
 			setupFunc: func() models.Configuration {
 				cfg := getDefaultConfig()
+				cfg.E2EE.Enabled = true
 				cfg.E2EE.MaxFileSizeMB = cfg.MaxFileSizeMB + 1
 				return cfg
 			},
 			expectPanic:  true,
 			panicMessage: "Invalid configuration: e2ee.max_file_size_mb cannot exceed max_file_size_mb",
+		},
+		{
+			// Upgrade path: an existing deployment with a lower global limit and
+			// no e2ee section inherits the embedded e2ee default and must boot.
+			name: "E2EE disabled ignores default max file size above normal limit",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.MaxFileSizeMB = cfg.E2EE.MaxFileSizeMB - 1
+				return cfg
+			},
+			expectPanic: false,
+		},
+		{
+			name: "E2EE disabled ignores invalid max file size",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.E2EE.MaxFileSizeMB = 0
+				return cfg
+			},
+			expectPanic: false,
 		},
 		{
 			name: "E2EE requires the browser application",

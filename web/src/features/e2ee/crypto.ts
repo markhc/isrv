@@ -5,6 +5,7 @@ const KEY_TOKEN_LENGTH = 33
 const ROOT_KEY_LENGTH = 32
 const SALT_LENGTH = 16
 const NONCE_PREFIX_LENGTH = 8
+const KEY_COMMITMENT_LENGTH = 32
 const NONCE_LENGTH = 12
 const TAG_LENGTH_BYTES = 16
 const METADATA_PLAINTEXT_LENGTH = 4096
@@ -15,24 +16,31 @@ export const E2EE_CHUNK_SIZE = 1024 * 1024
 // v1 container, all integer fields big-endian:
 //
 //   magic[8] | version[1] | flags[1] | chunk_size[4] |
-//   hkdf_salt[16] | nonce_prefix[8] |
+//   hkdf_salt[16] | nonce_prefix[8] | key_commitment[32] |
 //   encrypted_metadata[4112] | encrypted_content_records...
+//
+// key_commitment is a third HKDF output. AES-GCM is not key-committing, so
+// without it a crafted container could authenticate under two keys and
+// decrypt to different content for each. The whole header, commitment
+// included, is additional data for every record.
 //
 // Metadata plaintext is a uint32 JSON length, UTF-8 JSON, then random padding
 // to 4096 bytes. Content record boundaries are derived from the authenticated
 // plaintext size in that metadata. Each record adds a 16-byte AES-GCM tag.
-const HEADER_LENGTH = MAGIC.length + 1 + 1 + 4 + SALT_LENGTH + NONCE_PREFIX_LENGTH
+const HEADER_LENGTH = MAGIC.length + 1 + 1 + 4 + SALT_LENGTH + NONCE_PREFIX_LENGTH + KEY_COMMITMENT_LENGTH
 
 const VERSION_OFFSET = MAGIC.length
 const FLAGS_OFFSET = VERSION_OFFSET + 1
 const CHUNK_SIZE_OFFSET = FLAGS_OFFSET + 1
 const SALT_OFFSET = CHUNK_SIZE_OFFSET + 4
 const NONCE_PREFIX_OFFSET = SALT_OFFSET + SALT_LENGTH
+const KEY_COMMITMENT_OFFSET = NONCE_PREFIX_OFFSET + NONCE_PREFIX_LENGTH
 
 const RECORD_TYPE_METADATA = 1
 const RECORD_TYPE_CONTENT = 2
 const METADATA_INFO = new TextEncoder().encode("isrv-e2ee-v1/metadata")
 const CONTENT_INFO = new TextEncoder().encode("isrv-e2ee-v1/content")
+const COMMIT_INFO = new TextEncoder().encode("isrv-e2ee-v1/commit")
 
 export interface E2EEMetadata {
   name: string
@@ -103,7 +111,6 @@ export async function encryptFile(file: File): Promise<EncryptedContainer> {
   const keyToken = encodeKeyToken(rootKey)
   const salt = randomBytes(SALT_LENGTH, crypto)
   const noncePrefix = randomBytes(NONCE_PREFIX_LENGTH, crypto)
-  const header = buildHeader(salt, noncePrefix)
 
   let keys: DerivedKeys
   try {
@@ -111,6 +118,8 @@ export async function encryptFile(file: File): Promise<EncryptedContainer> {
   } finally {
     rootKey.fill(0)
   }
+
+  const header = buildHeader(salt, noncePrefix, keys.commitment)
 
   const metadata = encodeMetadata({
     name: file.name,
@@ -179,6 +188,10 @@ export async function decryptContainer(
     keys = await deriveKeys(token.rootKey, parsedHeader.salt, "decrypt", crypto)
   } finally {
     token.rootKey.fill(0)
+  }
+
+  if (!constantTimeEqual(keys.commitment, parsedHeader.keyCommitment)) {
+    throw new E2EEAuthenticationError()
   }
 
   const metadataStart = HEADER_LENGTH
@@ -270,11 +283,13 @@ interface ParsedHeader {
   version: number
   salt: Uint8Array<ArrayBuffer>
   noncePrefix: Uint8Array<ArrayBuffer>
+  keyCommitment: Uint8Array<ArrayBuffer>
 }
 
 interface DerivedKeys {
   metadata: CryptoKey
   content: CryptoKey
+  commitment: Uint8Array<ArrayBuffer>
 }
 
 function getCrypto(): Crypto {
@@ -344,7 +359,8 @@ function base64URLToBytes(value: string): Uint8Array<ArrayBuffer> {
 
 function buildHeader(
   salt: Uint8Array,
-  noncePrefix: Uint8Array
+  noncePrefix: Uint8Array,
+  keyCommitment: Uint8Array
 ): Uint8Array<ArrayBuffer> {
   const header = new Uint8Array(HEADER_LENGTH)
   header.set(MAGIC, 0)
@@ -353,6 +369,7 @@ function buildHeader(
   new DataView(header.buffer).setUint32(CHUNK_SIZE_OFFSET, E2EE_CHUNK_SIZE, false)
   header.set(salt, SALT_OFFSET)
   header.set(noncePrefix, NONCE_PREFIX_OFFSET)
+  header.set(keyCommitment, KEY_COMMITMENT_OFFSET)
   return header
 }
 
@@ -387,7 +404,8 @@ function parseHeader(header: Uint8Array): ParsedHeader {
   return {
     version,
     salt: copyBytes(header.subarray(SALT_OFFSET, NONCE_PREFIX_OFFSET)),
-    noncePrefix: copyBytes(header.subarray(NONCE_PREFIX_OFFSET, HEADER_LENGTH)),
+    noncePrefix: copyBytes(header.subarray(NONCE_PREFIX_OFFSET, KEY_COMMITMENT_OFFSET)),
+    keyCommitment: copyBytes(header.subarray(KEY_COMMITMENT_OFFSET, HEADER_LENGTH)),
   }
 }
 
@@ -402,27 +420,42 @@ async function deriveKeys(
     copyBytes(rootKey),
     "HKDF",
     false,
-    ["deriveKey"]
+    ["deriveKey", "deriveBits"]
   )
 
+  const hkdfParams = (info: Uint8Array): HkdfParams => ({
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: copyBytes(salt),
+    info: copyBytes(info),
+  })
+
   const derive = (info: Uint8Array) => crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt: copyBytes(salt),
-      info: copyBytes(info),
-    },
+    hkdfParams(info),
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
     [usage]
   )
 
-  const [metadata, content] = await Promise.all([
+  const [metadata, content, commitment] = await Promise.all([
     derive(METADATA_INFO),
     derive(CONTENT_INFO),
+    crypto.subtle.deriveBits(hkdfParams(COMMIT_INFO), keyMaterial, KEY_COMMITMENT_LENGTH * 8),
   ])
-  return { metadata, content }
+  return { metadata, content, commitment: new Uint8Array(commitment) }
+}
+
+function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) {
+    return false
+  }
+
+  let difference = 0
+  for (let index = 0; index < a.byteLength; index += 1) {
+    difference |= a[index] ^ b[index]
+  }
+  return difference === 0
 }
 
 function encodeMetadata(metadata: E2EEMetadata, crypto: Crypto): Uint8Array<ArrayBuffer> {

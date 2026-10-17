@@ -23,7 +23,7 @@ export function getServerConfig(): ServerConfig {
     minAgeDays: 1,
     maxAgeDays: 30,
     e2eeEnabled: false,
-    e2eeMaxFileSizeMb: 64,
+    e2eeMaxFileSizeMb: 128,
     version: "0.0.0-dev",
   }
 }

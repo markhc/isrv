@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { hkdfSync } from "node:crypto"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   decryptContainer,
   E2EEAuthenticationError,
@@ -42,7 +43,33 @@ function decodeKeyToken(token: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(binary, character => character.charCodeAt(0))
 }
 
+const SALT_OFFSET = 14
+const KEY_COMMITMENT_OFFSET = 38
+const HEADER_LENGTH = 70
+
+async function sha256Hex(blob: Blob): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()))
+  return Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("")
+}
+
+function stubDeterministicRandom(): void {
+  let next = 0
+  vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
+    if (array) {
+      const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength)
+      for (let index = 0; index < bytes.length; index += 1) {
+        bytes[index] = next++ & 0xff
+      }
+    }
+    return array
+  })
+}
+
 describe("E2EE v1 crypto", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it("round trips metadata and an empty file", async () => {
     const encrypted = await encryptFile(testFile(new Uint8Array()))
     const decrypted = await decryptContainer(encrypted.ciphertext, encrypted.keyToken)
@@ -106,6 +133,39 @@ describe("E2EE v1 crypto", () => {
       .rejects.toBeInstanceOf(E2EEAuthenticationError)
   })
 
+  it("stores an HKDF key commitment in the header", async () => {
+    const encrypted = await encryptFile(testFile(new Uint8Array([1, 2, 3])))
+    const header = await blobBytes(encrypted.ciphertext.slice(0, HEADER_LENGTH))
+    const rootKey = decodeKeyToken(encrypted.keyToken).slice(1)
+    const salt = header.slice(SALT_OFFSET, SALT_OFFSET + 16)
+    const expected = new Uint8Array(hkdfSync("sha256", rootKey, salt, "isrv-e2ee-v1/commit", 32))
+
+    expect(header.slice(KEY_COMMITMENT_OFFSET, HEADER_LENGTH)).toEqual(expected)
+  })
+
+  it("rejects a key commitment mismatch before decrypting any record", async () => {
+    const encrypted = await encryptFile(testFile(new Uint8Array([1, 2, 3])))
+    const tampered = await mutate(encrypted.ciphertext, HEADER_LENGTH - 1)
+    const decrypt = vi.spyOn(globalThis.crypto.subtle, "decrypt")
+
+    await expect(decryptContainer(tampered, encrypted.keyToken))
+      .rejects.toBeInstanceOf(E2EEAuthenticationError)
+    expect(decrypt).not.toHaveBeenCalled()
+  })
+
+  it("matches the frozen v1 known-answer vector", async () => {
+    stubDeterministicRandom()
+    const encrypted = await encryptFile(testFile(patternedBytes(E2EE_CHUNK_SIZE + 5), "vector.bin", "application/octet-stream"))
+    vi.restoreAllMocks()
+
+    expect(encrypted.keyToken).toBe("AQABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f")
+    expect(encrypted.ciphertext.size).toBe(HEADER_LENGTH + 4112 + E2EE_CHUNK_SIZE + 5 + 2 * 16)
+    expect(await sha256Hex(encrypted.ciphertext)).toBe("e14900768f147eae5147c3f2b1cd4892b7c2128f7d94aeb3548d3a5cb5189510")
+
+    const decrypted = await decryptContainer(encrypted.ciphertext, encrypted.keyToken)
+    expect(await blobBytes(decrypted.plaintext)).toEqual(patternedBytes(E2EE_CHUNK_SIZE + 5))
+  })
+
   it("rejects reordered content records", async () => {
     const empty = await encryptFile(testFile(new Uint8Array()))
     const encrypted = await encryptFile(testFile(patternedBytes(E2EE_CHUNK_SIZE * 2)))
@@ -147,9 +207,9 @@ describe("E2EE v1 crypto", () => {
   })
 
   it("calculates the maximum v1 container size", () => {
-    expect(maxEncryptedContainerSize(0)).toBe(38 + 4096 + 16)
+    expect(maxEncryptedContainerSize(0)).toBe(70 + 4096 + 16)
     expect(maxEncryptedContainerSize(E2EE_CHUNK_SIZE)).toBe(
-      38 + 4096 + 16 + E2EE_CHUNK_SIZE + 16
+      70 + 4096 + 16 + E2EE_CHUNK_SIZE + 16
     )
   })
 })

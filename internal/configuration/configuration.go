@@ -214,8 +214,7 @@ func loadFromFile(path string, debug bool) {
 }
 
 // verifyConfiguration validates the loaded configuration and panics with a
-// descriptive message on invalid values. Some normalization (e.g. trailing
-// path separator) is also applied here.
+// descriptive message on invalid values.
 func verifyConfiguration() {
 	if config.ServerPort < 1 || config.ServerPort > 65535 {
 		panic("Invalid configuration: server_port must be between 1 and 65535")
@@ -229,18 +228,7 @@ func verifyConfiguration() {
 		panic("Invalid configuration: max_file_size_mb must be at least 1")
 	}
 
-	if config.E2EE.MaxFileSizeMB < 1 {
-		panic("Invalid configuration: e2ee.max_file_size_mb must be at least 1")
-	}
-
-	if config.E2EE.MaxFileSizeMB > config.MaxFileSizeMB {
-		panic("Invalid configuration: e2ee.max_file_size_mb cannot exceed max_file_size_mb")
-	}
-
-	if config.E2EE.Enabled && config.DisableIndexPage {
-		panic("Invalid configuration: e2ee.enabled requires the index page")
-	}
-
+	verifyE2EEConfig(&config.E2EE, &config)
 	verifyStorageConfig(&config.Storage)
 	verifyCleanupConfig(&config.Cleanup)
 	verifyRateLimitConfig(&config.Security.RateLimit)
@@ -250,6 +238,25 @@ func verifyConfiguration() {
 	verifyClusterConfig(&config.Cluster, &config)
 	verifyAdminConfig(&config.Admin)
 	verifyEncryptionConfig(&config.Encryption, &config.Storage)
+}
+
+// verifyE2EEConfig validates the browser end-to-end encryption settings.
+func verifyE2EEConfig(e2eeConfig *models.E2EEConfiguration, cfg *models.Configuration) {
+	if !e2eeConfig.Enabled {
+		return
+	}
+
+	if e2eeConfig.MaxFileSizeMB < 1 {
+		panic("Invalid configuration: e2ee.max_file_size_mb must be at least 1")
+	}
+
+	if e2eeConfig.MaxFileSizeMB > cfg.MaxFileSizeMB {
+		panic("Invalid configuration: e2ee.max_file_size_mb cannot exceed max_file_size_mb")
+	}
+
+	if cfg.DisableIndexPage {
+		panic("Invalid configuration: e2ee.enabled requires the index page")
+	}
 }
 
 // verifyClusterConfig validates the multi-replica coordination settings. When
