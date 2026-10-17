@@ -3,12 +3,16 @@
   "subtitle": "Um serviço de compartilhamento de arquivos temporários com foco em privacidade e segurança.",
   "upload": {
     "uploading": "Enviando…",
+    "encryptingAndUploading": "Criptografando e enviando…",
     "dropToUpload": "Solte para enviar",
     "dragOrClick": "Arraste e solte um arquivo aqui, ou",
     "clickToBrowse": "clique para selecionar",
     "orViaHTTP": "Ou envie via HTTP",
     "commandLine": "Envio pela linha de comandos",
-    "moreExamples": "Mais exemplos →"
+    "moreExamples": "Mais exemplos →",
+    "encryptInBrowser": "Criptografar no navegador",
+    "encryptionHelp": "O servidor não pode ler o arquivo nem recuperar um link perdido. Tamanho máximo: {{size}} MiB.",
+    "encryptionSizeLimit": "Arquivos criptografados no navegador são limitados a {{size}} MiB."
   },
   "result": {
     "expires": "Expira em {{date}}"

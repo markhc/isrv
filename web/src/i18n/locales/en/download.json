@@ -1,0 +1,16 @@
+{
+  "title": "Encrypted download",
+  "ready": "The key in this link will decrypt the file in your browser.",
+  "action": "Decrypt and download",
+  "working": "Downloading and decrypting…",
+  "complete": "Download started: {{name}}",
+  "privacyNotice": "The decryption key and plaintext never leave your browser.",
+  "errors": {
+    "missingKey": "This link is missing its decryption key. Ask the sender for the complete link.",
+    "invalidKey": "The decryption key in this link is malformed or unsupported.",
+    "unsupportedBrowser": "This browser or connection cannot securely decrypt the file.",
+    "authentication": "The key is wrong or the encrypted file is damaged.",
+    "damagedFile": "The encrypted file is damaged or uses an unsupported format.",
+    "fetchFailed": "The encrypted file could not be downloaded. It may have expired."
+  }
+}

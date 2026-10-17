@@ -3,12 +3,16 @@
   "subtitle": "A temporary file sharing service with a focus on privacy and security.",
   "upload": {
     "uploading": "Uploading…",
+    "encryptingAndUploading": "Encrypting and uploading…",
     "dropToUpload": "Drop to upload",
     "dragOrClick": "Drag & drop a file here, or",
     "clickToBrowse": "click to browse",
     "orViaHTTP": "Or upload via HTTP",
     "commandLine": "Upload via command line",
-    "moreExamples": "More examples →"
+    "moreExamples": "More examples →",
+    "encryptInBrowser": "Encrypt in browser",
+    "encryptionHelp": "The server cannot read the file or recover a lost link. Maximum size: {{size}} MiB.",
+    "encryptionSizeLimit": "Browser-encrypted files are limited to {{size}} MiB."
   },
   "result": {
     "expires": "Expires {{date}}"

@@ -15,10 +15,17 @@ type File struct {
 	// EncryptionVersion identifies the at-rest encryption scheme
 	// (encryption.Version*). Zero means the object is stored in plaintext.
 	EncryptionVersion int `json:"encryptionVersion"`
+
+	// ClientEncryptionVersion identifies the inner browser-encrypted container.
+	// Zero means the browser uploaded plaintext.
+	ClientEncryptionVersion int `json:"clientEncryptionVersion"`
 }
 
 // IsEncrypted reports whether the stored object is encrypted at rest.
 func (f *File) IsEncrypted() bool { return f.EncryptionVersion > 0 }
+
+// IsClientEncrypted reports whether the object requires browser-side decryption.
+func (f *File) IsClientEncrypted() bool { return f.ClientEncryptionVersion > 0 }
 
 // FileListFilter describes the query parameters for listing files in the admin
 // panel. The zero value lists all files with default ordering.

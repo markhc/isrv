@@ -139,6 +139,10 @@ func applyEnvOverrides() {
 		"ISRV_ENCRYPTION_IDENTITY":      "Encryption.Identity",
 		"ISRV_ENCRYPTION_IDENTITY_FILE": "Encryption.IdentityFile",
 
+		// Browser end-to-end encryption.
+		"ISRV_E2EE_ENABLED":          "E2EE.Enabled",
+		"ISRV_E2EE_MAX_FILE_SIZE_MB": "E2EE.MaxFileSizeMB",
+
 		// Cluster coordination for multi-replica deployments.
 		"ISRV_CLUSTER_ENABLED":        "Cluster.Enabled",
 		"ISRV_CLUSTER_IP_HASH_SECRET": "Cluster.IPHashSecret",
@@ -223,6 +227,18 @@ func verifyConfiguration() {
 
 	if config.MaxFileSizeMB < 1 {
 		panic("Invalid configuration: max_file_size_mb must be at least 1")
+	}
+
+	if config.E2EE.MaxFileSizeMB < 1 {
+		panic("Invalid configuration: e2ee.max_file_size_mb must be at least 1")
+	}
+
+	if config.E2EE.MaxFileSizeMB > config.MaxFileSizeMB {
+		panic("Invalid configuration: e2ee.max_file_size_mb cannot exceed max_file_size_mb")
+	}
+
+	if config.E2EE.Enabled && config.DisableIndexPage {
+		panic("Invalid configuration: e2ee.enabled requires the index page")
 	}
 
 	verifyStorageConfig(&config.Storage)

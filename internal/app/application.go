@@ -11,6 +11,7 @@ import (
 	"github.com/markhc/isrv/internal/app/handlers"
 	"github.com/markhc/isrv/internal/app/middleware"
 	"github.com/markhc/isrv/internal/cleanup"
+	"github.com/markhc/isrv/internal/clientencryption"
 	"github.com/markhc/isrv/internal/configuration"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/encryption"
@@ -34,14 +35,15 @@ type AppMiddleware struct {
 // wired into the router. It is constructed once by NewApplication and passed
 // to SetupRoutes.
 type Application struct {
-	FaviconHandler  fiber.Handler
-	DownloadHandler fiber.Handler
-	UploadHandler   fiber.Handler
-	DeleteHandler   fiber.Handler
-	ExpireHandler   fiber.Handler
-	HealthzHandler  fiber.Handler
-	ReadyzHandler   fiber.Handler
-	SPAHandler      fiber.Handler
+	FaviconHandler                fiber.Handler
+	DownloadHandler               fiber.Handler
+	ClientEncryptedContentHandler fiber.Handler
+	UploadHandler                 fiber.Handler
+	DeleteHandler                 fiber.Handler
+	ExpireHandler                 fiber.Handler
+	HealthzHandler                fiber.Handler
+	ReadyzHandler                 fiber.Handler
+	SPAHandler                    fiber.Handler
 
 	AdminLoginHandler   fiber.Handler
 	AdminLogoutHandler  fiber.Handler
@@ -67,13 +69,13 @@ func NewApplication(
 	faviconData []byte,
 ) *Application {
 	a := &Application{
-		DownloadHandler: handlers.Download(db, stor, enc),
-		UploadHandler:   handlers.Upload(config, db, stor, enc),
-		DeleteHandler:   handlers.Delete(db, stor),
-		ExpireHandler:   handlers.Expire(config, db),
-		HealthzHandler:  handlers.Healthz(),
-		ReadyzHandler:   handlers.Readyz(db, stor),
-		MetricsHandler:  telemetry.MetricsHandler(),
+		UploadHandler:                 handlers.Upload(config, db, stor, enc),
+		ClientEncryptedContentHandler: handlers.ClientEncryptedContent(db, stor, enc),
+		DeleteHandler:                 handlers.Delete(db, stor),
+		ExpireHandler:                 handlers.Expire(config, db),
+		HealthzHandler:                handlers.Healthz(),
+		ReadyzHandler:                 handlers.Readyz(db, stor),
+		MetricsHandler:                telemetry.MetricsHandler(),
 
 		Middleware: AppMiddleware{
 			RequireToken: middleware.RequireToken(db),
@@ -105,9 +107,13 @@ func NewApplication(
 			MaxFileSizeMB:     config.MaxFileSizeMB,
 			MinAgeDays:        config.MinAgeDays,
 			MaxAgeDays:        config.MaxAgeDays,
+			E2EEEnabled:       config.E2EE.Enabled,
+			E2EEMaxFileSizeMB: config.E2EE.MaxFileSizeMB,
 			Version:           configuration.BuildVersion,
 		})
 	}
+
+	a.DownloadHandler = handlers.Download(db, stor, enc, a.SPAHandler)
 
 	return a
 }
@@ -179,9 +185,18 @@ func StartApp(ctx context.Context) error {
 
 	application := NewApplication(ctx, config, dbInstance, storageClient, encManager, faviconData)
 
-	// BodyLimit enforces a hard upload cap before handler code runs;
-	// derived from MaxFileSizeMB so the limit matches the upload handler.
-	bodyLimit := config.MaxFileSizeMB * 1024 * 1024
+	// BodyLimit includes a fixed allowance for multipart framing. The upload
+	// handler independently validates the actual file part.
+	const multipartOverheadAllowance = 1024 * 1024
+	bodyLimit := config.MaxFileSizeMB*1024*1024 + multipartOverheadAllowance
+	if config.E2EE.Enabled {
+		e2eeBodyLimit := int(clientencryption.MaxCiphertextSize(
+			int64(config.E2EE.MaxFileSizeMB)*1024*1024,
+		)) + multipartOverheadAllowance
+		if e2eeBodyLimit > bodyLimit {
+			bodyLimit = e2eeBodyLimit
+		}
+	}
 
 	validateIpAddresses := config.Security.ValidateIpAddresses
 	if config.Security.RateLimit.Enabled && !validateIpAddresses {

@@ -144,6 +144,29 @@ func Test_SQLiteDB_EncryptionVersion(t *testing.T) {
 	})
 }
 
+func Test_SQLiteDB_ClientEncryptionVersion(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	want := models.File{
+		ID:                      "client-encrypted-file",
+		Name:                    "encrypted-file.isrv",
+		Size:                    4200,
+		Expiration:              time.Now().Add(24 * time.Hour),
+		ClientEncryptionVersion: 1,
+	}
+	require.NoError(t, db.OnFileUpload(context.Background(), &want, want.ID))
+
+	got, err := db.GetFile(context.Background(), want.ID)
+	require.NoError(t, err)
+	assert.Equal(t, want.ClientEncryptionVersion, got.ClientEncryptionVersion)
+
+	listed, _, err := db.ListFiles(context.Background(), models.FileListFilter{})
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, want.ClientEncryptionVersion, listed[0].ClientEncryptionVersion)
+}
+
 func Test_SQLiteDB_OnFileDownload(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -83,4 +84,39 @@ func TestSetupRoutes_StaticAssetsDoNotConsumeRateLimitBudget(t *testing.T) {
 			assert.Equal(t, http.StatusTooManyRequests, sendRequest(tt.method, tt.path))
 		})
 	}
+}
+
+func TestSetupRoutes_ClientEncryptedContentDoesNotShadowFilenameDownloads(t *testing.T) {
+	a := &Application{
+		DownloadHandler: func(c fiber.Ctx) error {
+			return c.SendString("download:" + c.Params("filename"))
+		},
+		ClientEncryptedContentHandler: func(c fiber.Ctx) error {
+			return c.SendString("e2ee:" + c.Params("id"))
+		},
+		UploadHandler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) },
+		DeleteHandler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) },
+		ExpireHandler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) },
+		Middleware: AppMiddleware{
+			RateLimit:    func(c fiber.Ctx) error { return c.Next() },
+			RequireToken: func(c fiber.Ctx) error { return c.Next() },
+		},
+	}
+
+	server := fiber.New()
+	SetupRoutes(server, a)
+
+	assertBody := func(path, want string) {
+		t.Helper()
+		response, err := server.Test(httptest.NewRequest(http.MethodGet, path, nil))
+		require.NoError(t, err)
+		defer response.Body.Close()
+
+		body, err := io.ReadAll(response.Body)
+		require.NoError(t, err)
+		assert.Equal(t, want, string(body))
+	}
+
+	assertBody("/d/file-id/content", "download:content")
+	assertBody("/api/e2ee/files/file-id/content", "e2ee:file-id")
 }

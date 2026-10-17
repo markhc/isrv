@@ -4,6 +4,8 @@ export interface ServerConfig {
   maxFileSizeMb: number
   minAgeDays: number
   maxAgeDays: number
+  e2eeEnabled: boolean
+  e2eeMaxFileSizeMb: number
   version: string
 }
 
@@ -20,6 +22,8 @@ export function getServerConfig(): ServerConfig {
     maxFileSizeMb: 100,
     minAgeDays: 1,
     maxAgeDays: 30,
+    e2eeEnabled: false,
+    e2eeMaxFileSizeMb: 64,
     version: "0.0.0-dev",
   }
 }
