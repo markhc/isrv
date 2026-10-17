@@ -19,6 +19,7 @@ services:
       - ISRV_STORAGE_PATH=/data/upload_data       # Set the data directory for uploads
       - ISRV_DATABASE_TYPE=sqlite
       - ISRV_DATABASE_DSN=file:/data/isrv.db?cache=shared&mode=rwc
+      - ISRV_E2EE_ENABLED=true
     volumes:
       # Mount the configuration file
       - ./config.yaml:/config/config.yaml

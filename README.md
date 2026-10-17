@@ -20,11 +20,10 @@ isrv is a lightweight file sharing service that provides anonymous temporary sto
 
 This project is a work in progress, here's a list of things I am working on in no particular order:
 
-- True E2EE with the key in the URL fragment; The server never sees the key and cannot decrypt files
 - Client mode in the same binary, allowing users to upload and manage their files with ease
 - Metadata stripping for uploaded files (EXIF, ID3, etc.)
 - Support non-temporary storage option for users who want to keep their files indefinitely
-- Built-in TLS support with automatic certificate management CertMagic
+- Built-in TLS support with automatic certificate management through CertMagic
 - "Burn After Reading" feature: Expiry after N downloads
 - Zip file support for multiple uploads: 
   - Upload multiple files and download them as a single zip file

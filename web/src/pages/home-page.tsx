@@ -5,6 +5,12 @@ import { toast } from "sonner"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import {
+  E2EE_UPLOAD_FILENAME,
+  E2EE_VERSION,
+  encryptFile,
+  isE2EESupported
+} from "@/features/e2ee/crypto"
 import { getServerConfig } from "@/lib/config"
 
 interface UploadResponse {
@@ -20,9 +26,20 @@ interface UploadResult {
   filename: string
 }
 
-async function uploadFile(file: File): Promise<UploadResult> {
+interface UploadInput {
+  file: File
+  encrypt: boolean
+}
+
+async function uploadFile({ file, encrypt }: UploadInput): Promise<UploadResult> {
+  const encrypted = encrypt ? await encryptFile(file) : null
   const form = new FormData()
-  form.append("file", file)
+  if (encrypted) {
+    form.append("file", encrypted.ciphertext, E2EE_UPLOAD_FILENAME)
+    form.append("clientEncryptionVersion", String(E2EE_VERSION))
+  } else {
+    form.append("file", file)
+  }
 
   const res = await fetch("/", {
     method: "POST",
@@ -35,9 +52,8 @@ async function uploadFile(file: File): Promise<UploadResult> {
   }
 
   const data = (await res.json()) as UploadResponse
-  console.log(data)
   return {
-    shortUrl: data.shortUrl,
+    shortUrl: encrypted ? `${data.shortUrl}#${encrypted.keyToken}` : data.shortUrl,
     expiration: new Date(data.expiration),
     filename: file.name,
   }
@@ -47,7 +63,9 @@ export default function HomePage() {
   const { t, i18n } = useTranslation(["home", "common", "faq"])
   const [result, setResult] = useState<UploadResult | null>(null)
   const [copied, setCopied] = useState(false)
+  const [encryptInBrowser, setEncryptInBrowser] = useState(false)
   const config = getServerConfig()
+  const canEncrypt = config.e2eeEnabled && isE2EESupported()
 
   const mutation = useMutation({
     mutationFn: uploadFile,
@@ -62,10 +80,15 @@ export default function HomePage() {
   const onDrop = useCallback(
     (accepted: File[]) => {
       if (accepted.length === 0) return
+      const file = accepted[0]
+      if (encryptInBrowser && file.size > config.e2eeMaxFileSizeMb * 1024 * 1024) {
+        toast.error(t("home:upload.encryptionSizeLimit", { size: config.e2eeMaxFileSizeMb }))
+        return
+      }
       setResult(null)
-      mutation.mutate(accepted[0])
+      mutation.mutate({ file, encrypt: encryptInBrowser })
     },
-    [mutation],
+    [config.e2eeMaxFileSizeMb, encryptInBrowser, mutation, t]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -80,7 +103,7 @@ export default function HomePage() {
       await navigator.clipboard.writeText(result.shortUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
+    } catch {
       toast.error(t("common:copyFailed"))
     }
   }
@@ -128,7 +151,11 @@ export default function HomePage() {
       >
         <input {...getInputProps()} />
         {mutation.isPending ? (
-          <p className="text-sm text-muted-foreground">{t("home:upload.uploading")}</p>
+          <p className="text-sm text-muted-foreground">
+            {mutation.variables?.encrypt
+              ? t("home:upload.encryptingAndUploading")
+              : t("home:upload.uploading")}
+          </p>
         ) : isDragActive ? (
           <p className="text-sm text-primary font-medium">{t("home:upload.dropToUpload")}</p>
         ) : (
@@ -138,6 +165,24 @@ export default function HomePage() {
           </p>
         )}
       </div>
+
+      {canEncrypt && !config.disableUploadPage && (
+        <label className="w-full max-w-4xl flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
+          <input
+            type="checkbox"
+            checked={encryptInBrowser}
+            onChange={(event) => setEncryptInBrowser(event.target.checked)}
+            disabled={mutation.isPending}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span className="flex flex-col gap-1">
+            <span className="text-sm font-medium">{t("home:upload.encryptInBrowser")}</span>
+            <span className="text-xs text-muted-foreground">
+              {t("home:upload.encryptionHelp", { size: config.e2eeMaxFileSizeMb })}
+            </span>
+          </span>
+        </label>
+      )}
 
       <div className="w-full max-w-4xl flex flex-col gap-1.5">
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{

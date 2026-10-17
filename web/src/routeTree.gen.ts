@@ -9,31 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root"
-import { Route as PrivacyRouteImport } from "./routes/privacy"
-import { Route as FaqRouteImport } from "./routes/faq"
-import { Route as AdminRouteImport } from "./routes/admin"
-import { Route as AbuseRouteImport } from "./routes/abuse"
-import { Route as AboutRouteImport } from "./routes/about"
 import { Route as IndexRouteImport } from "./routes/index"
+import { Route as AboutRouteImport } from "./routes/about"
+import { Route as AbuseRouteImport } from "./routes/abuse"
+import { Route as AdminRouteImport } from "./routes/admin"
+import { Route as FaqRouteImport } from "./routes/faq"
+import { Route as PrivacyRouteImport } from "./routes/privacy"
+import { Route as DIdRouteImport } from "./routes/d.$id"
 
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: "/privacy",
-  path: "/privacy",
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FaqRoute = FaqRouteImport.update({
-  id: "/faq",
-  path: "/faq",
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRoute = AdminRouteImport.update({
-  id: "/admin",
-  path: "/admin",
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import("./routes/admin.lazy").then((d) => d.Route))
-const AbuseRoute = AbuseRouteImport.update({
-  id: "/abuse",
-  path: "/abuse",
+const IndexRoute = IndexRouteImport.update({
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -41,9 +27,29 @@ const AboutRoute = AboutRouteImport.update({
   path: "/about",
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+const AbuseRoute = AbuseRouteImport.update({
+  id: "/abuse",
+  path: "/abuse",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: "/admin",
+  path: "/admin",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import("./routes/admin.lazy").then((d) => d.Route))
+const FaqRoute = FaqRouteImport.update({
+  id: "/faq",
+  path: "/faq",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: "/privacy",
+  path: "/privacy",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DIdRoute = DIdRouteImport.update({
+  id: "/d/$id",
+  path: "/d/$id",
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   "/admin": typeof AdminRoute
   "/faq": typeof FaqRoute
   "/privacy": typeof PrivacyRoute
+  "/d/$id": typeof DIdRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   "/admin": typeof AdminRoute
   "/faq": typeof FaqRoute
   "/privacy": typeof PrivacyRoute
+  "/d/$id": typeof DIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,13 +79,23 @@ export interface FileRoutesById {
   "/admin": typeof AdminRoute
   "/faq": typeof FaqRoute
   "/privacy": typeof PrivacyRoute
+  "/d/$id": typeof DIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: "/" | "/about" | "/abuse" | "/admin" | "/faq" | "/privacy"
+  fullPaths:
+    "/" | "/about" | "/abuse" | "/admin" | "/faq" | "/privacy" | "/d/$id"
   fileRoutesByTo: FileRoutesByTo
-  to: "/" | "/about" | "/abuse" | "/admin" | "/faq" | "/privacy"
-  id: "__root__" | "/" | "/about" | "/abuse" | "/admin" | "/faq" | "/privacy"
+  to: "/" | "/about" | "/abuse" | "/admin" | "/faq" | "/privacy" | "/d/$id"
+  id:
+    | "__root__"
+    | "/"
+    | "/about"
+    | "/abuse"
+    | "/admin"
+    | "/faq"
+    | "/privacy"
+    | "/d/$id"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -87,36 +105,16 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   FaqRoute: typeof FaqRoute
   PrivacyRoute: typeof PrivacyRoute
+  DIdRoute: typeof DIdRoute
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    "/privacy": {
-      id: "/privacy"
-      path: "/privacy"
-      fullPath: "/privacy"
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/faq": {
-      id: "/faq"
-      path: "/faq"
-      fullPath: "/faq"
-      preLoaderRoute: typeof FaqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/admin": {
-      id: "/admin"
-      path: "/admin"
-      fullPath: "/admin"
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/abuse": {
-      id: "/abuse"
-      path: "/abuse"
-      fullPath: "/abuse"
-      preLoaderRoute: typeof AbuseRouteImport
+    "/": {
+      id: "/"
+      path: "/"
+      fullPath: "/"
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/about": {
@@ -126,11 +124,39 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/": {
-      id: "/"
-      path: "/"
-      fullPath: "/"
-      preLoaderRoute: typeof IndexRouteImport
+    "/abuse": {
+      id: "/abuse"
+      path: "/abuse"
+      fullPath: "/abuse"
+      preLoaderRoute: typeof AbuseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin": {
+      id: "/admin"
+      path: "/admin"
+      fullPath: "/admin"
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/faq": {
+      id: "/faq"
+      path: "/faq"
+      fullPath: "/faq"
+      preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/privacy": {
+      id: "/privacy"
+      path: "/privacy"
+      fullPath: "/privacy"
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/d/$id": {
+      id: "/d/$id"
+      path: "/d/$id"
+      fullPath: "/d/$id"
+      preLoaderRoute: typeof DIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -143,6 +169,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   FaqRoute: FaqRoute,
   PrivacyRoute: PrivacyRoute,
+  DIdRoute: DIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

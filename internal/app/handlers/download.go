@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/clientencryption"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/encryption"
 	"github.com/markhc/isrv/internal/headers"
@@ -21,7 +22,12 @@ import (
 
 // Download returns a handler that serves a stored file by its ID.
 // It is mounted on both /d/:id and /d/:id/:filename.
-func Download(db database.Database, stor storage.Storage, enc *encryption.Manager) fiber.Handler {
+func Download(
+	db database.Database,
+	stor storage.Storage,
+	enc *encryption.Manager,
+	spaHandlers ...fiber.Handler,
+) fiber.Handler {
 	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
 	successAttrs := metric.WithAttributes(backendAttr,
 		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess))
@@ -44,6 +50,17 @@ func Download(db database.Database, stor storage.Storage, enc *encryption.Manage
 
 			logging.ErrorCtx(ctx, "failed to get file data", logging.Error(err))
 			return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
+		}
+
+		if file.IsClientEncrypted() {
+			if len(spaHandlers) == 0 || spaHandlers[0] == nil {
+				telemetry.Downloads.Add(ctx, 1, errorAttrs)
+				logging.ErrorCtx(ctx, "client-encrypted file requires the browser download page",
+					logging.String("id", fileID))
+				return c.Status(fiber.StatusInternalServerError).SendString("download page is unavailable")
+			}
+
+			return spaHandlers[0](c)
 		}
 
 		if fileName != "" {
@@ -83,6 +100,100 @@ func Download(db database.Database, stor storage.Storage, enc *encryption.Manage
 
 		return serveStream(c, stor, file, successAttrs, errorAttrs)
 	}
+}
+
+// ClientEncryptedContent returns the inner E2EE container for browser-side
+// decryption. It always proxies through isrv and removes only an optional
+// outer server-managed encryption layer.
+func ClientEncryptedContent(
+	db database.Database,
+	stor storage.Storage,
+	enc *encryption.Manager,
+) fiber.Handler {
+	backendAttr := attribute.String(telemetry.AttrStorage, stor.Backend())
+	successAttrs := metric.WithAttributes(backendAttr,
+		attribute.String(telemetry.AttrResult, telemetry.ResultSuccess))
+	errorAttrs := metric.WithAttributes(backendAttr,
+		attribute.String(telemetry.AttrResult, telemetry.ResultError))
+
+	return func(c fiber.Ctx) error {
+		ctx := c.Context()
+		fileID := c.Params("id")
+
+		file, err := db.GetFile(ctx, fileID)
+		if err != nil {
+			telemetry.Downloads.Add(ctx, 1, errorAttrs)
+
+			if errors.Is(err, database.ErrFileNotFound) {
+				return c.Status(fiber.StatusNotFound).SendString("not found")
+			}
+
+			logging.ErrorCtx(ctx, "failed to get client-encrypted file data", logging.Error(err))
+			return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
+		}
+
+		if file.ClientEncryptionVersion != clientencryption.VersionV1 {
+			return c.Status(fiber.StatusNotFound).SendString("not found")
+		}
+
+		if err := db.OnFileDownload(ctx, fileID); err != nil {
+			logging.ErrorCtx(ctx, "failed to update file metrics", logging.Error(err))
+		}
+
+		return serveClientEncrypted(c, stor, enc, file, successAttrs, errorAttrs)
+	}
+}
+
+func serveClientEncrypted(
+	c fiber.Ctx,
+	stor storage.Storage,
+	enc *encryption.Manager,
+	file *models.File,
+	successAttrs metric.MeasurementOption,
+	errorAttrs metric.MeasurementOption,
+) error {
+	ctx := c.Context()
+	obj, err := stor.Open(ctx, file.ID, nil)
+	if err != nil {
+		telemetry.Downloads.Add(ctx, 1, errorAttrs)
+
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			return c.Status(fiber.StatusNotFound).SendString("not found")
+		}
+
+		logging.ErrorCtx(ctx, "failed to open client-encrypted file", logging.Error(err))
+		return c.Status(fiber.StatusInternalServerError).SendString("failed to fetch file")
+	}
+
+	body := obj.Body
+	if file.IsEncrypted() {
+		if enc == nil {
+			telemetry.Downloads.Add(ctx, 1, errorAttrs)
+			_ = obj.Body.Close()
+			logging.ErrorCtx(ctx, "file is encrypted but no encryption identity is configured",
+				logging.String("id", file.ID))
+			return c.Status(fiber.StatusInternalServerError).SendString("internal server error")
+		}
+
+		plain, decryptErr := enc.Decrypt(obj.Body)
+		if decryptErr != nil {
+			telemetry.Downloads.Add(ctx, 1, errorAttrs)
+			_ = obj.Body.Close()
+			logging.ErrorCtx(ctx, "failed to remove at-rest encryption",
+				logging.String("id", file.ID), logging.Error(decryptErr))
+			return c.Status(fiber.StatusInternalServerError).SendString("failed to decrypt file")
+		}
+
+		body = decryptReadCloser{Reader: plain, closer: obj.Body}
+	}
+
+	c.Set(fiber.HeaderContentType, clientencryption.ContentType)
+	c.Set(fiber.HeaderContentDisposition, "attachment; filename=\""+clientencryption.GenericFilename+"\"")
+	c.Set(fiber.HeaderCacheControl, "no-store")
+	headers.SetUserContentSecurityHeaders(c)
+	telemetry.Downloads.Add(ctx, 1, successAttrs)
+
+	return c.SendStream(body, int(file.Size))
 }
 
 // serveEncrypted streams a decrypted object to the client. The Range header is

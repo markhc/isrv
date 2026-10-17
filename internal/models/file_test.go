@@ -25,3 +25,8 @@ func Test_File_IsEncrypted(t *testing.T) {
 		})
 	}
 }
+
+func Test_File_IsClientEncrypted(t *testing.T) {
+	assert.False(t, (&File{}).IsClientEncrypted())
+	assert.True(t, (&File{ClientEncryptionVersion: 1}).IsClientEncrypted())
+}

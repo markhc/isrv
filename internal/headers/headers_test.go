@@ -168,6 +168,9 @@ func Test_SetHeaders(t *testing.T) {
 				SetHeaders(c, tt.file.Name, tt.file.ContentType, tt.inline, tt.cache)
 			})
 
+			assert.Equal(t, "sandbox", got["Content-Security-Policy"])
+			assert.Equal(t, "nosniff", got["X-Content-Type-Options"])
+
 			for header, expected := range tt.expectedHeaders {
 				assert.Equal(t, expected, got[header], "header %s", header)
 			}

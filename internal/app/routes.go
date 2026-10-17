@@ -42,6 +42,9 @@ func SetupRoutes(app *fiber.App, a *Application) {
 	}
 
 	app.Get("/d/:id", a.DownloadHandler)
+	if a.ClientEncryptedContentHandler != nil {
+		app.Get("/api/e2ee/files/:id/content", a.ClientEncryptedContentHandler)
+	}
 	app.Get("/d/:id/:filename", a.DownloadHandler)
 
 	// Rate limit mutation endpoints without placing middleware in front of the
