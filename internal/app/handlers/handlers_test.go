@@ -355,7 +355,7 @@ func Test_Upload_ClientEncryption(t *testing.T) {
 			}), mock.Anything).Return(nil)
 
 			cfg := defaultConfig()
-			cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 64}
+			cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 128}
 			cfg.Encryption.Enabled = atRestEncryption
 			var enc *encryption.Manager
 			if atRestEncryption {
@@ -395,7 +395,7 @@ func Test_Upload_ClientEncryption(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/", body)
 		req.Header.Set("Content-Type", contentType)
 		cfg := defaultConfig()
-		cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 64}
+		cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 128}
 
 		app := newApp()
 		app.Post("/", handlers.Upload(cfg, dbmocks.NewMockDatabase(t), newMockStorage(t), nil))

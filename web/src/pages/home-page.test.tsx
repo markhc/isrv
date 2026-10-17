@@ -91,7 +91,7 @@ describe("home page", () => {
       minAgeDays: 1,
       maxAgeDays: 30,
       e2eeEnabled: true,
-      e2eeMaxFileSizeMb: 64,
+      e2eeMaxFileSizeMb: 128,
       version: "test",
     }
 
@@ -135,7 +135,7 @@ describe("home page", () => {
       minAgeDays: 1,
       maxAgeDays: 30,
       e2eeEnabled: true,
-      e2eeMaxFileSizeMb: 64,
+      e2eeMaxFileSizeMb: 128,
       version: "test",
     }
 

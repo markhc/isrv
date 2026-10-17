@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react"
 import {
   useQuery,
   useQueryClient,
-  keepPreviousData,
+  keepPreviousData
 } from "@tanstack/react-query"
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
-  type SortingState,
+  type SortingState
 } from "@tanstack/react-table"
 import { useTranslation } from "react-i18next"
 import { ArrowDown, ArrowUp } from "lucide-react"
@@ -17,7 +17,7 @@ import { toast } from "sonner"
 import {
   listFiles,
   type AdminFile,
-  type ListFilesParams,
+  type ListFilesParams
 } from "@/lib/admin-api"
 import { formatBytes, formatDate } from "@/lib/format"
 import { FileDetailPanel } from "@/components/admin/file-detail-panel"
