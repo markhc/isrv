@@ -180,6 +180,15 @@ encryption:
   # Set either identity or identityFile, not both.
   identityFile: ""
 
+# optional browser-based end-to-end encryption. The decryption key is kept in
+# the share URL fragment and is never sent to this server.
+e2ee:
+  enabled: false
+  # plaintext limit for browser-encrypted files; must not exceed maxFileSizeMb
+  # It exists to prevent high memory usage on the client side when encrypting 
+  # large files in the browser.
+  maxFileSizeMb: 128
+
 # cluster coordination for multi-replica deployments
 # - if disabled, isrv behaves as a single replica with zero external dependencies. 
 # - if enabled, replicas coordinate shared state (e.g. rate limiting) through Redis.

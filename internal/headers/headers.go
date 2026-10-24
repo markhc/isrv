@@ -37,8 +37,19 @@ func SetContentType(c fiber.Ctx, contentType string) {
 	c.Set("Content-Type", contentType)
 }
 
-// SetHeaders applies the cache-control (when enabled), content-type (from
-// fileMetadata), and content-disposition headers in a single call.
+// SetUserContentSecurityHeaders isolates uploaded content from the application
+// origin. The CSP sandbox gives the response an opaque origin, so uploaded HTML
+// cannot run script as isrv, read its storage, or register a service worker
+// that would intercept share links. nosniff stops browsers from reinterpreting
+// the declared content type.
+func SetUserContentSecurityHeaders(c fiber.Ctx) {
+	c.Set("Content-Security-Policy", "sandbox")
+	c.Set("X-Content-Type-Options", "nosniff")
+}
+
+// SetHeaders applies the user-content security headers, cache-control (when
+// enabled), content-type (from fileMetadata), and content-disposition headers
+// in a single call.
 func SetHeaders(
 	c fiber.Ctx,
 	fileName string,
@@ -46,6 +57,8 @@ func SetHeaders(
 	inlineContent bool,
 	cachingEnabled bool,
 ) {
+	SetUserContentSecurityHeaders(c)
+
 	if cachingEnabled {
 		AddCacheHeader(c)
 	}

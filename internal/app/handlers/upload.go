@@ -7,9 +7,11 @@ import (
 	"io"
 	"mime/multipart"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/markhc/isrv/internal/clientencryption"
 	"github.com/markhc/isrv/internal/database"
 	"github.com/markhc/isrv/internal/encryption"
 	"github.com/markhc/isrv/internal/logging"
@@ -51,7 +53,19 @@ func Upload(
 			return utils.RespondWithError(c, fiber.StatusBadRequest, "multipart form 'file' field is missing")
 		}
 
-		if err := validateFileSize(header, config.MaxFileSizeMB); err != nil {
+		clientEncryptionVersion, err := parseClientEncryptionVersion(c.FormValue("clientEncryptionVersion"), config)
+		if err != nil {
+			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
+			return utils.RespondWithError(c, fiber.StatusBadRequest, err.Error())
+		}
+
+		maxFileSizeMB := config.MaxFileSizeMB
+		maxSizeBytes := int64(maxFileSizeMB) * 1024 * 1024
+		if clientEncryptionVersion > 0 {
+			maxFileSizeMB = config.E2EE.MaxFileSizeMB
+			maxSizeBytes = clientencryption.MaxCiphertextSize(int64(maxFileSizeMB) * 1024 * 1024)
+		}
+		if err := validateFileSize(header, maxFileSizeMB, maxSizeBytes); err != nil {
 			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
 			return utils.RespondWithError(c, fiber.StatusRequestEntityTooLarge, err.Error())
 		}
@@ -63,6 +77,15 @@ func Upload(
 		}
 		defer file.Close()
 
+		if clientEncryptionVersion == clientencryption.VersionV1 {
+			if err := clientencryption.ValidateV1Header(file, header.Size); err != nil {
+				telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
+				return utils.RespondWithError(c, fiber.StatusBadRequest, err.Error())
+			}
+			header.Filename = clientencryption.GenericFilename
+			header.Header.Set("Content-Type", clientencryption.ContentType)
+		}
+
 		ipAddress := c.IP()
 		expiration := utils.CalculateExpirationTime(c, header.Size, config)
 
@@ -73,7 +96,8 @@ func Upload(
 			logging.MaybeIP("ip_address", ipAddress),
 		)
 
-		uploadResp, err := processUpload(c.Context(), config, db, stor, enc, file, header, expiration, ipAddress)
+		uploadResp, err := processUpload(c.Context(), config, db, stor, enc, file, header, expiration, ipAddress,
+			clientEncryptionVersion)
 		if err != nil {
 			telemetry.Uploads.Add(c.Context(), 1, errorAttrs)
 			logging.ErrorCtx(c.Context(), "failed to process file upload", logging.Error(err))
@@ -87,12 +111,27 @@ func Upload(
 	}
 }
 
-func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int) error {
-	maxSizeBytes := int64(maxFileSizeMB * 1024 * 1024)
+func validateFileSize(header *multipart.FileHeader, maxFileSizeMB int, maxSizeBytes int64) error {
 	if header.Size > maxSizeBytes {
 		return fmt.Errorf("file size exceeds the maximum allowed limit of %d MB", maxFileSizeMB)
 	}
 	return nil
+}
+
+func parseClientEncryptionVersion(value string, config *models.Configuration) (int, error) {
+	if value == "" || value == "0" {
+		return 0, nil
+	}
+
+	version, err := strconv.Atoi(value)
+	if err != nil || version != clientencryption.VersionV1 {
+		return 0, errors.New("unsupported client encryption version")
+	}
+	if !config.E2EE.Enabled {
+		return 0, errors.New("client encryption is not enabled")
+	}
+
+	return version, nil
 }
 
 func processUpload(
@@ -105,6 +144,7 @@ func processUpload(
 	header *multipart.FileHeader,
 	expiration time.Time,
 	ipAddress string,
+	clientEncryptionVersion int,
 ) (uploadResponse, error) {
 	logging.InfoCtx(ctx, "processing uploaded file", logging.Sensitive("filename", header.Filename))
 
@@ -112,7 +152,7 @@ func processUpload(
 
 	logging.DebugCtx(ctx, "generated file ID", logging.String("file_id", fileID))
 
-	if !config.KeepOriginalFilename {
+	if clientEncryptionVersion == 0 && !config.KeepOriginalFilename {
 		header.Filename = fileID + utils.GetFileExtension(header.Filename)
 	}
 
@@ -121,9 +161,8 @@ func processUpload(
 		return uploadResponse{}, fmt.Errorf("failed to generate file token: %w", err)
 	}
 
-	// file.Size always records the plaintext size; encrypted objects are
-	// larger, but the plaintext size drives the UI, expiration math, and the
-	// download Content-Length.
+	// File.Size records bytes inside the optional at-rest layer. For ordinary
+	// uploads this is plaintext; for E2EE uploads it is the inner ciphertext.
 	var (
 		reader     io.Reader = file
 		encVersion int
@@ -157,13 +196,14 @@ func processUpload(
 	}
 
 	if err := db.OnFileUpload(ctx, &models.File{
-		ID:                fileID,
-		Name:              header.Filename,
-		Size:              header.Size,
-		ContentType:       header.Header.Get("Content-Type"),
-		Expiration:        expiration,
-		IPAddress:         ipAddress,
-		EncryptionVersion: encVersion,
+		ID:                      fileID,
+		Name:                    header.Filename,
+		Size:                    header.Size,
+		ContentType:             header.Header.Get("Content-Type"),
+		Expiration:              expiration,
+		IPAddress:               ipAddress,
+		EncryptionVersion:       encVersion,
+		ClientEncryptionVersion: clientEncryptionVersion,
 	}, token); err != nil {
 		if rollbackErr := stor.DeleteFile(ctx, fileID); rollbackErr != nil {
 			logging.ErrorCtx(ctx, "failed to roll back stored file after db error",

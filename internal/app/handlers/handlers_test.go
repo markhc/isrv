@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/markhc/isrv/internal/app/auth"
 	"github.com/markhc/isrv/internal/app/handlers"
+	"github.com/markhc/isrv/internal/clientencryption"
 	"github.com/markhc/isrv/internal/database"
 	dbmocks "github.com/markhc/isrv/internal/database/mocks"
 	"github.com/markhc/isrv/internal/encryption"
@@ -171,6 +173,9 @@ func Test_Download(t *testing.T) {
 
 			resp := doTest(t, app, httptest.NewRequest(http.MethodGet, path, nil))
 			resp.Body.Close()
+
+			assert.Equal(t, "sandbox", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+			assert.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 		})
 	}
 }
@@ -291,6 +296,130 @@ func Test_Upload(t *testing.T) {
 			assert.Contains(t, body, tt.expectedBody)
 		})
 	}
+}
+
+func clientEncryptedMultipartBody(t *testing.T, content []byte, version string) (*bytes.Buffer, string) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", clientencryption.GenericFilename)
+	require.NoError(t, err)
+	_, err = fw.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, mw.WriteField("clientEncryptionVersion", version))
+	require.NoError(t, mw.Close())
+	return &buf, mw.FormDataContentType()
+}
+
+func validClientEncryptedContainer() []byte {
+	container := make([]byte, 38+4096+16)
+	copy(container, "ISRV-E2E")
+	container[8] = clientencryption.VersionV1
+	binary.BigEndian.PutUint32(container[10:14], 1024*1024)
+	return container
+}
+
+func Test_Upload_ClientEncryption(t *testing.T) {
+	for _, atRestEncryption := range []bool{false, true} {
+		name := "without at-rest encryption"
+		if atRestEncryption {
+			name = "with at-rest encryption"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			innerCiphertext := validClientEncryptedContainer()
+			body, contentType := clientEncryptedMultipartBody(t, innerCiphertext, "1")
+			req := httptest.NewRequest(http.MethodPost, "/", body)
+			req.Header.Set("Content-Type", contentType)
+
+			db := dbmocks.NewMockDatabase(t)
+			stor := newMockStorage(t)
+			var stored []byte
+			stor.EXPECT().Save(mock.Anything, mock.Anything, mock.Anything,
+				mock.MatchedBy(func(opts storage.SaveOptions) bool {
+					if atRestEncryption {
+						return opts.Size == -1 && opts.ContentType == clientencryption.ContentType
+					}
+					return opts.Size == int64(len(innerCiphertext)) &&
+						opts.ContentType == clientencryption.ContentType &&
+						opts.Filename == clientencryption.GenericFilename
+				})).Run(func(_ context.Context, _ string, r io.Reader, _ storage.SaveOptions) {
+				stored, _ = io.ReadAll(r)
+			}).Return("/path/encrypted-file.isrv", nil)
+			db.EXPECT().OnFileUpload(mock.Anything, mock.MatchedBy(func(file *models.File) bool {
+				return file.Name == clientencryption.GenericFilename &&
+					file.ContentType == clientencryption.ContentType &&
+					file.ClientEncryptionVersion == clientencryption.VersionV1 &&
+					file.EncryptionVersion == map[bool]int{false: 0, true: encryption.VersionAgeV1}[atRestEncryption]
+			}), mock.Anything).Return(nil)
+
+			cfg := defaultConfig()
+			cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 128}
+			cfg.Encryption.Enabled = atRestEncryption
+			var enc *encryption.Manager
+			if atRestEncryption {
+				enc = newEncManager(t)
+			}
+
+			app := newApp()
+			app.Post("/", handlers.Upload(cfg, db, stor, enc))
+			resp := doTest(t, app, req)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			resp.Body.Close()
+
+			if atRestEncryption {
+				decrypted, err := enc.Decrypt(bytes.NewReader(stored))
+				require.NoError(t, err)
+				stored, err = io.ReadAll(decrypted)
+				require.NoError(t, err)
+			}
+			assert.Equal(t, innerCiphertext, stored)
+		})
+	}
+
+	t.Run("rejects the marker when disabled", func(t *testing.T) {
+		body, contentType := clientEncryptedMultipartBody(t, validClientEncryptedContainer(), "1")
+		req := httptest.NewRequest(http.MethodPost, "/", body)
+		req.Header.Set("Content-Type", contentType)
+
+		app := newApp()
+		app.Post("/", handlers.Upload(defaultConfig(), dbmocks.NewMockDatabase(t), newMockStorage(t), nil))
+		resp := doTest(t, app, req)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, bodyString(t, resp), "client encryption is not enabled")
+	})
+
+	t.Run("rejects a malformed declared container", func(t *testing.T) {
+		body, contentType := clientEncryptedMultipartBody(t, bytes.Repeat([]byte{0}, 5000), "1")
+		req := httptest.NewRequest(http.MethodPost, "/", body)
+		req.Header.Set("Content-Type", contentType)
+		cfg := defaultConfig()
+		cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 128}
+
+		app := newApp()
+		app.Post("/", handlers.Upload(cfg, dbmocks.NewMockDatabase(t), newMockStorage(t), nil))
+		resp := doTest(t, app, req)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Contains(t, bodyString(t, resp), "magic is invalid")
+	})
+
+	t.Run("rejects ciphertext above the configured plaintext limit plus overhead", func(t *testing.T) {
+		maxCiphertextSize := clientencryption.MaxCiphertextSize(1024 * 1024)
+		container := make([]byte, maxCiphertextSize+1)
+		copy(container, validClientEncryptedContainer())
+		body, contentType := clientEncryptedMultipartBody(t, container, "1")
+		req := httptest.NewRequest(http.MethodPost, "/", body)
+		req.Header.Set("Content-Type", contentType)
+		cfg := defaultConfig()
+		cfg.E2EE = models.E2EEConfiguration{Enabled: true, MaxFileSizeMB: 1}
+
+		app := newApp()
+		app.Post("/", handlers.Upload(cfg, dbmocks.NewMockDatabase(t), newMockStorage(t), nil))
+		resp := doTest(t, app, req)
+		assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+		assert.Contains(t, bodyString(t, resp), "maximum allowed limit of 1 MB")
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +548,8 @@ func Test_Download_Encryption(t *testing.T) {
 		assert.Equal(t, string(plaintext), got)
 		assert.Equal(t, strconv.Itoa(len(plaintext)), resp.Header.Get("Content-Length"))
 		assert.Contains(t, resp.Header.Get("Content-Type"), "text/plain")
+		assert.Equal(t, "sandbox", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+		assert.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 
 		// PresignedURL must never be consulted for encrypted files.
 		stor.AssertNotCalled(t, "PresignedURL", mock.Anything, mock.Anything)
@@ -485,6 +616,120 @@ func Test_Download_Encryption(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		assert.NotContains(t, got, string(plaintext))
+	})
+}
+
+func Test_Download_ClientEncryption(t *testing.T) {
+	t.Run("navigation serves SPA without counting or opening the object", func(t *testing.T) {
+		file := &models.File{
+			ID:                      "e2ee-file",
+			ClientEncryptionVersion: clientencryption.VersionV1,
+		}
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+
+		spa := func(c fiber.Ctx) error {
+			return c.Type("html").SendString("<html>download</html>")
+		}
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil, spa))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/e2ee-file", nil))
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, bodyString(t, resp), "download")
+		stor.AssertNotCalled(t, "Open", mock.Anything, mock.Anything, mock.Anything)
+		stor.AssertNotCalled(t, "PresignedURL", mock.Anything, mock.Anything)
+		db.AssertNotCalled(t, "OnFileDownload", mock.Anything, mock.Anything)
+	})
+
+	t.Run("navigation fails closed when the SPA is unavailable", func(t *testing.T) {
+		file := &models.File{
+			ID:                      "e2ee-file",
+			ClientEncryptionVersion: clientencryption.VersionV1,
+		}
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+
+		app := newApp()
+		app.Get("/d/:id", handlers.Download(db, stor, nil))
+
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/d/e2ee-file", nil))
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		assert.NotContains(t, bodyString(t, resp), "ISRV-E2E")
+	})
+
+	for _, atRestEncryption := range []bool{false, true} {
+		name := "content proxies inner ciphertext"
+		if atRestEncryption {
+			name = "content removes outer encryption"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			innerCiphertext := validClientEncryptedContainer()
+			stored := innerCiphertext
+			var enc *encryption.Manager
+			if atRestEncryption {
+				enc = newEncManager(t)
+				encrypted, err := enc.Encrypt(bytes.NewReader(innerCiphertext))
+				require.NoError(t, err)
+				stored, err = io.ReadAll(encrypted)
+				require.NoError(t, err)
+			}
+
+			file := &models.File{
+				ID:                      "e2ee-file",
+				Name:                    clientencryption.GenericFilename,
+				Size:                    int64(len(innerCiphertext)),
+				ContentType:             clientencryption.ContentType,
+				ClientEncryptionVersion: clientencryption.VersionV1,
+			}
+			if atRestEncryption {
+				file.EncryptionVersion = encryption.VersionAgeV1
+			}
+
+			db := dbmocks.NewMockDatabase(t)
+			stor := newMockStorage(t)
+			db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+			db.EXPECT().OnFileDownload(mock.Anything, file.ID).Return(nil)
+			stor.EXPECT().Open(mock.Anything, file.ID, (*storage.ByteRange)(nil)).Return(&storage.Object{
+				Body:   io.NopCloser(bytes.NewReader(stored)),
+				Size:   int64(len(stored)),
+				Length: int64(len(stored)),
+			}, nil)
+
+			app := newApp()
+			app.Get("/api/e2ee/files/:id/content", handlers.ClientEncryptedContent(db, stor, enc))
+			req := httptest.NewRequest(http.MethodGet, "/api/e2ee/files/e2ee-file/content", nil)
+			req.Header.Set(fiber.HeaderRange, "bytes=0-10")
+			resp := doTest(t, app, req)
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, innerCiphertext, []byte(bodyString(t, resp)))
+			assert.Equal(t, clientencryption.ContentType, resp.Header.Get(fiber.HeaderContentType))
+			assert.Equal(t, "no-store", resp.Header.Get(fiber.HeaderCacheControl))
+			assert.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
+			assert.Equal(t, "sandbox", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+			assert.Empty(t, resp.Header.Get(fiber.HeaderAcceptRanges))
+			stor.AssertNotCalled(t, "PresignedURL", mock.Anything, mock.Anything)
+		})
+	}
+
+	t.Run("content endpoint rejects a non-E2EE file", func(t *testing.T) {
+		file := &models.File{ID: "plain-file"}
+		db := dbmocks.NewMockDatabase(t)
+		stor := newMockStorage(t)
+		db.EXPECT().GetFile(mock.Anything, file.ID).Return(file, nil)
+
+		app := newApp()
+		app.Get("/api/e2ee/files/:id/content", handlers.ClientEncryptedContent(db, stor, nil))
+		resp := doTest(t, app, httptest.NewRequest(http.MethodGet, "/api/e2ee/files/plain-file/content", nil))
+
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+		resp.Body.Close()
+		stor.AssertNotCalled(t, "Open", mock.Anything, mock.Anything, mock.Anything)
+		db.AssertNotCalled(t, "OnFileDownload", mock.Anything, mock.Anything)
 	})
 }
 

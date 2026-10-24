@@ -148,6 +148,11 @@ type SecurityConfiguration struct {
 	RateLimit           RateLimitConfiguration `yaml:"rateLimit"`
 }
 
+type E2EEConfiguration struct {
+	Enabled       bool `yaml:"enabled"`
+	MaxFileSizeMB int  `yaml:"maxFileSizeMb"`
+}
+
 // Configuration is the top-level application configuration.
 type Configuration struct {
 	ServerName           string                  `yaml:"serverName"`
@@ -170,6 +175,7 @@ type Configuration struct {
 	Logging              LoggingConfiguration    `yaml:"logging"`
 	Cleanup              CleanupConfiguration    `yaml:"cleanup"`
 	Encryption           EncryptionConfiguration `yaml:"encryption"`
+	E2EE                 E2EEConfiguration       `yaml:"e2ee"`
 	Cluster              ClusterConfiguration    `yaml:"cluster"`
 	DebugMode            bool                    `yaml:"debug"`
 }
@@ -183,6 +189,8 @@ type FrontendConfig struct {
 	MaxFileSizeMB     int    `json:"maxFileSizeMb"`
 	MinAgeDays        int    `json:"minAgeDays"`
 	MaxAgeDays        int    `json:"maxAgeDays"`
+	E2EEEnabled       bool   `json:"e2eeEnabled"`
+	E2EEMaxFileSizeMB int    `json:"e2eeMaxFileSizeMb"`
 	Version           string `json:"version"`
 }
 

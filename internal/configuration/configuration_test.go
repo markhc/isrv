@@ -269,13 +269,17 @@ func TestApplyEnvOverrides(t *testing.T) {
 		{
 			name: "file configuration overrides",
 			envVars: map[string]string{
-				"ISRV_RANDOM_ID_LENGTH": "16",
-				"ISRV_MAX_FILE_SIZE_MB": "1024",
+				"ISRV_RANDOM_ID_LENGTH":      "16",
+				"ISRV_MAX_FILE_SIZE_MB":      "1024",
+				"ISRV_E2EE_ENABLED":          "true",
+				"ISRV_E2EE_MAX_FILE_SIZE_MB": "128",
 			},
 			expectPanic: false,
 			expected: func(t *testing.T, cfg models.Configuration) {
 				assert.Equal(t, 16, cfg.RandomIDLength)
 				assert.Equal(t, 1024, cfg.MaxFileSizeMB)
+				assert.True(t, cfg.E2EE.Enabled)
+				assert.Equal(t, 128, cfg.E2EE.MaxFileSizeMB)
 			},
 		},
 		{
@@ -601,6 +605,59 @@ func TestVerifyConfiguration(t *testing.T) {
 			},
 			expectPanic:  true,
 			panicMessage: "Invalid configuration: max_file_size_mb must be at least 1",
+		},
+		{
+			name: "invalid E2EE max file size",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.E2EE.Enabled = true
+				cfg.E2EE.MaxFileSizeMB = 0
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: e2ee.max_file_size_mb must be at least 1",
+		},
+		{
+			name: "E2EE max file size exceeds normal limit",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.E2EE.Enabled = true
+				cfg.E2EE.MaxFileSizeMB = cfg.MaxFileSizeMB + 1
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: e2ee.max_file_size_mb cannot exceed max_file_size_mb",
+		},
+		{
+			// Upgrade path: an existing deployment with a lower global limit and
+			// no e2ee section inherits the embedded e2ee default and must boot.
+			name: "E2EE disabled ignores default max file size above normal limit",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.MaxFileSizeMB = cfg.E2EE.MaxFileSizeMB - 1
+				return cfg
+			},
+			expectPanic: false,
+		},
+		{
+			name: "E2EE disabled ignores invalid max file size",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.E2EE.MaxFileSizeMB = 0
+				return cfg
+			},
+			expectPanic: false,
+		},
+		{
+			name: "E2EE requires the browser application",
+			setupFunc: func() models.Configuration {
+				cfg := getDefaultConfig()
+				cfg.E2EE.Enabled = true
+				cfg.DisableIndexPage = true
+				return cfg
+			},
+			expectPanic:  true,
+			panicMessage: "Invalid configuration: e2ee.enabled requires the index page",
 		},
 		{
 			name: "invalid cleanup interval",

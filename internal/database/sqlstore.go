@@ -14,8 +14,9 @@ import (
 
 const (
 	QUERY_INSERT_FILE = `
-		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, content_type, encryption_version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO files (id, file_name, file_size, token, expiration_time, ip_address, content_type,
+		                   encryption_version, client_encryption_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	QUERY_UPDATE_DOWNLOAD_COUNT = `
 		UPDATE files SET download_count = download_count + 1 WHERE id = ?
@@ -33,7 +34,8 @@ const (
 		SELECT id FROM files WHERE expiration_time < CURRENT_TIMESTAMP
 	`
 	QUERY_SELECT_FILE_DATA = `
-		SELECT id, file_name, file_size, content_type, expiration_time, download_count, encryption_version
+		SELECT id, file_name, file_size, content_type, expiration_time, download_count,
+		       encryption_version, client_encryption_version
 		FROM files WHERE id = ?
 	`
 	QUERY_UPDATE_EXPIRATION = `
@@ -41,7 +43,7 @@ const (
 	`
 	QUERY_LIST_FILES_SELECT = `
 		SELECT id, file_name, file_size, content_type, expiration_time,
-		       download_count, ip_address, created_at, encryption_version
+		       download_count, ip_address, created_at, encryption_version, client_encryption_version
 		FROM files
 	`
 	QUERY_LIST_FILES_COUNT = `SELECT COUNT(*) FROM files`
@@ -108,7 +110,8 @@ func (s *sqlStore) OnFileUpload(
 		file.Expiration,
 		file.IPAddress,
 		file.ContentType,
-		file.EncryptionVersion)
+		file.EncryptionVersion,
+		file.ClientEncryptionVersion)
 	if err != nil {
 		return fmt.Errorf("failed to insert file record: %w", err)
 	}
@@ -223,7 +226,8 @@ func (s *sqlStore) GetFile(ctx context.Context, id string) (*models.File, error)
 		&contentType,
 		&file.Expiration,
 		&file.Downloads,
-		&file.EncryptionVersion)
+		&file.EncryptionVersion,
+		&file.ClientEncryptionVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFileNotFound
@@ -271,7 +275,8 @@ func (s *sqlStore) ListFiles(ctx context.Context, filter models.FileListFilter) 
 		)
 
 		err := rows.Scan(&file.ID, &file.Name, &file.Size, &contentType,
-			&file.Expiration, &file.Downloads, &ipAddress, &file.CreatedAt, &file.EncryptionVersion)
+			&file.Expiration, &file.Downloads, &ipAddress, &file.CreatedAt,
+			&file.EncryptionVersion, &file.ClientEncryptionVersion)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan file row: %w", err)
 		}

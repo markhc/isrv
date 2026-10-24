@@ -33,7 +33,7 @@ describe("admin-api", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ username: "admin", password: "secret" }),
-      }),
+      })
     )
   })
 
@@ -53,7 +53,7 @@ describe("admin-api", () => {
 
     expect(fetchFn).toHaveBeenCalledWith(
       "/admin/api/files/a%2Fb",
-      expect.objectContaining({ method: "DELETE" }),
+      expect.objectContaining({ method: "DELETE" })
     )
   })
 

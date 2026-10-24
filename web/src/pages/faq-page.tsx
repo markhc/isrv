@@ -13,7 +13,7 @@ export default function FAQPage() {
   const { t } = useTranslation(["faq", "common"])
   const origin = window.location.origin
   const config = getServerConfig()
-  const items = t("faq:items", { 
+  const items = t("faq:items", {
     config,
     returnObjects: true }) as FAQItem[]
 

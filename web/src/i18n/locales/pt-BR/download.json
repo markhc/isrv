@@ -1,0 +1,16 @@
+{
+  "title": "Download criptografado",
+  "ready": "A chave neste link descriptografará o arquivo no seu navegador.",
+  "action": "Descriptografar e baixar",
+  "working": "Baixando e descriptografando…",
+  "complete": "Download iniciado: {{name}}",
+  "privacyNotice": "A chave de descriptografia e o conteúdo original nunca saem do seu navegador.",
+  "errors": {
+    "missingKey": "Este link não contém a chave de descriptografia. Peça ao remetente o link completo.",
+    "invalidKey": "A chave de descriptografia neste link está malformada ou não é compatível.",
+    "unsupportedBrowser": "Este navegador ou conexão não pode descriptografar o arquivo com segurança.",
+    "authentication": "A chave está incorreta ou o arquivo criptografado está danificado.",
+    "damagedFile": "O arquivo criptografado está danificado ou usa um formato não compatível.",
+    "fetchFailed": "Não foi possível baixar o arquivo criptografado. Ele pode ter expirado."
+  }
+}

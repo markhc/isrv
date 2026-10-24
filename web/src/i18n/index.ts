@@ -7,6 +7,7 @@ import aboutEn from "./locales/en/about.json"
 import faqEn from "./locales/en/faq.json"
 import abuseEn from "./locales/en/abuse.json"
 import privacyEn from "./locales/en/privacy.json"
+import downloadEn from "./locales/en/download.json"
 
 export const supportedLanguages = ["en", "pt-BR"] as const
 export type SupportedLanguage = (typeof supportedLanguages)[number]
@@ -16,7 +17,7 @@ export const languageNames: Record<SupportedLanguage, string> = {
   "pt-BR": "PT",
 }
 
-const namespaces = ["common", "home", "about", "faq", "abuse", "privacy"] as const
+const namespaces = ["common", "home", "about", "faq", "abuse", "privacy", "download"] as const
 
 const lazyLocales = import.meta.glob("./locales/!(en)/**/*.json")
 
@@ -30,7 +31,7 @@ async function loadLanguage(lang: SupportedLanguage): Promise<void> {
       if (!factory) return
       const mod = (await factory()) as { default: Record<string, unknown> }
       i18n.addResourceBundle(lang, ns, mod.default, true, true)
-    }),
+    })
   )
 }
 
@@ -64,6 +65,7 @@ export async function initI18n(): Promise<void> {
         faq: faqEn,
         abuse: abuseEn,
         privacy: privacyEn,
+        download: downloadEn,
       },
     },
     interpolation: { escapeValue: false },
